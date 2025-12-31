@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vulnerability Scanning Platform</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+</head>
+<body class="theme-light">
+    <div class="container">
+        <div class="header">
+            <h1>Vulnerability Scanning Platform</h1>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="scan-tab">Scan</button>
+            <button class="tab-btn" data-tab="assets-tab">Assets</button>
+            <button class="tab-btn" data-tab="vulns-tab">Vulnerabilities</button>
+            <button class="tab-btn" data-tab="settings-tab">Settings</button>
+        </div>
+
+        <!-- Scan Tab -->
+        <div id="scan-tab" class="tab-content active">
+            <h2>New Scan</h2>
+            <form id="scan-form">
+                <div class="form-group">
+                    <label for="ip">IP Address or CIDR:</label>
+                    <input type="text" id="ip" name="ip" placeholder="e.g., 192.168.1.1 or 10.0.0.0/24" required>
+                </div>
+                <div class="form-group">
+                    <label>Scan Type:</label>
+                    <div class="scan-type-buttons">
+                        <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
+                        <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
+                    </div>
+                </div>
+            </form>
+            <div id="progress-container" style="display:none;">
+                <p id="progress-message">Scan in progress...</p>
+                <progress id="progress-bar" value="0" max="100"></progress>
+            </div>
+            <div id="scan-output"></div>
+
+            <div id="log-window">
+                <div id="log-header">
+                    <span id="log-title">Scan Logs</span>
+                    <div id="log-controls">
+                        <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
+                        <button id="log-toggle" class="btn-small btn-secondary" title="Toggle log window">_</button>
+                    </div>
+                </div>
+                <div id="log-content"></div>
+            </div>
+        </div>
+
+        <!-- Assets Tab -->
+        <div id="assets-tab" class="tab-content">
+            <h2>Scanned Assets</h2>
+            <div id="assets-toolbar">
+                <button id="refresh-assets" class="btn-secondary">Refresh</button>
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="cards" title="Card View">
+                        <span class="view-icon">&#9638;</span>
+                    </button>
+                    <button class="view-btn" data-view="list" title="List View">
+                        <span class="view-icon">&#9776;</span>
+                    </button>
+                </div>
+                <span id="assets-count"></span>
+            </div>
+            <div id="assets-list">
+                <p class="loading">Loading assets...</p>
+            </div>
+        </div>
+
+        <!-- Vulnerabilities Tab -->
+        <div id="vulns-tab" class="tab-content">
+            <h2>Vulnerabilities</h2>
+            <div id="vulns-toolbar">
+                <button id="refresh-vulns" class="btn-secondary">Refresh</button>
+                <div class="view-toggle">
+                    <button class="view-btn-vulns active" data-view="cards" title="Card View">
+                        <span class="view-icon">&#9638;</span>
+                    </button>
+                    <button class="view-btn-vulns" data-view="list" title="List View">
+                        <span class="view-icon">&#9776;</span>
+                    </button>
+                </div>
+                <select id="vuln-filter">
+                    <option value="">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="info">Info</option>
+                </select>
+            </div>
+
+            <div id="vulns-summary">
+                <div class="summary-card total">
+                    <span class="summary-count" id="total-vulns">0</span>
+                    <span class="summary-label">Total</span>
+                </div>
+                <div class="summary-card critical">
+                    <span class="summary-count" id="critical-count">0</span>
+                    <span class="summary-label">Critical</span>
+                </div>
+                <div class="summary-card high">
+                    <span class="summary-count" id="high-count">0</span>
+                    <span class="summary-label">High</span>
+                </div>
+                <div class="summary-card medium">
+                    <span class="summary-count" id="medium-count">0</span>
+                    <span class="summary-label">Medium</span>
+                </div>
+                <div class="summary-card low">
+                    <span class="summary-count" id="low-count">0</span>
+                    <span class="summary-label">Low</span>
+                </div>
+            </div>
+
+            <div id="vulns-list">
+                <p class="loading">Loading vulnerabilities...</p>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <h2>Settings</h2>
+
+            <div class="settings-section">
+                <h3>Theme</h3>
+                <p class="settings-description">Choose your preferred visual theme</p>
+
+                <div class="theme-selector">
+                    <div class="theme-option" data-theme="light">
+                        <div class="theme-preview theme-preview-light">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Light</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+
+                    <div class="theme-option" data-theme="dark">
+                        <div class="theme-preview theme-preview-dark">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Dark</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+
+                    <div class="theme-option" data-theme="hacker">
+                        <div class="theme-preview theme-preview-hacker">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Hacker</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+
+                    <div class="theme-option" data-theme="gruvbox-dark">
+                        <div class="theme-preview theme-preview-gruvbox-dark">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Gruvbox Dark</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+
+                    <div class="theme-option" data-theme="gruvbox-light">
+                        <div class="theme-preview theme-preview-gruvbox-light">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Gruvbox Light</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+
+                    <div class="theme-option" data-theme="hot-pink">
+                        <div class="theme-preview theme-preview-hot-pink">
+                            <div class="preview-header"></div>
+                            <div class="preview-content">
+                                <div class="preview-line"></div>
+                                <div class="preview-line short"></div>
+                            </div>
+                        </div>
+                        <span class="theme-name">Hot Pink</span>
+                        <span class="theme-check">&#10003;</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Port Scan Options</h3>
+                <p class="settings-description">Configure port scanning behavior</p>
+
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="setting-ports">Port Range</label>
+                        <input type="text" id="setting-ports" placeholder="e.g., 1-1000, 22,80,443, or -">
+                        <span class="setting-hint">Use "-" for all ports, or specify ranges/lists</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-scan-speed">Scan Speed</label>
+                        <select id="setting-scan-speed">
+                            <option value="T2">T2 - Polite (slow, less detection)</option>
+                            <option value="T3" selected>T3 - Normal (default)</option>
+                            <option value="T4">T4 - Aggressive (faster)</option>
+                            <option value="T5">T5 - Insane (fastest, may miss ports)</option>
+                        </select>
+                        <span class="setting-hint">Higher speeds may be less accurate</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-host-timeout">Host Timeout (seconds)</label>
+                        <input type="number" id="setting-host-timeout" min="30" max="3600" value="300">
+                        <span class="setting-hint">Max time to scan a single host (30-3600)</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-max-hosts">Max CIDR Hosts</label>
+                        <input type="number" id="setting-max-hosts" min="1" max="1024" value="256">
+                        <span class="setting-hint">Maximum hosts to scan in a CIDR range (1-1024)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Vulnerability Scan Options (Nuclei)</h3>
+                <p class="settings-description">Configure Nuclei vulnerability scanning behavior</p>
+
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="setting-vuln-timeout">Scan Timeout (seconds)</label>
+                        <input type="number" id="setting-vuln-timeout" min="60" max="3600" value="600">
+                        <span class="setting-hint">Max time for vulnerability scan per host (60-3600)</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-severity">Severity Filter</label>
+                        <select id="setting-severity">
+                            <option value="critical,high,medium,low" selected>All Severities</option>
+                            <option value="critical,high,medium">Medium and Above</option>
+                            <option value="critical,high">High and Critical Only</option>
+                            <option value="critical">Critical Only</option>
+                        </select>
+                        <span class="setting-hint">Filter vulnerabilities by severity level</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-rate-limit">Rate Limit (req/sec)</label>
+                        <input type="number" id="setting-rate-limit" min="10" max="1000" value="150">
+                        <span class="setting-hint">Requests per second (10-1000)</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="setting-templates">Template Tags (optional)</label>
+                        <input type="text" id="setting-templates" placeholder="e.g., cve,rce,lfi">
+                        <span class="setting-hint">Comma-separated tags to filter templates</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-actions">
+                    <button id="save-settings" class="btn-primary">Save Settings</button>
+                    <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
+                    <span id="settings-status" class="settings-status"></span>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>About</h3>
+                <p class="settings-description">Vulnerability Scanning Platform v1.0</p>
+                <p class="settings-description">A web-based network vulnerability scanner powered by Nmap.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CVE Detail Modal -->
+    <div id="cve-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <div id="modal-body">
+                <!-- Content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Asset Detail Modal -->
+    <div id="asset-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-wide">
+            <button class="modal-close" id="asset-modal-close">&times;</button>
+            <div id="asset-modal-body">
+                <!-- Content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

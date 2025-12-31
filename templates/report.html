@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Report for {{ ip }}</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Scan Report for {{ ip }}</h1>
+
+        {% if error %}
+            <div class="error">
+                <p><strong>Error:</strong> {{ error }}</p>
+            </div>
+        {% elif scan_results is not none %}
+            <h2>Current Scan Results:</h2>
+            {% if scan_results %}
+                <table>
+                    <tr>
+                        <th>Protocol</th>
+                        <th>Port</th>
+                        <th>State</th>
+                        <th>Service</th>
+                        <th>Product</th>
+                        <th>Version</th>
+                    </tr>
+                    {% for result in scan_results %}
+                        <tr>
+                            <td>{{ result[0] }}</td>
+                            <td>{{ result[1] }}</td>
+                            <td>{{ result[2] }}</td>
+                            <td>{{ result[3] }}</td>
+                            <td>{{ result[4] }}</td>
+                            <td>{{ result[5] }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>No open ports found.</p>
+            {% endif %}
+
+            <h2>Changes Detected:</h2>
+            {% if changes and (changes.added or changes.removed or changes.changed) %}
+                {% if changes.added %}
+                    <h3>New Ports:</h3>
+                    <table>
+                        <tr>
+                            <th>Protocol</th>
+                            <th>Port</th>
+                            <th>State</th>
+                            <th>Service</th>
+                            <th>Product</th>
+                            <th>Version</th>
+                        </tr>
+                        {% for port in changes.added %}
+                            <tr class="added">
+                                <td>{{ port[0] }}</td>
+                                <td>{{ port[1] }}</td>
+                                <td>{{ port[2] }}</td>
+                                <td>{{ port[3] }}</td>
+                                <td>{{ port[4] }}</td>
+                                <td>{{ port[5] }}</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                {% endif %}
+
+                {% if changes.removed %}
+                    <h3>Removed Ports:</h3>
+                    <table>
+                        <tr>
+                            <th>Protocol</th>
+                            <th>Port</th>
+                            <th>State</th>
+                            <th>Service</th>
+                            <th>Product</th>
+                            <th>Version</th>
+                        </tr>
+                        {% for port in changes.removed %}
+                            <tr class="removed">
+                                <td>{{ port[0] }}</td>
+                                <td>{{ port[1] }}</td>
+                                <td>{{ port[2] }}</td>
+                                <td>{{ port[3] }}</td>
+                                <td>{{ port[4] }}</td>
+                                <td>{{ port[5] }}</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                {% endif %}
+
+                {% if changes.changed %}
+                    <h3>Modified Ports:</h3>
+                    <table>
+                        <tr>
+                            <th>Port</th>
+                            <th>Previous</th>
+                            <th>Current</th>
+                        </tr>
+                        {% for change in changes.changed %}
+                            <tr class="changed">
+                                <td>{{ change.old[0] }}/{{ change.old[1] }}</td>
+                                <td>{{ change.old[3] }} {{ change.old[4] }} {{ change.old[5] }}</td>
+                                <td>{{ change.new[3] }} {{ change.new[4] }} {{ change.new[5] }}</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                {% endif %}
+            {% else %}
+                <p>No changes detected.</p>
+            {% endif %}
+
+            <h2>Open Ports Over Time:</h2>
+            <img src="{{ url_for('static', filename='report_' + ip|replace('.', '.') + '.png') }}" alt="Port History" onerror="this.style.display='none'">
+        {% else %}
+            <p>No scan results available.</p>
+        {% endif %}
+
+        <a href="{{ url_for('index') }}">Back</a>
+    </div>
+</body>
+</html>

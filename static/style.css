@@ -1,0 +1,2716 @@
+/* ============================================
+   CSS Variables - Theme System
+   ============================================ */
+
+/* Light Theme (Default) */
+.theme-light {
+    --bg-primary: #f0f0f0;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f8f9fa;
+    --bg-hover: #f5f5f5;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-muted: #888888;
+    --border-color: #dddddd;
+    --border-light: #eeeeee;
+    --accent-primary: #007bff;
+    --accent-primary-hover: #0056b3;
+    --accent-danger: #dc3545;
+    --accent-danger-hover: #c82333;
+    --accent-success: #28a745;
+    --accent-warning: #ffc107;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --input-bg: #ffffff;
+    --table-header-bg: #f8f9fa;
+    --code-bg: rgba(0, 0, 0, 0.03);
+    --tab-active-color: #007bff;
+    --progress-bg: #e9ecef;
+    --progress-fill: #007bff;
+}
+
+/* Dark Theme */
+.theme-dark {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #1f2b47;
+    --bg-hover: #253554;
+    --text-primary: #e8e8e8;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+    --border-color: #2d3e5f;
+    --border-light: #253554;
+    --accent-primary: #4da6ff;
+    --accent-primary-hover: #79bcff;
+    --accent-danger: #ff6b6b;
+    --accent-danger-hover: #ff8585;
+    --accent-success: #51cf66;
+    --accent-warning: #ffd43b;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --input-bg: #1f2b47;
+    --table-header-bg: #1f2b47;
+    --code-bg: rgba(255, 255, 255, 0.05);
+    --tab-active-color: #4da6ff;
+    --progress-bg: #2d3e5f;
+    --progress-fill: #4da6ff;
+}
+
+/* Hacker Theme */
+.theme-hacker {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #0d1117;
+    --bg-tertiary: #161b22;
+    --bg-hover: #1c2128;
+    --text-primary: #00ff00;
+    --text-secondary: #00cc00;
+    --text-muted: #008800;
+    --border-color: #00ff00;
+    --border-light: #004400;
+    --accent-primary: #00ff00;
+    --accent-primary-hover: #00cc00;
+    --accent-danger: #ff0040;
+    --accent-danger-hover: #cc0033;
+    --accent-success: #00ff00;
+    --accent-warning: #ffff00;
+    --shadow-color: rgba(0, 255, 0, 0.2);
+    --input-bg: #0d1117;
+    --table-header-bg: #161b22;
+    --code-bg: rgba(0, 255, 0, 0.05);
+    --tab-active-color: #00ff00;
+    --progress-bg: #004400;
+    --progress-fill: #00ff00;
+    --font-family: 'Courier New', 'Fira Code', monospace;
+}
+
+/* Gruvbox Dark Theme */
+.theme-gruvbox-dark {
+    --bg-primary: #282828;
+    --bg-secondary: #32302f;
+    --bg-tertiary: #3c3836;
+    --bg-hover: #504945;
+    --text-primary: #ebdbb2;
+    --text-secondary: #d5c4a1;
+    --text-muted: #928374;
+    --border-color: #504945;
+    --border-light: #3c3836;
+    --accent-primary: #83a598;
+    --accent-primary-hover: #8ec07c;
+    --accent-danger: #fb4934;
+    --accent-danger-hover: #cc241d;
+    --accent-success: #b8bb26;
+    --accent-warning: #fabd2f;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --input-bg: #3c3836;
+    --table-header-bg: #3c3836;
+    --code-bg: rgba(235, 219, 178, 0.05);
+    --tab-active-color: #fabd2f;
+    --progress-bg: #504945;
+    --progress-fill: #b8bb26;
+    --gruvbox-orange: #fe8019;
+    --gruvbox-purple: #d3869b;
+    --gruvbox-aqua: #8ec07c;
+}
+
+/* Gruvbox Light Theme */
+.theme-gruvbox-light {
+    --bg-primary: #fbf1c7;
+    --bg-secondary: #f2e5bc;
+    --bg-tertiary: #ebdbb2;
+    --bg-hover: #d5c4a1;
+    --text-primary: #3c3836;
+    --text-secondary: #504945;
+    --text-muted: #928374;
+    --border-color: #d5c4a1;
+    --border-light: #ebdbb2;
+    --accent-primary: #458588;
+    --accent-primary-hover: #076678;
+    --accent-danger: #cc241d;
+    --accent-danger-hover: #9d0006;
+    --accent-success: #98971a;
+    --accent-warning: #d79921;
+    --shadow-color: rgba(60, 56, 54, 0.15);
+    --input-bg: #f9f5d7;
+    --table-header-bg: #ebdbb2;
+    --code-bg: rgba(60, 56, 54, 0.05);
+    --tab-active-color: #d79921;
+    --progress-bg: #d5c4a1;
+    --progress-fill: #98971a;
+    --gruvbox-orange: #d65d0e;
+    --gruvbox-purple: #b16286;
+    --gruvbox-aqua: #689d6a;
+}
+
+/* Hot Pink Theme */
+.theme-hot-pink {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #242424;
+    --bg-tertiary: #2e2e2e;
+    --bg-hover: #3a3a3a;
+    --text-primary: #ffffff;
+    --text-secondary: #e0e0e0;
+    --text-muted: #a0a0a0;
+    --border-color: #ff1493;
+    --border-light: #4a2040;
+    --accent-primary: #ff1493;
+    --accent-primary-hover: #ff69b4;
+    --accent-danger: #ff4757;
+    --accent-danger-hover: #ff6b81;
+    --accent-success: #00ff88;
+    --accent-warning: #ffdd59;
+    --shadow-color: rgba(255, 20, 147, 0.3);
+    --input-bg: #2e2e2e;
+    --table-header-bg: #2e2e2e;
+    --code-bg: rgba(255, 20, 147, 0.08);
+    --tab-active-color: #ff1493;
+    --progress-bg: #4a2040;
+    --progress-fill: #ff1493;
+    --pink-light: #ff69b4;
+    --pink-glow: rgba(255, 20, 147, 0.5);
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family, 'Segoe UI', Arial, sans-serif);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 20px;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.theme-hacker body,
+.theme-hacker {
+    font-family: 'Courier New', 'Fira Code', monospace;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    background-color: var(--bg-secondary);
+    padding: 0;
+    box-shadow: 0 0 20px var(--shadow-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover));
+    padding: 20px;
+    text-align: center;
+}
+
+.theme-hacker .header {
+    background: linear-gradient(135deg, #001100, #002200);
+    border-bottom: 2px solid var(--accent-primary);
+}
+
+h1 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.theme-hacker h1 {
+    color: var(--text-primary);
+    text-shadow: 0 0 10px var(--text-primary);
+}
+
+h2 {
+    color: var(--text-primary);
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 20px;
+}
+
+h3 {
+    margin-top: 20px;
+    color: var(--text-primary);
+    font-size: 16px;
+}
+
+/* ============================================
+   Tabs
+   ============================================ */
+
+.tabs {
+    display: flex;
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 15px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+}
+
+.tab-btn.active {
+    color: var(--tab-active-color);
+    border-bottom-color: var(--tab-active-color);
+    background-color: var(--bg-secondary);
+}
+
+.theme-hacker .tab-btn.active {
+    text-shadow: 0 0 5px var(--tab-active-color);
+}
+
+.tab-content {
+    display: none;
+    padding: 25px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* ============================================
+   Forms
+   ============================================ */
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+}
+
+.form-group input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+.theme-hacker .form-group input[type="text"]:focus {
+    box-shadow: 0 0 10px var(--accent-primary);
+}
+
+.form-group input[type="text"]::placeholder {
+    color: var(--text-muted);
+}
+
+.scan-type-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+
+.btn-primary {
+    padding: 12px 24px;
+    background-color: var(--accent-primary);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+    background-color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.theme-hacker .btn-primary {
+    background-color: transparent;
+    border: 2px solid var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.theme-hacker .btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-primary);
+    color: #000000;
+    box-shadow: 0 0 15px var(--accent-primary);
+}
+
+.btn-danger {
+    padding: 12px 24px;
+    background-color: var(--accent-danger);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background-color: var(--accent-danger-hover);
+    transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+    background-color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.theme-hacker .btn-danger {
+    background-color: transparent;
+    border: 2px solid var(--accent-danger);
+    color: var(--accent-danger);
+}
+
+.theme-hacker .btn-danger:hover:not(:disabled) {
+    background-color: var(--accent-danger);
+    color: #000000;
+    box-shadow: 0 0 15px var(--accent-danger);
+}
+
+.btn-secondary {
+    padding: 10px 18px;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--text-muted);
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-rescan {
+    background-color: var(--accent-success);
+    color: white;
+}
+
+.btn-rescan:hover {
+    filter: brightness(1.1);
+}
+
+.btn-vuln-scan {
+    background-color: var(--accent-danger);
+    color: white;
+}
+
+.btn-vuln-scan:hover {
+    filter: brightness(1.1);
+}
+
+.btn-details {
+    background-color: var(--accent-primary);
+    color: white;
+}
+
+.btn-details:hover {
+    filter: brightness(1.1);
+}
+
+/* ============================================
+   Tables
+   ============================================ */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+th {
+    background-color: var(--table-header-bg);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    color: var(--text-secondary);
+}
+
+tr:hover td {
+    background-color: var(--bg-hover);
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+.theme-hacker table {
+    border: 1px solid var(--border-color);
+}
+
+.theme-hacker th {
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* ============================================
+   Progress
+   ============================================ */
+
+#progress-container {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: var(--bg-tertiary);
+    border-radius: 8px;
+}
+
+#progress-message {
+    margin: 0 0 10px 0;
+    color: var(--text-secondary);
+}
+
+#progress-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#progress-bar::-webkit-progress-bar {
+    background-color: var(--progress-bg);
+    border-radius: 4px;
+}
+
+#progress-bar::-webkit-progress-value {
+    background-color: var(--progress-fill);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+#progress-bar::-moz-progress-bar {
+    background-color: var(--progress-fill);
+    border-radius: 4px;
+}
+
+.theme-hacker #progress-bar::-webkit-progress-value {
+    box-shadow: 0 0 10px var(--progress-fill);
+}
+
+/* ============================================
+   Messages
+   ============================================ */
+
+.error {
+    background-color: rgba(220, 53, 69, 0.1);
+    border: 1px solid var(--accent-danger);
+    color: var(--accent-danger);
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+}
+
+.success {
+    background-color: rgba(40, 167, 69, 0.1);
+    border: 1px solid var(--accent-success);
+    color: var(--accent-success);
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+}
+
+.info {
+    background-color: rgba(0, 123, 255, 0.1);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+}
+
+.warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border: 1px solid var(--accent-warning);
+    color: #856404;
+    padding: 15px;
+    border-radius: 6px;
+    margin: 15px 0;
+}
+
+.theme-dark .warning,
+.theme-hacker .warning {
+    color: var(--accent-warning);
+}
+
+.loading {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px;
+    background-color: var(--bg-tertiary);
+    border-radius: 8px;
+}
+
+/* ============================================
+   Assets
+   ============================================ */
+
+#assets-toolbar,
+#vulns-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 10px;
+}
+
+#assets-count {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.assets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+.asset-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 18px;
+    background-color: var(--bg-secondary);
+    transition: all 0.2s ease;
+}
+
+.asset-card:hover {
+    box-shadow: 0 4px 12px var(--shadow-color);
+    transform: translateY(-2px);
+}
+
+.theme-hacker .asset-card:hover {
+    box-shadow: 0 0 15px var(--shadow-color);
+    border-color: var(--accent-primary);
+}
+
+.asset-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.asset-ip {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+.asset-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.asset-ports {
+    background-color: var(--bg-tertiary);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.asset-vulns {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.vuln-badge-critical {
+    background-color: #721c24;
+    color: white;
+}
+
+.vuln-badge-high {
+    background-color: #dc3545;
+    color: white;
+}
+
+.vuln-badge-medium {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.asset-vuln-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    padding: 8px;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+}
+
+.vuln-mini {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.vuln-mini.critical {
+    background-color: rgba(114, 28, 36, 0.2);
+    color: #721c24;
+    border: 1px solid #721c24;
+}
+
+.vuln-mini.high {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+    border: 1px solid #dc3545;
+}
+
+.vuln-mini.medium {
+    background-color: rgba(253, 126, 20, 0.2);
+    color: #fd7e14;
+    border: 1px solid #fd7e14;
+}
+
+.vuln-mini.low {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+
+.theme-dark .vuln-mini.critical,
+.theme-hacker .vuln-mini.critical {
+    color: #ff6b6b;
+    border-color: #ff6b6b;
+}
+
+.theme-dark .vuln-mini.high,
+.theme-hacker .vuln-mini.high {
+    color: #ff8585;
+    border-color: #ff8585;
+}
+
+.theme-dark .vuln-mini.medium,
+.theme-hacker .vuln-mini.medium {
+    color: #ffaa00;
+    border-color: #ffaa00;
+}
+
+.theme-dark .vuln-mini.low,
+.theme-hacker .vuln-mini.low {
+    color: #ffd43b;
+    border-color: #ffd43b;
+}
+
+.btn-view-vulns {
+    background-color: #6f42c1;
+    color: white;
+}
+
+.btn-view-vulns:hover {
+    background-color: #5a32a3;
+}
+
+.filter-indicator {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--accent-primary);
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.filter-indicator span {
+    color: var(--text-secondary);
+}
+
+.filter-indicator strong {
+    color: var(--accent-primary);
+    font-family: 'Courier New', monospace;
+}
+
+.btn-clear-filter {
+    padding: 6px 12px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.btn-clear-filter:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+.asset-meta {
+    margin-bottom: 12px;
+}
+
+.asset-date {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.asset-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.asset-details {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-light);
+}
+
+.ports-table {
+    font-size: 13px;
+    margin: 0;
+}
+
+.ports-table th,
+.ports-table td {
+    padding: 8px 10px;
+}
+
+/* ============================================
+   Vulnerabilities
+   ============================================ */
+
+#vuln-filter {
+    padding: 10px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+#vulns-summary {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.summary-card {
+    flex: 1;
+    min-width: 90px;
+    padding: 18px 15px;
+    border-radius: 8px;
+    text-align: center;
+    color: white;
+    transition: transform 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+}
+
+.summary-card.total {
+    background: linear-gradient(135deg, #6c757d, #495057);
+}
+
+.summary-card.critical {
+    background: linear-gradient(135deg, #721c24, #4a1118);
+}
+
+.summary-card.high {
+    background: linear-gradient(135deg, #dc3545, #a71d2a);
+}
+
+.summary-card.medium {
+    background: linear-gradient(135deg, #fd7e14, #c55a00);
+}
+
+.summary-card.low {
+    background: linear-gradient(135deg, #ffc107, #d39e00);
+    color: #333;
+}
+
+.theme-hacker .summary-card {
+    border: 1px solid currentColor;
+    background: transparent !important;
+}
+
+.theme-hacker .summary-card.total {
+    color: var(--text-muted);
+    border-color: var(--text-muted);
+}
+
+.theme-hacker .summary-card.critical {
+    color: #ff0040;
+    border-color: #ff0040;
+}
+
+.theme-hacker .summary-card.high {
+    color: #ff4444;
+    border-color: #ff4444;
+}
+
+.theme-hacker .summary-card.medium {
+    color: #ffaa00;
+    border-color: #ffaa00;
+}
+
+.theme-hacker .summary-card.low {
+    color: #ffff00;
+    border-color: #ffff00;
+}
+
+.summary-count {
+    display: block;
+    font-size: 32px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.summary-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    opacity: 0.9;
+    margin-top: 5px;
+    display: block;
+}
+
+.vulns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 15px;
+}
+
+.vuln-card,
+.vuln-item {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 18px;
+    background-color: var(--bg-secondary);
+    border-left: 4px solid var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.vuln-card:hover,
+.vuln-item:hover {
+    box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.vuln-card.severity-critical,
+.vuln-item.severity-critical {
+    border-left-color: #721c24;
+    background-color: rgba(114, 28, 36, 0.1);
+}
+
+.vuln-card.severity-high,
+.vuln-item.severity-high {
+    border-left-color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.vuln-card.severity-medium,
+.vuln-item.severity-medium {
+    border-left-color: #fd7e14;
+    background-color: rgba(253, 126, 20, 0.1);
+}
+
+.vuln-card.severity-low,
+.vuln-item.severity-low {
+    border-left-color: #ffc107;
+    background-color: rgba(255, 193, 7, 0.1);
+}
+
+.vuln-card.severity-info,
+.vuln-item.severity-info {
+    border-left-color: #17a2b8;
+    background-color: rgba(23, 162, 184, 0.1);
+}
+
+.vuln-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.vuln-id {
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.severity-badge {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.severity-badge.critical {
+    background-color: #721c24;
+    color: white;
+}
+
+.severity-badge.high {
+    background-color: #dc3545;
+    color: white;
+}
+
+.severity-badge.medium {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.severity-badge.low {
+    background-color: #ffc107;
+    color: #333;
+}
+
+.severity-badge.info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.vuln-target {
+    font-family: 'Courier New', monospace;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.vuln-name {
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.vuln-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: var(--code-bg);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    font-family: 'Courier New', monospace;
+}
+
+.vuln-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.vuln-date {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* NVD Data Styles */
+.vuln-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cvss-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+.cvss-badge.critical {
+    background-color: #721c24;
+    color: white;
+}
+
+.cvss-badge.high {
+    background-color: #dc3545;
+    color: white;
+}
+
+.cvss-badge.medium {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.cvss-badge.low {
+    background-color: #28a745;
+    color: white;
+}
+
+.vuln-cwe {
+    margin-bottom: 8px;
+}
+
+.cwe-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    color: var(--text-secondary);
+}
+
+.vuln-vector {
+    margin-bottom: 10px;
+}
+
+.vuln-vector code {
+    display: inline-block;
+    padding: 4px 8px;
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.vuln-refs {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+}
+
+.refs-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 6px;
+}
+
+.refs-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.refs-list li {
+    margin-bottom: 4px;
+}
+
+.refs-list a {
+    font-size: 12px;
+    color: var(--accent-primary);
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.refs-list a:hover {
+    text-decoration: underline;
+}
+
+.vuln-dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-light);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.vuln-published,
+.vuln-found {
+    white-space: nowrap;
+}
+
+.vuln-results {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+/* ============================================
+   View Toggle
+   ============================================ */
+
+.view-toggle {
+    display: flex;
+    gap: 4px;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 3px;
+}
+
+.view-btn,
+.view-btn-vulns {
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.view-btn:hover,
+.view-btn-vulns:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+}
+
+.view-btn.active,
+.view-btn-vulns.active {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px var(--shadow-color);
+}
+
+.view-icon {
+    font-size: 16px;
+}
+
+/* ============================================
+   List Views (Tables)
+   ============================================ */
+
+.assets-table,
+.vulns-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.assets-table th,
+.vulns-table th {
+    text-align: left;
+    padding: 12px 15px;
+    background-color: var(--table-header-bg);
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.assets-table td,
+.vulns-table td {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.assets-table tbody tr:hover,
+.vulns-table tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.assets-table tbody tr:last-child td,
+.vulns-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.asset-ip-cell,
+.vuln-id-cell {
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+}
+
+.target-cell {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.desc-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.actions-cell {
+    white-space: nowrap;
+}
+
+.actions-cell .btn-small {
+    margin-right: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* List view vulnerability severity row indicators */
+.severity-row-critical {
+    border-left: 3px solid #721c24;
+}
+
+.severity-row-high {
+    border-left: 3px solid #dc3545;
+}
+
+.severity-row-medium {
+    border-left: 3px solid #fd7e14;
+}
+
+.severity-row-low {
+    border-left: 3px solid #ffc107;
+}
+
+.severity-row-info {
+    border-left: 3px solid #17a2b8;
+}
+
+/* Inline vulnerability counts for list view */
+.vuln-badge-small {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    color: white;
+}
+
+.vuln-badge-small.critical {
+    background-color: #721c24;
+}
+
+.vuln-badge-small.high {
+    background-color: #dc3545;
+}
+
+.vuln-badge-small.medium {
+    background-color: #fd7e14;
+}
+
+.vuln-count-inline {
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 4px;
+}
+
+.vuln-count-inline.critical {
+    color: #721c24;
+}
+
+.vuln-count-inline.high {
+    color: #dc3545;
+}
+
+.vuln-count-inline.medium {
+    color: #fd7e14;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Scan Result Groups (for CIDR scans)
+   ============================================ */
+
+.scan-result-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.scan-result-group h4 {
+    margin: 0 0 10px 0;
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+}
+
+.scan-result-group.error-group {
+    border-left: 3px solid var(--accent-danger);
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+.scan-result-group table {
+    margin-top: 10px;
+}
+
+/* Toolbar layout improvements */
+#assets-toolbar,
+#vulns-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+#assets-count {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-left: auto;
+}
+
+/* ============================================
+   CVE Detail Modal
+   ============================================ */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background-color: var(--bg-secondary);
+    border-radius: 12px;
+    max-width: 700px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    position: relative;
+    animation: modalSlideIn 0.2s ease-out;
+}
+
+.modal-content.modal-wide {
+    max-width: 900px;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: var(--bg-tertiary);
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.modal-close:hover {
+    background-color: var(--accent-danger);
+    color: white;
+}
+
+#modal-body {
+    padding: 25px;
+}
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-right: 40px;
+}
+
+.modal-cve-id {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.modal-badges {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.modal-section {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.modal-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.modal-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.modal-target {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+.modal-cvss-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.modal-cvss-item {
+    background-color: var(--bg-tertiary);
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.modal-cvss-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.modal-cvss-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.modal-cvss-value.critical { color: #721c24; }
+.modal-cvss-value.high { color: #dc3545; }
+.modal-cvss-value.medium { color: #fd7e14; }
+.modal-cvss-value.low { color: #28a745; }
+
+.modal-vector {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    background-color: var(--code-bg);
+    padding: 8px 12px;
+    border-radius: 6px;
+    word-break: break-all;
+}
+
+.modal-description {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+}
+
+.modal-refs-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.modal-refs-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.modal-refs-list li:last-child {
+    border-bottom: none;
+}
+
+.modal-refs-list a {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+.modal-refs-list a:hover {
+    text-decoration: underline;
+}
+
+.modal-ref-source {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+
+.modal-dates {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.modal-date-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-date-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.modal-date-value {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+/* Clickable vulnerability cards and rows */
+.vuln-card.clickable,
+.vulns-table tbody tr.clickable {
+    cursor: pointer;
+}
+
+.vuln-card.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--shadow-color);
+}
+
+.vulns-table tbody tr.clickable:hover {
+    background-color: var(--bg-hover);
+}
+
+.vuln-id-cell.clickable {
+    cursor: pointer;
+    color: var(--accent-primary);
+}
+
+.vuln-id-cell.clickable:hover {
+    text-decoration: underline;
+}
+
+/* Change indicators */
+tr.added {
+    background-color: rgba(40, 167, 69, 0.15);
+}
+
+tr.removed {
+    background-color: rgba(220, 53, 69, 0.15);
+}
+
+tr.changed {
+    background-color: rgba(255, 193, 7, 0.15);
+}
+
+/* ============================================
+   Settings
+   ============================================ */
+
+.settings-section {
+    margin-bottom: 35px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.settings-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.settings-section h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.settings-description {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0 0 15px 0;
+}
+
+.theme-selector {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.theme-option {
+    cursor: pointer;
+    text-align: center;
+    padding: 15px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
+    transition: all 0.2s ease;
+    position: relative;
+    min-width: 120px;
+}
+
+.theme-option:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.theme-option.active {
+    border-color: var(--accent-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.theme-option .theme-check {
+    display: none;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    background-color: var(--accent-primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    line-height: 20px;
+}
+
+.theme-option.active .theme-check {
+    display: block;
+}
+
+.theme-preview {
+    width: 80px;
+    height: 60px;
+    border-radius: 6px;
+    margin: 0 auto 10px;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.theme-preview-light {
+    background-color: #f0f0f0;
+}
+
+.theme-preview-light .preview-header {
+    height: 12px;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.theme-preview-light .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-light .preview-line {
+    height: 4px;
+    background-color: #ddd;
+    border-radius: 2px;
+    margin-bottom: 4px;
+}
+
+.theme-preview-light .preview-line.short {
+    width: 60%;
+}
+
+.theme-preview-dark {
+    background-color: #1a1a2e;
+}
+
+.theme-preview-dark .preview-header {
+    height: 12px;
+    background: linear-gradient(135deg, #4da6ff, #2d7dd2);
+}
+
+.theme-preview-dark .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-dark .preview-line {
+    height: 4px;
+    background-color: #2d3e5f;
+    border-radius: 2px;
+    margin-bottom: 4px;
+}
+
+.theme-preview-dark .preview-line.short {
+    width: 60%;
+}
+
+.theme-preview-hacker {
+    background-color: #0a0a0a;
+    border-color: #00ff00;
+}
+
+.theme-preview-hacker .preview-header {
+    height: 12px;
+    background-color: #001100;
+    border-bottom: 1px solid #00ff00;
+}
+
+.theme-preview-hacker .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-hacker .preview-line {
+    height: 4px;
+    background-color: #00ff00;
+    border-radius: 2px;
+    margin-bottom: 4px;
+    box-shadow: 0 0 5px #00ff00;
+}
+
+.theme-preview-hacker .preview-line.short {
+    width: 60%;
+}
+
+.theme-preview-gruvbox-dark {
+    background-color: #282828;
+}
+
+.theme-preview-gruvbox-dark .preview-header {
+    height: 12px;
+    background: linear-gradient(135deg, #d79921, #b57614);
+}
+
+.theme-preview-gruvbox-dark .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-gruvbox-dark .preview-line {
+    height: 4px;
+    background-color: #504945;
+    border-radius: 2px;
+    margin-bottom: 4px;
+}
+
+.theme-preview-gruvbox-dark .preview-line.short {
+    width: 60%;
+}
+
+.theme-preview-gruvbox-light {
+    background-color: #fbf1c7;
+}
+
+.theme-preview-gruvbox-light .preview-header {
+    height: 12px;
+    background: linear-gradient(135deg, #d79921, #b57614);
+}
+
+.theme-preview-gruvbox-light .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-gruvbox-light .preview-line {
+    height: 4px;
+    background-color: #d5c4a1;
+    border-radius: 2px;
+    margin-bottom: 4px;
+}
+
+.theme-preview-gruvbox-light .preview-line.short {
+    width: 60%;
+}
+
+.theme-preview-hot-pink {
+    background-color: #1a1a1a;
+    border-color: #ff1493;
+}
+
+.theme-preview-hot-pink .preview-header {
+    height: 12px;
+    background: linear-gradient(135deg, #ff1493, #ff69b4);
+}
+
+.theme-preview-hot-pink .preview-content {
+    padding: 8px;
+}
+
+.theme-preview-hot-pink .preview-line {
+    height: 4px;
+    background-color: #ff1493;
+    border-radius: 2px;
+    margin-bottom: 4px;
+    box-shadow: 0 0 5px #ff1493;
+}
+
+.theme-preview-hot-pink .preview-line.short {
+    width: 60%;
+}
+
+.theme-name {
+    display: block;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+/* Settings Form */
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.setting-item label {
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.setting-item input,
+.setting-item select {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.setting-item input:focus,
+.setting-item select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+.setting-item input::placeholder {
+    color: var(--text-muted);
+}
+
+.setting-item select {
+    cursor: pointer;
+}
+
+.setting-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.settings-status {
+    font-size: 14px;
+    color: var(--accent-success);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.settings-status.visible {
+    opacity: 1;
+}
+
+.settings-status.error {
+    color: var(--accent-danger);
+}
+
+/* Hacker theme special effects */
+.theme-hacker .container {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 20px var(--shadow-color), inset 0 0 60px rgba(0, 255, 0, 0.03);
+}
+
+.theme-hacker .asset-ip,
+.theme-hacker .vuln-id {
+    text-shadow: 0 0 5px var(--text-primary);
+}
+
+.theme-hacker input[type="text"],
+.theme-hacker select {
+    border-color: var(--border-color);
+}
+
+.theme-hacker input[type="text"]:focus,
+.theme-hacker select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px var(--accent-primary);
+}
+
+/* Scanline effect for hacker theme */
+.theme-hacker::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.1),
+        rgba(0, 0, 0, 0.1) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* ============================================
+   Gruvbox Theme Styles
+   ============================================ */
+
+/* Gruvbox Dark Header */
+.theme-gruvbox-dark .header {
+    background: linear-gradient(135deg, #d79921, #b57614);
+}
+
+.theme-gruvbox-dark h1 {
+    color: #282828;
+}
+
+/* Gruvbox Light Header */
+.theme-gruvbox-light .header {
+    background: linear-gradient(135deg, #d79921, #b57614);
+}
+
+.theme-gruvbox-light h1 {
+    color: #fbf1c7;
+}
+
+/* Gruvbox warning text color fix */
+.theme-gruvbox-dark .warning,
+.theme-gruvbox-light .warning {
+    color: var(--accent-warning);
+}
+
+/* Gruvbox vulnerability mini badges */
+.theme-gruvbox-dark .vuln-mini.critical,
+.theme-gruvbox-light .vuln-mini.critical {
+    color: #cc241d;
+    border-color: #cc241d;
+}
+
+.theme-gruvbox-dark .vuln-mini.high,
+.theme-gruvbox-light .vuln-mini.high {
+    color: #fb4934;
+    border-color: #fb4934;
+}
+
+.theme-gruvbox-dark .vuln-mini.medium,
+.theme-gruvbox-light .vuln-mini.medium {
+    color: #fe8019;
+    border-color: #fe8019;
+}
+
+.theme-gruvbox-dark .vuln-mini.low,
+.theme-gruvbox-light .vuln-mini.low {
+    color: #fabd2f;
+    border-color: #fabd2f;
+}
+
+/* Gruvbox summary cards */
+.theme-gruvbox-dark .summary-card.total,
+.theme-gruvbox-light .summary-card.total {
+    background: linear-gradient(135deg, #928374, #7c6f64);
+}
+
+.theme-gruvbox-dark .summary-card.critical,
+.theme-gruvbox-light .summary-card.critical {
+    background: linear-gradient(135deg, #cc241d, #9d0006);
+}
+
+.theme-gruvbox-dark .summary-card.high,
+.theme-gruvbox-light .summary-card.high {
+    background: linear-gradient(135deg, #fb4934, #cc241d);
+}
+
+.theme-gruvbox-dark .summary-card.medium,
+.theme-gruvbox-light .summary-card.medium {
+    background: linear-gradient(135deg, #fe8019, #d65d0e);
+}
+
+.theme-gruvbox-dark .summary-card.low,
+.theme-gruvbox-light .summary-card.low {
+    background: linear-gradient(135deg, #fabd2f, #d79921);
+    color: #282828;
+}
+
+/* Gruvbox button styling */
+.theme-gruvbox-dark .btn-primary,
+.theme-gruvbox-light .btn-primary {
+    background-color: var(--accent-primary);
+    color: #fbf1c7;
+}
+
+.theme-gruvbox-dark .btn-primary:hover:not(:disabled),
+.theme-gruvbox-light .btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-primary-hover);
+}
+
+.theme-gruvbox-dark .btn-danger,
+.theme-gruvbox-light .btn-danger {
+    background-color: var(--accent-danger);
+    color: #fbf1c7;
+}
+
+/* Gruvbox modal CVSS value colors */
+.theme-gruvbox-dark .modal-cvss-value.critical,
+.theme-gruvbox-light .modal-cvss-value.critical {
+    color: #cc241d;
+}
+
+.theme-gruvbox-dark .modal-cvss-value.high,
+.theme-gruvbox-light .modal-cvss-value.high {
+    color: #fb4934;
+}
+
+.theme-gruvbox-dark .modal-cvss-value.medium,
+.theme-gruvbox-light .modal-cvss-value.medium {
+    color: #fe8019;
+}
+
+.theme-gruvbox-dark .modal-cvss-value.low,
+.theme-gruvbox-light .modal-cvss-value.low {
+    color: #b8bb26;
+}
+
+/* ============================================
+   Hot Pink Theme Styles
+   ============================================ */
+
+/* Hot Pink Header */
+.theme-hot-pink .header {
+    background: linear-gradient(135deg, #ff1493, #ff69b4);
+}
+
+.theme-hot-pink h1 {
+    color: #ffffff;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+}
+
+/* Hot Pink container glow */
+.theme-hot-pink .container {
+    border-color: #ff1493;
+    box-shadow: 0 0 30px rgba(255, 20, 147, 0.3), inset 0 0 60px rgba(255, 20, 147, 0.03);
+}
+
+/* Hot Pink tab styling */
+.theme-hot-pink .tab-btn.active {
+    text-shadow: 0 0 10px #ff1493;
+}
+
+/* Hot Pink buttons with glow */
+.theme-hot-pink .btn-primary {
+    background: linear-gradient(135deg, #ff1493, #ff69b4);
+    border: none;
+    box-shadow: 0 0 15px rgba(255, 20, 147, 0.4);
+}
+
+.theme-hot-pink .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #ff69b4, #ff1493);
+    box-shadow: 0 0 25px rgba(255, 20, 147, 0.6);
+    transform: translateY(-2px);
+}
+
+.theme-hot-pink .btn-danger {
+    background: linear-gradient(135deg, #ff4757, #ff6b81);
+    box-shadow: 0 0 15px rgba(255, 71, 87, 0.4);
+}
+
+.theme-hot-pink .btn-danger:hover:not(:disabled) {
+    box-shadow: 0 0 25px rgba(255, 71, 87, 0.6);
+}
+
+/* Hot Pink input focus glow */
+.theme-hot-pink input[type="text"]:focus,
+.theme-hot-pink input[type="number"]:focus,
+.theme-hot-pink select:focus {
+    border-color: #ff1493;
+    box-shadow: 0 0 15px rgba(255, 20, 147, 0.5);
+}
+
+/* Hot Pink asset cards */
+.theme-hot-pink .asset-card:hover {
+    box-shadow: 0 0 20px rgba(255, 20, 147, 0.4);
+    border-color: #ff1493;
+}
+
+.theme-hot-pink .asset-ip,
+.theme-hot-pink .vuln-id {
+    color: #ff69b4;
+    text-shadow: 0 0 5px rgba(255, 105, 180, 0.5);
+}
+
+/* Hot Pink vulnerability badges */
+.theme-hot-pink .vuln-mini.critical {
+    color: #ff4757;
+    border-color: #ff4757;
+    background-color: rgba(255, 71, 87, 0.2);
+}
+
+.theme-hot-pink .vuln-mini.high {
+    color: #ff6b81;
+    border-color: #ff6b81;
+    background-color: rgba(255, 107, 129, 0.2);
+}
+
+.theme-hot-pink .vuln-mini.medium {
+    color: #ffa502;
+    border-color: #ffa502;
+    background-color: rgba(255, 165, 2, 0.2);
+}
+
+.theme-hot-pink .vuln-mini.low {
+    color: #ffdd59;
+    border-color: #ffdd59;
+    background-color: rgba(255, 221, 89, 0.2);
+}
+
+/* Hot Pink summary cards */
+.theme-hot-pink .summary-card.total {
+    background: linear-gradient(135deg, #a0a0a0, #707070);
+}
+
+.theme-hot-pink .summary-card.critical {
+    background: linear-gradient(135deg, #ff4757, #c0392b);
+    box-shadow: 0 0 15px rgba(255, 71, 87, 0.4);
+}
+
+.theme-hot-pink .summary-card.high {
+    background: linear-gradient(135deg, #ff6b81, #ff4757);
+    box-shadow: 0 0 15px rgba(255, 107, 129, 0.4);
+}
+
+.theme-hot-pink .summary-card.medium {
+    background: linear-gradient(135deg, #ffa502, #e67e00);
+}
+
+.theme-hot-pink .summary-card.low {
+    background: linear-gradient(135deg, #ffdd59, #ffc107);
+    color: #1a1a1a;
+}
+
+/* Hot Pink progress bar glow */
+.theme-hot-pink #progress-bar::-webkit-progress-value {
+    box-shadow: 0 0 10px #ff1493;
+}
+
+/* Hot Pink warning color */
+.theme-hot-pink .warning {
+    color: #ffdd59;
+}
+
+/* Hot Pink modal styling */
+.theme-hot-pink .modal-content {
+    border: 1px solid #ff1493;
+    box-shadow: 0 10px 50px rgba(255, 20, 147, 0.3);
+}
+
+.theme-hot-pink .modal-cvss-value.critical { color: #ff4757; }
+.theme-hot-pink .modal-cvss-value.high { color: #ff6b81; }
+.theme-hot-pink .modal-cvss-value.medium { color: #ffa502; }
+.theme-hot-pink .modal-cvss-value.low { color: #00ff88; }
+
+/* Hot Pink theme option active state */
+.theme-hot-pink .theme-option.active {
+    border-color: #ff1493;
+    box-shadow: 0 0 15px rgba(255, 20, 147, 0.4);
+}
+
+/* ============================================
+   Asset Modal Styles
+   ============================================ */
+
+.asset-modal-header {
+    padding: 20px 25px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.asset-modal-ip {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    margin: 0 0 5px 0;
+}
+
+.asset-modal-hostname {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.asset-modal-meta {
+    display: flex;
+    gap: 15px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.asset-meta-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.asset-meta-badge.os {
+    background-color: rgba(var(--accent-primary-rgb, 77, 166, 255), 0.15);
+    color: var(--accent-primary);
+}
+
+.asset-meta-badge.device {
+    background-color: rgba(108, 117, 125, 0.2);
+}
+
+.asset-modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding: 20px 25px;
+}
+
+@media (max-width: 700px) {
+    .asset-modal-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.asset-modal-section {
+    background-color: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.asset-modal-section.full-width {
+    grid-column: 1 / -1;
+}
+
+.asset-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.asset-info-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.asset-info-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 13px;
+}
+
+.asset-info-list li:last-child {
+    border-bottom: none;
+}
+
+.asset-info-label {
+    color: var(--text-muted);
+}
+
+.asset-info-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    text-align: right;
+    max-width: 60%;
+    word-break: break-word;
+}
+
+.asset-info-value.none {
+    color: var(--text-muted);
+    font-style: italic;
+    font-weight: 400;
+}
+
+/* Asset Ports Table in Modal */
+.asset-ports-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.asset-ports-table th,
+.asset-ports-table td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.asset-ports-table th {
+    background-color: var(--table-header-bg);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+.asset-ports-table tr:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Clickable asset rows */
+.assets-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.assets-table tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.asset-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.asset-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--shadow-color);
+}
+
+.asset-port-number {
+    font-weight: 600;
+    color: var(--accent-primary);
+}
+
+.asset-port-service {
+    color: var(--text-secondary);
+}
+
+.asset-port-product {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+/* Asset Vulnerabilities Summary in Modal */
+.asset-vuln-summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.asset-vuln-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.asset-vuln-badge.critical {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+}
+
+.asset-vuln-badge.high {
+    background-color: rgba(253, 126, 20, 0.2);
+    color: #fd7e14;
+}
+
+.asset-vuln-badge.medium {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.asset-vuln-badge.low {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+}
+
+.asset-vuln-badge.info {
+    background-color: rgba(108, 117, 125, 0.2);
+    color: var(--text-muted);
+}
+
+.asset-no-vulns {
+    color: var(--accent-success);
+    font-size: 14px;
+}
+
+/* Asset scan history */
+.asset-scan-stats {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.asset-stat {
+    text-align: center;
+}
+
+.asset-stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.asset-stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* Loading state */
+.asset-modal-loading {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.asset-modal-loading .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Log Window
+   ============================================ */
+
+#log-window {
+    margin-top: 25px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-tertiary);
+    overflow: hidden;
+}
+
+#log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: var(--table-header-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+#log-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+#log-controls {
+    display: flex;
+    gap: 8px;
+}
+
+#log-controls .btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+#log-content {
+    height: 200px;
+    overflow-y: auto;
+    padding: 12px 15px;
+    font-family: 'Courier New', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    background-color: var(--bg-primary);
+}
+
+#log-content.collapsed {
+    display: none;
+}
+
+#log-window.collapsed #log-content {
+    display: none;
+}
+
+#log-window.collapsed {
+    margin-top: 25px;
+}
+
+.log-entry {
+    margin-bottom: 4px;
+    padding: 2px 0;
+    border-bottom: 1px solid var(--border-light);
+    word-break: break-word;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-timestamp {
+    color: var(--text-muted);
+    margin-right: 10px;
+}
+
+.log-level {
+    font-weight: bold;
+    margin-right: 8px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.log-level.info {
+    background-color: rgba(0, 123, 255, 0.2);
+    color: var(--accent-primary);
+}
+
+.log-level.warning {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: var(--accent-warning);
+}
+
+.log-level.error {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: var(--accent-danger);
+}
+
+.log-level.success {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--accent-success);
+}
+
+.log-level.debug {
+    background-color: rgba(108, 117, 125, 0.2);
+    color: var(--text-muted);
+}
+
+.log-message {
+    color: var(--text-secondary);
+}
+
+.log-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+
+/* Hacker theme log styling */
+.theme-hacker #log-content {
+    background-color: #000000;
+    border-top: 1px solid var(--accent-primary);
+}
+
+.theme-hacker .log-entry {
+    border-bottom-color: #003300;
+}
+
+.theme-hacker .log-message {
+    color: var(--text-secondary);
+}
+
+/* Hot Pink theme log styling */
+.theme-hot-pink #log-content {
+    background-color: #111111;
+}
+
+.theme-hot-pink .log-level.info {
+    background-color: rgba(255, 20, 147, 0.2);
+    color: #ff69b4;
+}
