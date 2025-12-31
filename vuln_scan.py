@@ -406,10 +406,12 @@ def store_scan(ip, scan_results):
     cursor = conn.cursor()
     try:
         stored_count = 0
+        # Use same timestamp for all ports in this scan
+        scan_date = datetime.now().isoformat()
         for result in scan_results:
             cursor.execute('''INSERT INTO scans (ip, protocol, port, state, service, product, version, scan_date)
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                              (ip, result[0], result[1], result[2], result[3], result[4], result[5], datetime.now()))
+                              (ip, result[0], result[1], result[2], result[3], result[4], result[5], scan_date))
             stored_count += 1
         conn.commit()
         logger.info(f"Stored {stored_count} port scan results for {ip}")
@@ -585,6 +587,33 @@ def get_latest_scan(ip):
     finally:
         conn.close()
 
+def get_previous_scan(ip, before_date):
+    """Retrieve all ports from the scan before the given date for an IP."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        # Get the scan date before the given date
+        cursor.execute('''SELECT MAX(scan_date) FROM scans
+                          WHERE ip = ? AND scan_date < ?''', (ip, before_date))
+        result = cursor.fetchone()
+        previous_date = result[0] if result else None
+
+        if not previous_date:
+            return [], None
+
+        # Get all ports from that scan
+        cursor.execute('''SELECT protocol, port, state, service, product, version
+                          FROM scans WHERE ip = ? AND scan_date = ?''', (ip, previous_date))
+        previous_scan = cursor.fetchall()
+        logger.info(f"Retrieved {len(previous_scan)} ports from previous scan for {ip}")
+        return previous_scan, previous_date
+    except sqlite3.Error as e:
+        logger.error(f"Database error in get_previous_scan: {e}")
+        return [], None
+    finally:
+        conn.close()
+
+
 # Function to compare scans and track changes
 def compare_scans(old_scan, new_scan):
     """Compare two scans and identify added, removed, and changed ports."""
@@ -607,6 +636,63 @@ def compare_scans(old_scan, new_scan):
                 f"{len(changes['added'])} added, {len(changes['removed'])} removed, "
                 f"{len(changes['changed'])} changed")
     return changes
+
+def generate_report_from_existing(ip):
+    """Generate a report from existing scan data without performing a new scan."""
+    if not validate_ip(ip):
+        raise ScanError(f"Invalid IP address: {ip}")
+
+    # Get the latest scan data from the database
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        # First, get the latest scan_date for this IP
+        cursor.execute('''SELECT MAX(scan_date) FROM scans WHERE ip = ?''', (ip,))
+        result = cursor.fetchone()
+        latest_date = result[0] if result else None
+
+        if not latest_date:
+            raise ScanError(f"No scan data found for {ip}")
+
+        # Get all ports from the latest scan
+        cursor.execute('''SELECT protocol, port, state, service, product, version
+                          FROM scans WHERE ip = ? AND scan_date = ?''', (ip, latest_date))
+        latest_scan = cursor.fetchall()
+
+        if not latest_scan:
+            logger.warning(f"No ports found in latest scan for {ip}")
+            return [], {'added': [], 'removed': [], 'changed': [], 'latest_date': latest_date, 'previous_date': None}, []
+
+        # Get the previous scan for comparison
+        previous_scan, previous_date = get_previous_scan(ip, latest_date)
+
+        # Get vulnerabilities for this IP
+        vulnerabilities = get_vulnerabilities(ip)
+
+        # Handle first scan case
+        if not previous_scan:
+            logger.info(f"Only one scan exists for {ip}, no previous data to compare")
+            changes = {
+                'added': latest_scan,
+                'removed': [],
+                'changed': [],
+                'latest_date': latest_date,
+                'previous_date': None
+            }
+            return latest_scan, changes, vulnerabilities
+
+        # Compare with previous scan
+        changes = compare_scans(previous_scan, latest_scan)
+        changes['latest_date'] = latest_date
+        changes['previous_date'] = previous_date
+
+        return latest_scan, changes, vulnerabilities
+    except sqlite3.Error as e:
+        logger.error(f"Database error in generate_report_from_existing: {e}")
+        raise ScanError(f"Database error: {e}")
+    finally:
+        conn.close()
+
 
 # Function to generate a report of vulnerabilities
 def generate_report(ip):
@@ -657,7 +743,7 @@ def check_nuclei_installed():
     return False
 
 
-def vuln_scan(ip, options=None):
+def vuln_scan(ip, options=None, log_callback=None):
     """Execute Nuclei vulnerability scan on the given IP address.
 
     Args:
@@ -667,6 +753,7 @@ def vuln_scan(ip, options=None):
             - severity: Comma-separated severity levels (default 'critical,high,medium')
             - templates: Specific template paths or tags (optional)
             - rate_limit: Requests per second (default 150)
+        log_callback: Optional callback function to receive log messages
     """
     if not validate_ip(ip):
         raise ScanError(f"Invalid IP address: {ip}")
@@ -685,8 +772,9 @@ def vuln_scan(ip, options=None):
             '-target', ip,
             '-jsonl',  # JSON Lines output
             '-output', output_file.name,
-            '-silent',  # Suppress banner
+            '-verbose',  # Verbose output for better logging
             '-no-color',  # No ANSI colors
+            '-stats',  # Show statistics
         ]
 
         # Parse options
@@ -724,18 +812,75 @@ def vuln_scan(ip, options=None):
         logger.info(f"Starting Nuclei vulnerability scan for IP: {ip}")
         logger.debug(f"Nuclei command: {' '.join(cmd)}")
 
-        # Run nuclei with timeout
-        process = subprocess.run(
+        if log_callback:
+            log_callback(f"Nuclei command: {' '.join(cmd)}")
+            log_callback(f"Starting vulnerability scan with {options.get('severity', 'all')} severity levels...")
+
+        # Run nuclei with real-time output capture
+        process = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=int(options.get('vuln_timeout', 600)) + 60 if options else 660
+            bufsize=1
         )
 
-        if process.returncode != 0 and process.stderr:
+        # Capture stderr in real-time for logging
+        stderr_lines = []
+        import select
+        import time
+
+        timeout = int(options.get('vuln_timeout', 600)) + 60 if options else 660
+        start_time = time.time()
+
+        while True:
+            # Check for timeout
+            if time.time() - start_time > timeout:
+                process.kill()
+                raise subprocess.TimeoutExpired(cmd, timeout)
+
+            # Check if process is still running
+            if process.poll() is not None:
+                break
+
+            # Read available stderr output
+            try:
+                if process.stderr:
+                    line = process.stderr.readline()
+                    if line:
+                        line = line.strip()
+                        stderr_lines.append(line)
+
+                        # Filter and send relevant logs
+                        if log_callback and line:
+                            # Skip empty lines and progress bars
+                            if line and not line.startswith('[') and 'templates' in line.lower():
+                                log_callback(f"Nuclei: {line}")
+                            elif 'loaded' in line.lower() or 'template' in line.lower():
+                                log_callback(f"Nuclei: {line}")
+                            elif any(keyword in line.lower() for keyword in ['info', 'low', 'medium', 'high', 'critical']):
+                                log_callback(f"Nuclei finding: {line}")
+
+                        logger.debug(f"Nuclei: {line}")
+                else:
+                    time.sleep(0.1)
+            except Exception:
+                time.sleep(0.1)
+
+        # Get any remaining output
+        remaining_stderr = process.stderr.read() if process.stderr else ""
+        if remaining_stderr:
+            stderr_lines.append(remaining_stderr.strip())
+            if log_callback:
+                for line in remaining_stderr.strip().split('\n'):
+                    if line.strip():
+                        log_callback(f"Nuclei: {line.strip()}")
+
+        if process.returncode != 0:
             # Nuclei returns non-zero even on success sometimes, check for real errors
-            if 'error' in process.stderr.lower() and 'templates' not in process.stderr.lower():
-                logger.warning(f"Nuclei stderr: {process.stderr}")
+            stderr_output = '\n'.join(stderr_lines)
+            if 'error' in stderr_output.lower() and 'templates' not in stderr_output.lower():
+                logger.warning(f"Nuclei stderr: {stderr_output}")
 
         # Read results from output file
         results = []
@@ -750,6 +895,8 @@ def vuln_scan(ip, options=None):
                             logger.warning(f"Failed to parse nuclei output line: {e}")
 
         logger.info(f"Nuclei scan completed for {ip}: {len(results)} finding(s)")
+        if log_callback:
+            log_callback(f"Nuclei scan finished: {len(results)} vulnerability finding(s)")
         return results
 
     except subprocess.TimeoutExpired:

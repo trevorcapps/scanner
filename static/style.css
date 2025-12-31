@@ -394,6 +394,30 @@ h3 {
     transform: none;
 }
 
+.btn-stop {
+    padding: 12px 24px;
+    background-color: #ff9800;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-stop:hover:not(:disabled) {
+    background-color: #f57c00;
+    transform: translateY(-1px);
+}
+
+.btn-stop:disabled {
+    background-color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+}
+
 .theme-hacker .btn-danger {
     background-color: transparent;
     border: 2px solid var(--accent-danger);
@@ -1690,6 +1714,62 @@ tr.changed {
     background-color: rgba(255, 193, 7, 0.15);
 }
 
+/* Vulnerability severity badges and rows */
+.severity-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.severity-badge.critical {
+    background-color: #721c24;
+    color: #ffffff;
+}
+
+.severity-badge.high {
+    background-color: #dc3545;
+    color: #ffffff;
+}
+
+.severity-badge.medium {
+    background-color: #fd7e14;
+    color: #ffffff;
+}
+
+.severity-badge.low {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.severity-badge.info {
+    background-color: #17a2b8;
+    color: #ffffff;
+}
+
+tr.vuln-critical {
+    background-color: rgba(114, 28, 36, 0.1);
+}
+
+tr.vuln-high {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+tr.vuln-medium {
+    background-color: rgba(253, 126, 20, 0.1);
+}
+
+tr.vuln-low {
+    background-color: rgba(255, 193, 7, 0.1);
+}
+
+tr.vuln-info {
+    background-color: rgba(23, 162, 184, 0.1);
+}
+
 /* ============================================
    Settings
    ============================================ */
@@ -2349,6 +2429,30 @@ tr.changed {
 
 .asset-meta-badge.device {
     background-color: rgba(108, 117, 125, 0.2);
+}
+
+.asset-modal-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-report {
+    padding: 10px 20px;
+    background-color: var(--accent-primary);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-report:hover {
+    background-color: var(--accent-primary-hover);
+    transform: translateY(-1px);
 }
 
 .asset-modal-grid {

@@ -235,6 +235,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var scanOutput = document.getElementById('scan-output');
     var portScanBtn = document.getElementById('port-scan-btn');
     var vulnScanBtn = document.getElementById('vuln-scan-btn');
+    var stopScanBtn = document.getElementById('stop-scan-btn');
 
     // Assets tab elements
     var assetsList = document.getElementById('assets-list');
@@ -426,6 +427,12 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '<span class="asset-meta-badge">' + escapeHtml(asset.mac_vendor) + '</span>';
         }
         html += '</div>';
+
+        // Add report generation button
+        html += '<div class="asset-modal-actions">';
+        html += '<button class="btn btn-report" onclick="window.open(\'/report/' + encodeURIComponent(asset.ip) + '\', \'_blank\')">Generate Report</button>';
+        html += '</div>';
+
         html += '</div>';
 
         html += '<div class="asset-modal-grid">';
@@ -628,6 +635,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    if (stopScanBtn) {
+        stopScanBtn.addEventListener('click', function() {
+            stopScan();
+        });
+    }
+
     function startPortScan() {
         var ip = document.getElementById('ip').value.trim();
 
@@ -639,6 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {
         portScanBtn.disabled = true;
         vulnScanBtn.disabled = true;
         portScanBtn.textContent = 'Scanning...';
+        stopScanBtn.style.display = 'inline-block';
 
         var settings = getScanSettings();
         socket.emit('start_scan', {
@@ -670,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function() {
         portScanBtn.disabled = true;
         vulnScanBtn.disabled = true;
         vulnScanBtn.textContent = 'Scanning...';
+        stopScanBtn.style.display = 'inline-block';
 
         var settings = getScanSettings();
         socket.emit('start_vuln_scan', {
@@ -690,11 +705,21 @@ document.addEventListener('DOMContentLoaded', function() {
         addLog('Severity: ' + settings.severity + ', Rate limit: ' + settings.rateLimit + ' req/sec, Timeout: ' + settings.vulnTimeout + 's', 'debug');
     }
 
+    function stopScan() {
+        addLog('Requesting scan cancellation...', 'warning');
+        socket.emit('stop_scan');
+        stopScanBtn.disabled = true;
+        stopScanBtn.textContent = 'Stopping...';
+    }
+
     function resetScanButtons() {
         portScanBtn.disabled = false;
         vulnScanBtn.disabled = false;
         portScanBtn.textContent = 'Port Scan';
         vulnScanBtn.textContent = 'Vulnerability Scan';
+        stopScanBtn.style.display = 'none';
+        stopScanBtn.disabled = false;
+        stopScanBtn.textContent = 'Stop Scan';
     }
 
     // Port scan progress (for CIDR scans)
@@ -710,6 +735,10 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBar.value = 100;
 
         var html = '<h3>Port Scan Results for ' + data.target + '</h3>';
+
+        if (data.cancelled) {
+            html += '<p class="warning">Scan was cancelled by user.</p>';
+        }
 
         if (data.total > 1) {
             html += '<p class="info">Scanned ' + data.total + ' hosts: ' +
@@ -777,6 +806,10 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBar.value = 100;
 
         var html = '<h3>Vulnerability Scan Results for ' + data.target + '</h3>';
+
+        if (data.cancelled) {
+            html += '<p class="warning">Vulnerability scan was cancelled by user.</p>';
+        }
 
         if (data.total > 1) {
             html += '<p class="info">Scanned ' + data.total + ' hosts: ' +

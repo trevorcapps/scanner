@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Vulnerability Scanning Platform</title>
+    <title>Cerebus</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 </head>
 <body class="theme-light">
     <div class="container">
         <div class="header">
-            <h1>Vulnerability Scanning Platform</h1>
+            <h1>Cerebus</h1>
         </div>
 
         <div class="tabs">
@@ -31,6 +31,7 @@
                     <div class="scan-type-buttons">
                         <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
                         <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
+                        <button type="button" id="stop-scan-btn" class="btn-stop" style="display:none;">Stop Scan</button>
                     </div>
                 </div>
             </form>

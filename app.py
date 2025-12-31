@@ -27,6 +27,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 socketio = SocketIO(app)
 
+# Track running scans by session ID
+active_scans = {}
+scan_lock = threading.Lock()
+
 # Initialize the database
 vuln_scan.init_db()
 logger.info(f"Using database: {DB_PATH}")
@@ -43,12 +47,11 @@ def get_assets():
     cursor = conn.cursor()
 
     try:
-        # Get unique IPs with their latest scan date and port count
+        # Get unique IPs with their latest scan date
         cursor.execute('''
             SELECT
                 ip,
-                MAX(scan_date) as last_scan,
-                COUNT(DISTINCT port) as port_count
+                MAX(scan_date) as last_scan
             FROM scans
             GROUP BY ip
             ORDER BY last_scan DESC
@@ -57,7 +60,7 @@ def get_assets():
 
         assets = []
         for host in hosts:
-            ip, last_scan, port_count = host
+            ip, last_scan = host
             # Get the open ports for this IP from the latest scan
             cursor.execute('''
                 SELECT protocol, port, state, service, product, version
@@ -65,6 +68,9 @@ def get_assets():
                 WHERE ip = ? AND scan_date = ?
             ''', (ip, last_scan))
             ports = cursor.fetchall()
+
+            # Count ports from latest scan only
+            port_count = len(ports)
 
             # Get vulnerability counts for this IP
             vuln_counts = vuln_scan.get_vulnerability_counts_by_severity(ip)
@@ -133,6 +139,29 @@ def get_asset(ip):
     except Exception as e:
         logger.error(f"Error retrieving asset {ip}: {e}")
         return {'error': str(e)}, 500
+
+
+@app.route('/report/<ip>')
+def generate_asset_report(ip):
+    """Generate a report for an existing asset without performing a new scan."""
+    try:
+        if not validate_ip(ip):
+            logger.warning(f"Invalid IP address for report: {ip}")
+            return render_template('report.html', ip=ip, error="Invalid IP address format.")
+
+        # Get existing scan results, changes, and vulnerabilities (without performing a new scan)
+        scan_results, changes, vulnerabilities = vuln_scan.generate_report_from_existing(ip)
+
+        # Generate a report plot
+        generate_report_plot(ip)
+
+        return render_template('report.html', ip=ip, scan_results=scan_results, changes=changes, vulnerabilities=vulnerabilities)
+    except ScanError as e:
+        logger.error(f"Report generation error for {ip}: {e}")
+        return render_template('report.html', ip=ip, error=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error generating report for {ip}: {e}")
+        return render_template('report.html', ip=ip, error="An unexpected error occurred generating the report.")
 
 
 @app.route('/scan', methods=['POST'])
@@ -288,48 +317,74 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
         return {'ip': ip, 'error': 'Scan failed unexpectedly', 'success': False}
 
 
+def is_scan_cancelled(sid):
+    """Check if scan for this session has been cancelled."""
+    with scan_lock:
+        return active_scans.get(sid, {}).get('cancelled', False)
+
+
 def scan_target(target, sid, scan_options=None):
     """Execute scan on a target (single IP or CIDR range)."""
-    if not validate_target(target):
-        socketio.emit('scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
-        return
-
-    # Get max hosts from options
-    max_hosts = 256
-    if scan_options and 'max_hosts' in scan_options:
-        max_hosts = min(max(1, scan_options['max_hosts']), 1024)
-
-    # Determine if this is a CIDR range or single IP
-    if is_cidr(target):
-        ips = expand_cidr(target, max_hosts=max_hosts)
-        if not ips:
-            socketio.emit('scan_error', {'error': 'Failed to expand CIDR range'}, room=sid)
+    try:
+        if not validate_target(target):
+            socketio.emit('scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
             return
-        logger.info(f"CIDR scan started for {target} ({len(ips)} hosts, max {max_hosts})")
-        emit_log(sid, f'Expanded CIDR {target} to {len(ips)} hosts', 'info')
-    else:
-        ips = [target]
-        logger.info(f"Single IP scan started for {target}")
 
-    total = len(ips)
-    results = []
+        # Get max hosts from options
+        max_hosts = 256
+        if scan_options and 'max_hosts' in scan_options:
+            max_hosts = min(max(1, scan_options['max_hosts']), 1024)
 
-    for i, ip in enumerate(ips, 1):
-        result = scan_single_ip(ip, sid, current=i, total=total, scan_options=scan_options)
-        results.append(result)
+        # Determine if this is a CIDR range or single IP
+        if is_cidr(target):
+            ips = expand_cidr(target, max_hosts=max_hosts)
+            if not ips:
+                socketio.emit('scan_error', {'error': 'Failed to expand CIDR range'}, room=sid)
+                return
+            logger.info(f"CIDR scan started for {target} ({len(ips)} hosts, max {max_hosts})")
+            emit_log(sid, f'Expanded CIDR {target} to {len(ips)} hosts', 'info')
+        else:
+            ips = [target]
+            logger.info(f"Single IP scan started for {target}")
 
-    # Emit final results
-    successful = [r for r in results if r['success']]
-    failed = [r for r in results if not r['success']]
+        total = len(ips)
+        results = []
 
-    socketio.emit('scan_complete', {
-        'target': target,
-        'results': results,
-        'successful_count': len(successful),
-        'failed_count': len(failed),
-        'total': total
-    }, room=sid)
-    logger.info(f"Scan completed for {target}: {len(successful)} successful, {len(failed)} failed")
+        for i, ip in enumerate(ips, 1):
+            # Check if scan has been cancelled
+            if is_scan_cancelled(sid):
+                emit_log(sid, 'Scan cancelled by user', 'warning')
+                socketio.emit('scan_complete', {
+                    'target': target,
+                    'results': results,
+                    'successful_count': len([r for r in results if r['success']]),
+                    'failed_count': len([r for r in results if not r['success']]),
+                    'total': total,
+                    'cancelled': True
+                }, room=sid)
+                return
+
+            result = scan_single_ip(ip, sid, current=i, total=total, scan_options=scan_options)
+            results.append(result)
+
+        # Emit final results
+        successful = [r for r in results if r['success']]
+        failed = [r for r in results if not r['success']]
+
+        socketio.emit('scan_complete', {
+            'target': target,
+            'results': results,
+            'successful_count': len(successful),
+            'failed_count': len(failed),
+            'total': total,
+            'cancelled': False
+        }, room=sid)
+        logger.info(f"Scan completed for {target}: {len(successful)} successful, {len(failed)} failed")
+    finally:
+        # Clean up active scan tracking
+        with scan_lock:
+            if sid in active_scans:
+                del active_scans[sid]
 
 
 @socketio.on('start_scan')
@@ -353,10 +408,27 @@ def handle_start_scan(data):
         'max_hosts': data.get('max_hosts', 256)
     }
 
+    # Track this scan
+    with scan_lock:
+        active_scans[sid] = {'type': 'port_scan', 'target': target, 'cancelled': False}
+
     logger.info(f"Received scan request for {target} from session {sid} with options: {scan_options}")
     thread = threading.Thread(target=scan_target, args=(target, sid, scan_options))
     thread.daemon = True  # Allow app to exit even if thread is running
     thread.start()
+
+
+@socketio.on('stop_scan')
+def handle_stop_scan():
+    sid = request.sid
+    with scan_lock:
+        if sid in active_scans:
+            active_scans[sid]['cancelled'] = True
+            logger.info(f"Scan cancellation requested for session {sid}")
+            emit_log(sid, 'Stopping scan...', 'warning')
+        else:
+            logger.warning(f"No active scan found for session {sid}")
+            emit('scan_error', {'error': 'No active scan to stop'})
 
 
 def vuln_scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
@@ -370,10 +442,15 @@ def vuln_scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             'ip': ip
         }, room=sid)
 
-        emit_log(sid, f'Running Nuclei vulnerability scan on {ip}', 'debug')
-        scan_result = vuln_scan.vuln_scan(ip, options=scan_options)
+        emit_log(sid, f'Running Nuclei vulnerability scan on {ip}', 'info')
+
+        # Create a callback for nuclei progress logging
+        def nuclei_log_callback(message):
+            emit_log(sid, message, 'debug')
+
+        scan_result = vuln_scan.vuln_scan(ip, options=scan_options, log_callback=nuclei_log_callback)
         vulnerabilities = vuln_scan.parse_vuln_scan(scan_result)
-        emit_log(sid, f'Nuclei scan completed for {ip}, parsing results...', 'debug')
+        emit_log(sid, f'Nuclei scan completed for {ip}, parsing results...', 'info')
 
         # Store results in database (this enriches with NVD data)
         if vulnerabilities:
@@ -404,52 +481,74 @@ def vuln_scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
 
 def vuln_scan_target(target, sid, scan_options=None):
     """Execute vulnerability scan on a target (single IP or CIDR range)."""
-    if not validate_target(target):
-        socketio.emit('vuln_scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
-        return
-
-    # Get max hosts from options
-    max_hosts = 256
-    if scan_options and 'max_hosts' in scan_options:
-        max_hosts = min(max(1, scan_options['max_hosts']), 1024)
-
-    # Determine if this is a CIDR range or single IP
-    if is_cidr(target):
-        ips = expand_cidr(target, max_hosts=max_hosts)
-        if not ips:
-            socketio.emit('vuln_scan_error', {'error': 'Failed to expand CIDR range'}, room=sid)
+    try:
+        if not validate_target(target):
+            socketio.emit('vuln_scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
             return
-        logger.info(f"CIDR vulnerability scan started for {target} ({len(ips)} hosts, max {max_hosts})")
-        emit_log(sid, f'Expanded CIDR {target} to {len(ips)} hosts for vulnerability scan', 'info')
-    else:
-        ips = [target]
-        logger.info(f"Single IP vulnerability scan started for {target}")
 
-    total = len(ips)
-    results = []
+        # Get max hosts from options
+        max_hosts = 256
+        if scan_options and 'max_hosts' in scan_options:
+            max_hosts = min(max(1, scan_options['max_hosts']), 1024)
 
-    for i, ip in enumerate(ips, 1):
-        result = vuln_scan_single_ip(ip, sid, current=i, total=total, scan_options=scan_options)
-        results.append(result)
+        # Determine if this is a CIDR range or single IP
+        if is_cidr(target):
+            ips = expand_cidr(target, max_hosts=max_hosts)
+            if not ips:
+                socketio.emit('vuln_scan_error', {'error': 'Failed to expand CIDR range'}, room=sid)
+                return
+            logger.info(f"CIDR vulnerability scan started for {target} ({len(ips)} hosts, max {max_hosts})")
+            emit_log(sid, f'Expanded CIDR {target} to {len(ips)} hosts for vulnerability scan', 'info')
+        else:
+            ips = [target]
+            logger.info(f"Single IP vulnerability scan started for {target}")
 
-    # Fetch all enriched vulnerabilities for the scanned IPs
-    all_vulns = []
-    for ip in ips:
-        all_vulns.extend(vuln_scan.get_vulnerabilities(ip))
+        total = len(ips)
+        results = []
 
-    successful = [r for r in results if r['success']]
-    failed = [r for r in results if not r['success']]
+        for i, ip in enumerate(ips, 1):
+            # Check if scan has been cancelled
+            if is_scan_cancelled(sid):
+                emit_log(sid, 'Vulnerability scan cancelled by user', 'warning')
+                socketio.emit('vuln_scan_complete', {
+                    'target': target,
+                    'results': results,
+                    'vulnerabilities': [],
+                    'successful_count': len([r for r in results if r['success']]),
+                    'failed_count': len([r for r in results if not r['success']]),
+                    'total_vulns': 0,
+                    'total': total,
+                    'cancelled': True
+                }, room=sid)
+                return
 
-    socketio.emit('vuln_scan_complete', {
-        'target': target,
-        'results': results,
-        'vulnerabilities': all_vulns,
-        'successful_count': len(successful),
-        'failed_count': len(failed),
-        'total_vulns': len(all_vulns),
-        'total': total
-    }, room=sid)
-    logger.info(f"Vulnerability scan completed for {target}: {len(successful)} successful, {len(failed)} failed, {len(all_vulns)} vulns")
+            result = vuln_scan_single_ip(ip, sid, current=i, total=total, scan_options=scan_options)
+            results.append(result)
+
+        # Fetch all enriched vulnerabilities for the scanned IPs
+        all_vulns = []
+        for ip in ips:
+            all_vulns.extend(vuln_scan.get_vulnerabilities(ip))
+
+        successful = [r for r in results if r['success']]
+        failed = [r for r in results if not r['success']]
+
+        socketio.emit('vuln_scan_complete', {
+            'target': target,
+            'results': results,
+            'vulnerabilities': all_vulns,
+            'successful_count': len(successful),
+            'failed_count': len(failed),
+            'total_vulns': len(all_vulns),
+            'total': total,
+            'cancelled': False
+        }, room=sid)
+        logger.info(f"Vulnerability scan completed for {target}: {len(successful)} successful, {len(failed)} failed, {len(all_vulns)} vulns")
+    finally:
+        # Clean up active scan tracking
+        with scan_lock:
+            if sid in active_scans:
+                del active_scans[sid]
 
 
 @socketio.on('start_vuln_scan')
@@ -473,6 +572,10 @@ def handle_start_vuln_scan(data):
         'templates': data.get('templates', ''),
         'max_hosts': data.get('max_hosts', 256)
     }
+
+    # Track this scan
+    with scan_lock:
+        active_scans[sid] = {'type': 'vuln_scan', 'target': target, 'cancelled': False}
 
     logger.info(f"Received Nuclei vulnerability scan request for {target} from session {sid} with options: {scan_options}")
     thread = threading.Thread(target=vuln_scan_target, args=(target, sid, scan_options))

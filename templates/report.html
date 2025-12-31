@@ -39,10 +39,36 @@
                 <p>No open ports found.</p>
             {% endif %}
 
+            <h2>Vulnerabilities:</h2>
+            {% if vulnerabilities %}
+                <table>
+                    <tr>
+                        <th>Severity</th>
+                        <th>CVE ID</th>
+                        <th>Vulnerability</th>
+                        <th>Port</th>
+                        <th>CVSS Score</th>
+                        <th>Description</th>
+                    </tr>
+                    {% for vuln in vulnerabilities %}
+                        <tr class="vuln-{{ vuln.severity|lower }}">
+                            <td><span class="severity-badge {{ vuln.severity|lower }}">{{ vuln.severity|upper }}</span></td>
+                            <td>{{ vuln.vuln_id }}</td>
+                            <td>{{ vuln.vuln_name }}</td>
+                            <td>{{ vuln.port }}/{{ vuln.protocol }}</td>
+                            <td>{{ vuln.cvss_score if vuln.cvss_score else 'N/A' }}</td>
+                            <td>{{ vuln.description[:100] }}{% if vuln.description|length > 100 %}...{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>No vulnerabilities detected.</p>
+            {% endif %}
+
             <h2>Changes Detected:</h2>
             {% if changes and (changes.added or changes.removed or changes.changed) %}
                 {% if changes.added %}
-                    <h3>New Ports:</h3>
+                    <h3>New Ports:{% if changes.latest_date %} <span style="font-weight: normal; font-size: 14px;">(Detected: {{ changes.latest_date }})</span>{% endif %}</h3>
                     <table>
                         <tr>
                             <th>Protocol</th>
@@ -66,7 +92,7 @@
                 {% endif %}
 
                 {% if changes.removed %}
-                    <h3>Removed Ports:</h3>
+                    <h3>Removed Ports:{% if changes.previous_date %} <span style="font-weight: normal; font-size: 14px;">(Last seen: {{ changes.previous_date }})</span>{% endif %}</h3>
                     <table>
                         <tr>
                             <th>Protocol</th>
