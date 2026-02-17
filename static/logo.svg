@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:var(--accent, #006cac);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:var(--accent, #ff6b01);stop-opacity:0.8" />
+    </linearGradient>
+    <linearGradient id="arrow-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:var(--foreground, #282728);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:var(--foreground, #282728);stop-opacity:0.7" />
+    </linearGradient>
+    <!-- Crescent moon gradient -->
+    <linearGradient id="moon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:var(--accent, #006cac);stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:var(--accent, #006cac);stop-opacity:0.08" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Crescent moon (background element - Artemis is moon goddess) -->
+  <path d="M 380 100 
+           A 160 160 0 1 0 380 400 
+           A 120 120 0 0 1 380 100 Z" 
+        fill="url(#moon-gradient)" opacity="0.5"/>
+  
+  <!-- Bow - elegant curved arc -->
+  <path d="M 160 80 
+           Q 60 256 160 432" 
+        stroke="url(#bow-gradient)" stroke-width="14" stroke-linecap="round" fill="none"/>
+  
+  <!-- Bowstring -->
+  <line x1="160" y1="80" x2="160" y2="432" 
+        stroke="currentColor" stroke-width="3" opacity="0.4"/>
+  
+  <!-- Bowstring pulled back (to arrow nock) -->
+  <line x1="160" y1="200" x2="220" y2="256" 
+        stroke="currentColor" stroke-width="2.5" opacity="0.5"/>
+  <line x1="160" y1="312" x2="220" y2="256" 
+        stroke="currentColor" stroke-width="2.5" opacity="0.5"/>
+  
+  <!-- Arrow shaft -->
+  <line x1="220" y1="256" x2="440" y2="256" 
+        stroke="url(#arrow-gradient)" stroke-width="5" stroke-linecap="round"/>
+  
+  <!-- Arrowhead - sharp, modern -->
+  <polygon points="440,256 415,240 418,253 415,253 415,259 418,259 415,272" 
+           fill="var(--accent, #006cac)"/>
+  
+  <!-- Arrow fletching (feathers) -->
+  <line x1="230" y1="256" x2="240" y2="244" stroke="var(--accent, #006cac)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="235" y1="256" x2="245" y2="246" stroke="var(--accent, #006cac)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="230" y1="256" x2="240" y2="268" stroke="var(--accent, #006cac)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="235" y1="256" x2="245" y2="266" stroke="var(--accent, #006cac)" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  
+  <!-- Crosshair/target reticle on arrowhead (scanner element) -->
+  <circle cx="440" cy="256" r="28" stroke="var(--accent, #006cac)" stroke-width="2" fill="none" opacity="0.35"/>
+  <circle cx="440" cy="256" r="16" stroke="var(--accent, #006cac)" stroke-width="1.5" fill="none" opacity="0.25"/>
+  <!-- Reticle ticks -->
+  <line x1="440" y1="222" x2="440" y2="232" stroke="var(--accent, #006cac)" stroke-width="1.5" opacity="0.35"/>
+  <line x1="440" y1="280" x2="440" y2="270" stroke="var(--accent, #006cac)" stroke-width="1.5" opacity="0.35"/>
+  <line x1="474" y1="256" x2="464" y2="256" stroke="var(--accent, #006cac)" stroke-width="1.5" opacity="0.35"/>
+</svg>

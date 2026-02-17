@@ -1,4 +1,4 @@
-"""Device type classification module for Cerebus.
+"""Device type classification module for Artemis.
 
 Combines multiple signals (nmap OS detection, MAC OUI vendor, port/service
 heuristics, fingerprint data) to classify assets into device types.

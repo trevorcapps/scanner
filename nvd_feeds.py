@@ -1,4 +1,4 @@
-"""NVD Feed download, import, and local CPE matching module for Cerebus.
+"""NVD Feed download, import, and local CPE matching module for Artemis.
 
 Downloads bulk NVD JSON feed files (gzipped) for fast CVE import,
 with incremental updates via the 'modified' feed. Stores CVEs and
@@ -155,7 +155,7 @@ def _fetch_meta(feed_name):
     """Fetch .meta file for a feed and return dict with sha256, lastModifiedDate, size."""
     url = f"{NVD_FEED_BASE}/{feed_name}.meta"
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'Artemis-Scanner/1.0'})
         with urllib.request.urlopen(req, timeout=30) as resp:
             text = resp.read().decode('utf-8')
         meta = {}
@@ -194,7 +194,7 @@ def _download_and_parse_feed(feed_name, emit_fn, conn, cursor, label=""):
     emit_fn({'status': 'running', 'message': f'Downloading {label or feed_name}...'})
 
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'Artemis-Scanner/1.0'})
         with urllib.request.urlopen(req, timeout=120) as resp:
             compressed = resp.read()
     except Exception as e:

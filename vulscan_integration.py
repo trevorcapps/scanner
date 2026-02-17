@@ -1,4 +1,4 @@
-"""Vulscan NSE script integration for Cerebus.
+"""Vulscan NSE script integration for Artemis.
 
 Integrates nmap's vulscan script for CVE detection during port scans.
 """

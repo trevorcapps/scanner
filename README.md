@@ -1,4 +1,4 @@
-# 🛡️ Cerebus — Vulnerability Scanner
+# 🛡️ Artemis — Vulnerability Scanner
 
 A web-based network vulnerability scanner and asset fingerprinting platform powered by Nmap, Nuclei, and a custom endpoint identification engine.
 

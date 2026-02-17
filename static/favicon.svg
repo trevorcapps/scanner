@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Compact bow + arrow for favicon -->
+  <path d="M 18 8 Q 4 32 18 56" stroke="#006cac" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <line x1="18" y1="8" x2="18" y2="56" stroke="#006cac" stroke-width="1" opacity="0.3"/>
+  <line x1="18" y1="26" x2="26" y2="32" stroke="#006cac" stroke-width="1" opacity="0.4"/>
+  <line x1="18" y1="38" x2="26" y2="32" stroke="#006cac" stroke-width="1" opacity="0.4"/>
+  <line x1="26" y1="32" x2="56" y2="32" stroke="#282728" stroke-width="2" stroke-linecap="round"/>
+  <polygon points="56,32 50,27 51,31 51,33 50,37" fill="#006cac"/>
+  <circle cx="56" cy="32" r="6" stroke="#006cac" stroke-width="1" fill="none" opacity="0.3"/>
+</svg>

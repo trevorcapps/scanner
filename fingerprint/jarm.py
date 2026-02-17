@@ -1,4 +1,4 @@
-"""JARM TLS fingerprinting wrapper for Cerebus.
+"""JARM TLS fingerprinting wrapper for Artemis.
 
 Uses the vendored Salesforce JARM scanner to generate TLS fingerprints
 for identifying server software by TLS handshake behavior.

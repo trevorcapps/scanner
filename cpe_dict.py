@@ -73,7 +73,7 @@ def sync_cpe_dictionary(socketio=None, db_path=None):
 
     try:
         req = urllib.request.Request(CPE_DICT_URL,
-                                     headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+                                     headers={'User-Agent': 'Artemis-Scanner/1.0'})
         with urllib.request.urlopen(req, timeout=120) as resp:
             compressed = resp.read()
     except Exception as e:

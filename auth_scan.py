@@ -1,4 +1,4 @@
-"""Authenticated SSH scanning module for Cerebus.
+"""Authenticated SSH scanning module for Artemis.
 
 Connects to targets via SSH, detects OS, gathers installed software inventory,
 generates CPE strings, and queries NVD API for CVE matches.
@@ -228,7 +228,7 @@ def query_nvd_cves_for_cpe(cpe_string, nvd_api_key=None):
     results = []
     url = f"{NVD_CVE_API}?cpeName={urllib.request.quote(cpe_string)}&resultsPerPage=20"
 
-    headers = {'User-Agent': 'Cerebus-Scanner/1.0'}
+    headers = {'User-Agent': 'Artemis-Scanner/1.0'}
     if nvd_api_key:
         headers['apiKey'] = nvd_api_key
 

@@ -493,7 +493,7 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                             url = f"{scheme}://{ip}:{port_num}"
                             try:
                                 import urllib.request
-                                req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+                                req = urllib.request.Request(url, headers={'User-Agent': 'Artemis-Scanner/1.0'})
                                 with urllib.request.urlopen(req, timeout=5) as resp:
                                     html = resp.read().decode('utf-8', errors='replace')
                                     headers = dict(resp.headers)

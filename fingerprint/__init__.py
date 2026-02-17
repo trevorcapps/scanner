@@ -1,5 +1,5 @@
 """
-Endpoint fingerprinting engine for Cerebus scanner.
+Endpoint fingerprinting engine for Artemis scanner.
 
 Combines multiple detection techniques to identify what's actually
 running on a scanned endpoint:
