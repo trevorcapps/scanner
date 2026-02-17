@@ -3339,3 +3339,140 @@ tr.vuln-info {
 .cred-use-all-label input[type="checkbox"] {
     width: auto;
 }
+
+/* ============================================
+   Device Type Badges & Asset Enhancements
+   ============================================ */
+
+.asset-ip-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.asset-device-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.asset-device-badge {
+    background-color: var(--bg-tertiary);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    text-transform: capitalize;
+}
+
+.asset-hostname-line {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 4px 0 2px 0;
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.asset-mac-line {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Courier New', monospace;
+    margin-bottom: 4px;
+}
+
+/* ============================================
+   NVD Database Status Panel
+   ============================================ */
+
+.nvd-status-panel {
+    background-color: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.nvd-stats {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.nvd-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.nvd-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.nvd-stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nvd-sync-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#nvd-sync-progress {
+    margin-top: 10px;
+}
+
+#nvd-sync-message {
+    margin: 0 0 8px 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+#nvd-sync-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#nvd-sync-bar::-webkit-progress-bar {
+    background-color: var(--progress-bg);
+    border-radius: 4px;
+}
+
+#nvd-sync-bar::-webkit-progress-value {
+    background-color: var(--progress-fill);
+    border-radius: 4px;
+}
+
+#nvd-sync-bar::-moz-progress-bar {
+    background-color: var(--progress-fill);
+    border-radius: 4px;
+}
+
+/* Device type filter dropdown */
+#device-type-filter {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    cursor: pointer;
+}
+
+/* Asset meta badge for device type */
+.asset-meta-badge.device {
+    background-color: rgba(108, 117, 125, 0.15);
+    color: var(--text-primary);
+    font-weight: 500;
+    text-transform: capitalize;
+}

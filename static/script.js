@@ -416,11 +416,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         html += '<div class="asset-modal-meta">';
+        if (asset.device_type && asset.device_type !== 'unknown') {
+            var dtIcons = {'router':'📡','computer':'🖥️','printer':'🖨️','firewall':'🔥','switch':'🔀','iot':'🏠','media device':'📺','phone':'📱','server':'🗄️','game console':'🎮','storage':'💾','access point':'📶'};
+            var dtIcon = dtIcons[asset.device_type] || '❓';
+            html += '<span class="asset-meta-badge device">' + dtIcon + ' ' + escapeHtml(asset.device_type) + '</span>';
+        }
         if (asset.os_name) {
             html += '<span class="asset-meta-badge os">' + escapeHtml(asset.os_name) + '</span>';
-        }
-        if (asset.device_type) {
-            html += '<span class="asset-meta-badge device">' + escapeHtml(asset.device_type) + '</span>';
         }
         if (asset.mac_vendor) {
             html += '<span class="asset-meta-badge">' + escapeHtml(asset.mac_vendor) + '</span>';
@@ -1036,6 +1038,61 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // ==================== NVD Database Sync ====================
+    function loadNvdStatus() {
+        fetch('/api/nvd-status')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var totalEl = document.getElementById('nvd-total-cves');
+                var syncEl = document.getElementById('nvd-last-sync');
+                if (totalEl) totalEl.textContent = data.total_cves ? data.total_cves.toLocaleString() : '0';
+                if (syncEl) syncEl.textContent = data.last_sync ? formatDate(data.last_sync) : 'Never';
+            })
+            .catch(function() {});
+    }
+
+    var nvdSyncBtn = document.getElementById('nvd-sync-btn');
+    var nvdFullSyncBtn = document.getElementById('nvd-full-sync-btn');
+    var nvdSyncProgress = document.getElementById('nvd-sync-progress');
+    var nvdSyncMessage = document.getElementById('nvd-sync-message');
+    var nvdSyncBar = document.getElementById('nvd-sync-bar');
+
+    if (nvdSyncBtn) {
+        nvdSyncBtn.addEventListener('click', function() {
+            socket.emit('start_nvd_sync', { full: false });
+            nvdSyncProgress.style.display = 'block';
+            nvdSyncBtn.disabled = true;
+            nvdFullSyncBtn.disabled = true;
+        });
+    }
+
+    if (nvdFullSyncBtn) {
+        nvdFullSyncBtn.addEventListener('click', function() {
+            if (confirm('Full re-sync will re-download ALL CVEs from NVD. This may take 30-60 minutes. Continue?')) {
+                socket.emit('start_nvd_sync', { full: true });
+                nvdSyncProgress.style.display = 'block';
+                nvdSyncBtn.disabled = true;
+                nvdFullSyncBtn.disabled = true;
+            }
+        });
+    }
+
+    socket.on('nvd_sync_progress', function(data) {
+        if (nvdSyncMessage) nvdSyncMessage.textContent = data.message || 'Syncing...';
+        if (nvdSyncBar && data.percent !== undefined) nvdSyncBar.value = data.percent;
+
+        if (data.status === 'complete' || data.status === 'error') {
+            if (nvdSyncBtn) nvdSyncBtn.disabled = false;
+            if (nvdFullSyncBtn) nvdFullSyncBtn.disabled = false;
+            setTimeout(function() {
+                if (nvdSyncProgress) nvdSyncProgress.style.display = 'none';
+            }, 5000);
+            loadNvdStatus();
+        }
+    });
+
+    loadNvdStatus();
+
     // Load credentials and NVD key on page load
     loadCredentials();
     loadNvdKey();
@@ -1363,6 +1420,14 @@ document.addEventListener('DOMContentLoaded', function() {
         resetScanButtons();
     });
 
+    // Device type filter
+    var deviceTypeFilter = document.getElementById('device-type-filter');
+    if (deviceTypeFilter) {
+        deviceTypeFilter.addEventListener('change', function() {
+            loadAssets();
+        });
+    }
+
     // Assets loading
     function loadAssets() {
         assetsList.innerHTML = '<p class="loading">Loading assets...</p>';
@@ -1376,6 +1441,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 var assets = data.assets;
+
+                // Apply device type filter
+                var dtFilter = deviceTypeFilter ? deviceTypeFilter.value : '';
+                if (dtFilter) {
+                    assets = assets.filter(function(a) {
+                        return (a.device_type || 'unknown') === dtFilter;
+                    });
+                }
+
                 assetsCount.textContent = assets.length + ' host(s) found';
 
                 if (assets.length === 0) {
@@ -1388,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (assetsViewMode === 'list') {
                     // List view
                     html = '<table class="assets-table">';
-                    html += '<thead><tr><th>IP Address</th><th>Ports</th><th>Vulnerabilities</th><th>Last Scan</th><th>Actions</th></tr></thead>';
+                    html += '<thead><tr><th>IP Address</th><th>Type</th><th>Hostname</th><th>Ports</th><th>Vulnerabilities</th><th>Last Scan</th><th>Actions</th></tr></thead>';
                     html += '<tbody>';
                     assets.forEach(function(asset) {
                         var vulnCounts = asset.vuln_counts || { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
@@ -1397,6 +1471,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         html += '<tr>';
                         html += '<td class="asset-ip-cell"><strong>' + asset.ip + '</strong></td>';
+                        html += '<td>' + (asset.device_icon || '') + ' ' + escapeHtml(asset.device_type || '') + '</td>';
+                        html += '<td>' + escapeHtml(asset.hostname || asset.reverse_dns || '') + '</td>';
                         html += '<td>' + asset.port_count + '</td>';
                         html += '<td>';
                         if (hasVulns) {
@@ -1428,8 +1504,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         html += '<div class="asset-card">';
                         html += '<div class="asset-header">';
+                        html += '<div class="asset-ip-group">';
+                        if (asset.device_icon) {
+                            html += '<span class="asset-device-icon" title="' + escapeHtml(asset.device_type || '') + '">' + asset.device_icon + '</span>';
+                        }
                         html += '<span class="asset-ip">' + asset.ip + '</span>';
+                        html += '</div>';
                         html += '<div class="asset-badges">';
+                        if (asset.device_type && asset.device_type !== 'unknown') {
+                            html += '<span class="asset-device-badge">' + escapeHtml(asset.device_type) + '</span>';
+                        }
                         html += '<span class="asset-ports">' + asset.port_count + ' port(s)</span>';
                         if (hasVulns) {
                             var vulnClass = vulnCounts.critical > 0 ? 'critical' : (vulnCounts.high > 0 ? 'high' : 'medium');
@@ -1437,6 +1521,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                         html += '</div>';
                         html += '</div>';
+
+                        // Hostname / reverse DNS
+                        if (asset.hostname || asset.reverse_dns) {
+                            html += '<div class="asset-hostname-line">' + escapeHtml(asset.hostname || asset.reverse_dns) + '</div>';
+                        }
+                        if (asset.mac_address) {
+                            html += '<div class="asset-mac-line">' + escapeHtml(asset.mac_address) + (asset.mac_vendor ? ' (' + escapeHtml(asset.mac_vendor) + ')' : '') + '</div>';
+                        }
 
                         // Technology fingerprint badges
                         if (asset.technologies && asset.technologies.length > 0) {

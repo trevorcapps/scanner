@@ -350,24 +350,45 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
         other_pkgs = [p for p in packages if p not in priority_pkgs]
         scan_pkgs = (priority_pkgs + other_pkgs)[:max_cve_lookups]
 
-        log(f'Querying NVD for CVEs on {len(scan_pkgs)} packages (priority: {len(priority_pkgs)})...')
+        # Try local NVD database first
+        try:
+            from nvd_feeds import match_cpes_local
+            cpe_list = [pkg['cpe'] for pkg in scan_pkgs if pkg['cpe'].split(':')[5] != '*']
+            if cpe_list:
+                log(f'Checking {len(cpe_list)} CPEs against local NVD database...')
+                local_results = match_cpes_local(cpe_list)
+                if local_results is not None:
+                    cves = local_results
+                    log(f'Local NVD match: {len(cves)} CVE(s) found', 'success' if not cves else 'warning')
+                else:
+                    log(f'Local NVD database empty, falling back to API...', 'info')
+                    local_results = None  # Signal API fallback
+            else:
+                local_results = None
+        except ImportError:
+            log(f'Local NVD module not available, using API...', 'debug')
+            local_results = None
 
-        delay = 1.0 if nvd_api_key else NVD_RATE_LIMIT_DELAY
-        checked = 0
+        # Fall back to NVD API if local DB is empty
+        if local_results is None:
+            log(f'Querying NVD API for CVEs on {len(scan_pkgs)} packages (priority: {len(priority_pkgs)})...')
 
-        for pkg in scan_pkgs:
-            if pkg['cpe'].split(':')[5] == '*':
-                continue  # skip packages with no version
-            try:
-                matches = query_nvd_cves_for_cpe(pkg['cpe'], nvd_api_key=nvd_api_key)
-                if matches:
-                    log(f'  {pkg["name"]} {pkg["version"]}: {len(matches)} CVE(s) found', 'warning')
-                    cves.extend(matches)
-                checked += 1
-                if checked < len(scan_pkgs):
-                    time.sleep(delay)
-            except Exception as e:
-                log(f'  NVD query error for {pkg["name"]}: {e}', 'debug')
+            delay = 1.0 if nvd_api_key else NVD_RATE_LIMIT_DELAY
+            checked = 0
+
+            for pkg in scan_pkgs:
+                if pkg['cpe'].split(':')[5] == '*':
+                    continue  # skip packages with no version
+                try:
+                    matches = query_nvd_cves_for_cpe(pkg['cpe'], nvd_api_key=nvd_api_key)
+                    if matches:
+                        log(f'  {pkg["name"]} {pkg["version"]}: {len(matches)} CVE(s) found', 'warning')
+                        cves.extend(matches)
+                    checked += 1
+                    if checked < len(scan_pkgs):
+                        time.sleep(delay)
+                except Exception as e:
+                    log(f'  NVD query error for {pkg["name"]}: {e}', 'debug')
 
         log(f'NVD lookup complete: {len(cves)} total CVE matches', 'success' if not cves else 'warning')
 

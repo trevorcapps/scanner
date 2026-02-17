@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 
 import vuln_scan
 from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_cidr,
-                       DB_PATH, dns_lookup, get_os_info_from_scan, store_asset_info,
+                       DB_PATH, dns_lookup, get_os_info_from_scan, extract_host_info_from_scan,
+                       store_asset_info, update_device_type,
                        get_asset_details, get_fingerprints, get_fingerprint_summary,
                        store_fingerprints, store_fpx_results, get_fingerprint_engine,
                        fpx_check_installed, store_auth_scan_results,
@@ -23,6 +24,8 @@ from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_
                        delete_credential, get_setting, set_setting, get_open_ports_for_ip)
 from fingerprint.fpx import scan_host as fpx_scan_host
 from auth_scan import run_authenticated_scan
+from device_type import get_device_icon, DEVICE_TYPE_ICONS
+from nvd_feeds import sync_nvd_database, get_nvd_sync_status
 
 # Configure logging
 logging.basicConfig(
@@ -100,8 +103,27 @@ def get_assets():
             fp_techs = fp_summary.get('technologies', [])
             fp_by_port = fp_summary.get('by_port', {})
 
+            # Get asset metadata (hostname, device type, MAC, etc.)
+            cursor.execute('''SELECT hostname, reverse_dns, device_type, mac_address, mac_vendor, os_name
+                              FROM assets WHERE ip = ?''', (ip,))
+            asset_row = cursor.fetchone()
+            hostname = asset_row[0] if asset_row else None
+            reverse_dns = asset_row[1] if asset_row else None
+            device_type = asset_row[2] if asset_row else None
+            mac_address = asset_row[3] if asset_row else None
+            mac_vendor = asset_row[4] if asset_row else None
+            os_name = asset_row[5] if asset_row else None
+            device_icon = get_device_icon(device_type) if device_type else None
+
             assets.append({
                 'ip': ip,
+                'hostname': hostname,
+                'reverse_dns': reverse_dns,
+                'device_type': device_type,
+                'device_icon': device_icon,
+                'mac_address': mac_address,
+                'mac_vendor': mac_vendor,
+                'os_name': os_name,
                 'last_scan': last_scan,
                 'port_count': port_count,
                 'vuln_counts': vuln_counts,
@@ -323,12 +345,6 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             'ip': ip
         }, room=sid)
 
-        # Perform DNS lookup first
-        emit_log(sid, f'Performing DNS lookup for {ip}', 'debug')
-        dns_info = dns_lookup(ip)
-        if dns_info.get('hostname'):
-            emit_log(sid, f'DNS: {ip} -> {dns_info["hostname"]}', 'info')
-
         emit_log(sid, f'Initiating nmap scan on {ip}', 'debug')
         scan_result = vuln_scan.scan(ip, options=scan_options)
         scan_data = vuln_scan.parse_scan(scan_result)
@@ -338,15 +354,29 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
         if os_info.get('os_name'):
             emit_log(sid, f'Detected OS: {os_info["os_name"]}', 'info')
 
-        # Extract MAC address if available
-        mac_address = None
-        mac_vendor = None
-        if hasattr(scan_result, 'get'):
-            addresses = scan_result.get('addresses', {})
-            mac_address = addresses.get('mac')
-            vendor = scan_result.get('vendor', {})
-            if mac_address and mac_address in vendor:
-                mac_vendor = vendor[mac_address]
+        # Extract hostname and MAC from nmap result
+        host_info = extract_host_info_from_scan(scan_result)
+        mac_address = host_info.get('mac_address')
+        mac_vendor = host_info.get('mac_vendor')
+        nmap_hostname = host_info.get('hostname')
+
+        if mac_address:
+            emit_log(sid, f'MAC: {mac_address} ({mac_vendor or "unknown vendor"})', 'info')
+        if nmap_hostname:
+            emit_log(sid, f'Hostname (nmap): {nmap_hostname}', 'info')
+
+        # Perform reverse DNS lookup (supplements nmap hostname)
+        emit_log(sid, f'Performing DNS lookup for {ip}', 'debug')
+        dns_info = dns_lookup(ip)
+        if dns_info.get('hostname'):
+            emit_log(sid, f'DNS: {ip} -> {dns_info["hostname"]}', 'info')
+
+        # Merge: prefer nmap hostname if dns didn't find one
+        if nmap_hostname and not dns_info.get('hostname'):
+            dns_info['hostname'] = nmap_hostname
+        # Also store nmap hostname as reverse_dns fallback
+        if nmap_hostname and not dns_info.get('reverse_dns'):
+            dns_info['reverse_dns'] = nmap_hostname
 
         # Store asset info
         store_asset_info(ip, dns_info=dns_info, os_info=os_info,
@@ -421,6 +451,15 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             except Exception as e:
                 logger.error(f"fingerprintx error for {ip}: {e}")
                 emit_log(sid, f'fingerprintx error: {e}', 'warning')
+
+            # Classify device type using all available signals
+            try:
+                device_type = update_device_type(ip)
+                if device_type and device_type != 'unknown':
+                    icon = get_device_icon(device_type)
+                    emit_log(sid, f'Device type: {icon} {device_type}', 'info')
+            except Exception as e:
+                logger.debug(f"Device type classification error for {ip}: {e}")
         else:
             emit_log(sid, f'No open ports found on {ip}', 'info')
 
@@ -921,6 +960,33 @@ def api_delete_credential(cred_id):
     if delete_credential(cred_id):
         return {'success': True}
     return {'error': 'Credential not found'}, 404
+
+
+@app.route('/api/nvd-status')
+def api_nvd_status():
+    """Get NVD local database sync status."""
+    status = get_nvd_sync_status()
+    return status
+
+
+@socketio.on('start_nvd_sync')
+def handle_start_nvd_sync(data):
+    """Start NVD database sync in background."""
+    sid = request.sid
+    full_sync = data.get('full', False)
+    api_key = get_setting('nvd_api_key', '') or None
+
+    def run_sync():
+        try:
+            sync_nvd_database(socketio=socketio, api_key=api_key, full_sync=full_sync)
+        except Exception as e:
+            logger.error(f"NVD sync error: {e}")
+            socketio.emit('nvd_sync_progress', {'status': 'error', 'message': str(e)})
+
+    emit_log(sid, f'Starting NVD database sync ({"full" if full_sync else "incremental"})...', 'info')
+    thread = threading.Thread(target=run_sync)
+    thread.daemon = True
+    thread.start()
 
 
 @app.route('/api/settings/nvd-key', methods=['GET'])

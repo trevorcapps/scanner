@@ -15,6 +15,7 @@ from datetime import datetime
 
 from fingerprint.engine import FingerprintEngine, FingerprintResult
 from fingerprint.fpx import scan_host as fpx_scan_host, check_installed as fpx_check_installed
+from device_type import classify_device, get_device_icon, lookup_mac_vendor
 
 # Database path - use absolute path relative to this script's location
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vuln_scan.db')
@@ -262,6 +263,54 @@ def get_os_info_from_scan(scan_result):
     return os_info
 
 
+def extract_host_info_from_scan(scan_result):
+    """Extract hostname, MAC address, and vendor from nmap scan result.
+
+    Returns dict with hostname, mac_address, mac_vendor.
+    python-nmap stores hostnames in scan_result['hostnames'] and
+    MAC address in scan_result['addresses']['mac'].
+    MAC vendor comes from scan_result['vendor'] dict.
+    Note: MAC detection requires sudo/root for ARP on local subnets.
+    """
+    info = {
+        'hostname': None,
+        'mac_address': None,
+        'mac_vendor': None,
+    }
+
+    try:
+        if not hasattr(scan_result, 'get'):
+            return info
+
+        # Extract hostnames from nmap
+        hostnames = scan_result.get('hostnames', [])
+        if hostnames:
+            for hn in hostnames:
+                name = hn.get('name', '')
+                if name:
+                    info['hostname'] = name
+                    break  # Take first non-empty hostname
+
+        # Extract MAC address
+        addresses = scan_result.get('addresses', {})
+        mac = addresses.get('mac')
+        if mac:
+            info['mac_address'] = mac
+            # nmap provides vendor in a separate dict keyed by MAC
+            vendor_dict = scan_result.get('vendor', {})
+            if mac in vendor_dict:
+                info['mac_vendor'] = vendor_dict[mac]
+
+        # If no vendor from nmap, try OUI lookup
+        if info['mac_address'] and not info['mac_vendor']:
+            info['mac_vendor'] = lookup_mac_vendor(info['mac_address'])
+
+    except Exception as e:
+        logger.debug(f"Error extracting host info from scan: {e}")
+
+    return info
+
+
 class ScanError(Exception):
     """Custom exception for scan-related errors."""
     pass
@@ -491,6 +540,13 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+    # Initialize NVD tables (separate module to keep things clean)
+    try:
+        from nvd_feeds import init_nvd_tables
+        init_nvd_tables(DB_PATH)
+    except Exception as e:
+        logger.warning(f"Could not initialize NVD tables: {e}")
 
 # Function to store scan results in the database
 def store_scan(ip, scan_results):
@@ -1736,5 +1792,44 @@ def get_open_ports_for_ip(ip):
     ports = []
     for row in latest:
         if row[2] == 'open':
-            ports.append({'port': row[1], 'protocol': row[0], 'service': row[3]})
+            ports.append({'port': row[1], 'protocol': row[0], 'service': row[3],
+                          'product': row[4] if len(row) > 4 else ''})
     return ports
+
+
+def update_device_type(ip):
+    """Re-classify device type for an asset using all available signals."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        # Gather signals
+        cursor.execute('SELECT os_name, os_family, os_vendor, os_accuracy, device_type, mac_vendor FROM assets WHERE ip = ?', (ip,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        os_info = {
+            'os_name': row[0], 'os_family': row[1], 'os_vendor': row[2],
+            'os_accuracy': row[3], 'device_type': row[4]
+        }
+        mac_vendor = row[5]
+
+        open_ports = get_open_ports_for_ip(ip)
+        fingerprints = get_fingerprints(ip)
+
+        device_type = classify_device(
+            os_info=os_info,
+            mac_vendor=mac_vendor,
+            open_ports=open_ports,
+            fingerprints=fingerprints
+        )
+
+        cursor.execute('UPDATE assets SET device_type = ? WHERE ip = ?', (device_type, ip))
+        conn.commit()
+        logger.info(f"Updated device type for {ip}: {device_type}")
+        return device_type
+    except Exception as e:
+        logger.error(f"Error updating device type for {ip}: {e}")
+        return None
+    finally:
+        conn.close()

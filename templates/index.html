@@ -78,6 +78,22 @@
                         <span class="view-icon">&#9776;</span>
                     </button>
                 </div>
+                <select id="device-type-filter">
+                    <option value="">All Device Types</option>
+                    <option value="computer">🖥️ Computer</option>
+                    <option value="server">🗄️ Server</option>
+                    <option value="router">📡 Router</option>
+                    <option value="switch">🔀 Switch</option>
+                    <option value="firewall">🔥 Firewall</option>
+                    <option value="printer">🖨️ Printer</option>
+                    <option value="storage">💾 Storage</option>
+                    <option value="access point">📶 Access Point</option>
+                    <option value="phone">📱 Phone</option>
+                    <option value="iot">🏠 IoT</option>
+                    <option value="media device">📺 Media</option>
+                    <option value="game console">🎮 Console</option>
+                    <option value="unknown">❓ Unknown</option>
+                </select>
                 <span id="assets-count"></span>
             </div>
             <div id="assets-list">
@@ -341,6 +357,31 @@
                     <div class="settings-actions" style="margin-top: 10px;">
                         <button id="cred-save-btn" class="btn-primary">Save Credential</button>
                         <button id="cred-cancel-btn" class="btn-secondary" style="display:none;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section" id="settings-nvd-section">
+                <h3>NVD Vulnerability Database</h3>
+                <p class="settings-description">Local database of all CVEs from NVD for offline CPE matching</p>
+                <div class="nvd-status-panel">
+                    <div class="nvd-stats">
+                        <div class="nvd-stat">
+                            <span class="nvd-stat-value" id="nvd-total-cves">—</span>
+                            <span class="nvd-stat-label">CVEs in Database</span>
+                        </div>
+                        <div class="nvd-stat">
+                            <span class="nvd-stat-value" id="nvd-last-sync">Never</span>
+                            <span class="nvd-stat-label">Last Synced</span>
+                        </div>
+                    </div>
+                    <div class="nvd-sync-actions">
+                        <button id="nvd-sync-btn" class="btn-primary">Sync Now</button>
+                        <button id="nvd-full-sync-btn" class="btn-secondary">Full Re-sync</button>
+                    </div>
+                    <div id="nvd-sync-progress" style="display:none;">
+                        <p id="nvd-sync-message">Syncing...</p>
+                        <progress id="nvd-sync-bar" value="0" max="100"></progress>
                     </div>
                 </div>
             </div>

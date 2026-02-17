@@ -5,3 +5,4 @@ python-nmap
 matplotlib
 flask_socketio
 paramiko
+mac-vendor-lookup
