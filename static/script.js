@@ -1483,7 +1483,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         html += '<tr>';
                         var listDisplayName = asset.hostname ? (escapeHtml(asset.hostname) + ' <span class="text-muted">(' + asset.ip + ')</span>') : asset.ip;
-                        html += '<td class="asset-ip-cell"><strong>' + listDisplayName + '</strong></td>';
+                        html += '<td class="asset-ip-cell" data-ip="' + asset.ip + '"><strong>' + listDisplayName + '</strong></td>';
                         html += '<td>' + (asset.device_icon || '') + ' ' + escapeHtml(asset.device_type || '') + '</td>';
                         html += '<td>' + escapeHtml(asset.hostname || asset.reverse_dns || '') + '</td>';
                         html += '<td>' + asset.port_count + '</td>';
@@ -1522,9 +1522,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             html += '<span class="asset-device-icon" title="' + escapeHtml(asset.device_type || '') + '">' + asset.device_icon + '</span>';
                         }
                         if (asset.hostname) {
-                            html += '<span class="asset-ip">' + escapeHtml(asset.hostname) + ' <span class="text-muted">(' + asset.ip + ')</span></span>';
+                            html += '<span class="asset-ip" data-ip="' + asset.ip + '">' + escapeHtml(asset.hostname) + ' <span class="text-muted">(' + asset.ip + ')</span></span>';
                         } else {
-                            html += '<span class="asset-ip">' + asset.ip + '</span>';
+                            html += '<span class="asset-ip" data-ip="' + asset.ip + '">' + asset.ip + '</span>';
                         }
                         html += '</div>';
                         html += '<div class="asset-badges">';
@@ -1643,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (e.target.tagName === 'BUTTON') return;
                         var ip = card.querySelector('.asset-ip');
                         if (ip) {
-                            showAssetModal(ip.textContent);
+                            showAssetModal(ip.getAttribute('data-ip') || ip.textContent);
                         }
                     });
                 });
@@ -1654,9 +1654,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     row.addEventListener('click', function(e) {
                         // Don't trigger if clicking on a button
                         if (e.target.tagName === 'BUTTON') return;
-                        var ipCell = row.querySelector('.asset-ip-cell strong');
+                        var ipCell = row.querySelector('.asset-ip-cell');
                         if (ipCell) {
-                            showAssetModal(ipCell.textContent);
+                            showAssetModal(ipCell.getAttribute('data-ip') || ipCell.textContent);
                         }
                     });
                 });
