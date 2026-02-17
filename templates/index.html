@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Cerebus</title>
+    <title>🕵️ Cerebus</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 </head>
 <body class="theme-light">
     <div class="container">
         <div class="header">
-            <h1>Cerebus</h1>
+            <h1><span class="header-icon">&#128373;&#65039;</span> Cerebus</h1>
         </div>
 
         <div class="tabs">
@@ -20,37 +20,45 @@
 
         <!-- Scan Tab -->
         <div id="scan-tab" class="tab-content active">
-            <h2>New Scan</h2>
-            <form id="scan-form">
-                <div class="form-group">
-                    <label for="ip">IP Address or CIDR:</label>
-                    <input type="text" id="ip" name="ip" placeholder="e.g., 192.168.1.1 or 10.0.0.0/24" required>
-                </div>
-                <div class="form-group">
-                    <label>Scan Type:</label>
-                    <div class="scan-type-buttons">
-                        <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
-                        <button type="button" id="fingerprint-scan-btn" class="btn-fingerprint">Fingerprint</button>
-                        <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
-                        <button type="button" id="stop-scan-btn" class="btn-stop" style="display:none;">Stop Scan</button>
+            <div class="scan-controls">
+                <h2>New Scan</h2>
+                <form id="scan-form">
+                    <div class="form-group">
+                        <label for="ip">IP Address or CIDR:</label>
+                        <input type="text" id="ip" name="ip" placeholder="e.g., 192.168.1.1 or 10.0.0.0/24" required>
                     </div>
+                    <div class="form-group">
+                        <label>Scan Type:</label>
+                        <div class="scan-type-buttons">
+                            <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
+                            <button type="button" id="fingerprint-scan-btn" class="btn-fingerprint">Fingerprint</button>
+                            <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
+                            <button type="button" id="stop-scan-btn" class="btn-stop" style="display:none;">Stop Scan</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="progress-container" style="display:none;">
+                    <p id="progress-message">Scan in progress...</p>
+                    <progress id="progress-bar" value="0" max="100"></progress>
                 </div>
-            </form>
-            <div id="progress-container" style="display:none;">
-                <p id="progress-message">Scan in progress...</p>
-                <progress id="progress-bar" value="0" max="100"></progress>
             </div>
-            <div id="scan-output"></div>
 
-            <div id="log-window">
-                <div id="log-header">
-                    <span id="log-title">Scan Logs</span>
-                    <div id="log-controls">
-                        <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
-                        <button id="log-toggle" class="btn-small btn-secondary" title="Toggle log window">_</button>
+            <div class="scan-panels">
+                <div class="scan-panel-left">
+                    <div id="scan-output"></div>
+                </div>
+                <div class="scan-panel-right">
+                    <div id="log-window">
+                        <div id="log-header">
+                            <span id="log-title">Scan Logs</span>
+                            <div id="log-controls">
+                                <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
+                                <button id="log-toggle" class="btn-small btn-secondary" title="Toggle log window">_</button>
+                            </div>
+                        </div>
+                        <div id="log-content"></div>
                     </div>
                 </div>
-                <div id="log-content"></div>
             </div>
         </div>
 
