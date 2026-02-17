@@ -475,6 +475,21 @@ document.addEventListener('DOMContentLoaded', function() {
         html += '</ul>';
         html += '</div>';
 
+        // Authenticated System Info section
+        if (asset.auth_os) {
+            html += '<div class="asset-modal-section">';
+            html += '<div class="asset-section-title">System Info (Authenticated)</div>';
+            html += '<ul class="asset-info-list">';
+            if (asset.auth_os.pretty_name) html += '<li><span class="asset-info-label">OS</span><span class="asset-info-value">' + escapeHtml(asset.auth_os.pretty_name) + '</span></li>';
+            if (asset.auth_os.distro) html += '<li><span class="asset-info-label">Distribution</span><span class="asset-info-value">' + escapeHtml(asset.auth_os.distro) + '</span></li>';
+            if (asset.auth_os.version) html += '<li><span class="asset-info-label">Version</span><span class="asset-info-value">' + escapeHtml(asset.auth_os.version) + '</span></li>';
+            if (asset.auth_os.arch) html += '<li><span class="asset-info-label">Architecture</span><span class="asset-info-value">' + escapeHtml(asset.auth_os.arch) + '</span></li>';
+            if (asset.auth_os.kernel) html += '<li><span class="asset-info-label">Kernel</span><span class="asset-info-value" style="font-size:11px">' + escapeHtml(asset.auth_os.kernel.substring(0, 80)) + '</span></li>';
+            if (asset.auth_os.os_family) html += '<li><span class="asset-info-label">Family</span><span class="asset-info-value">' + escapeHtml(asset.auth_os.os_family) + '</span></li>';
+            html += '</ul>';
+            html += '</div>';
+        }
+
         // Vulnerabilities section
         html += '<div class="asset-modal-section">';
         html += '<div class="asset-section-title">Vulnerabilities</div>';
@@ -552,6 +567,60 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '<p class="asset-no-vulns">No open ports found</p>';
         }
         html += '</div>';
+
+        // Installed Software section (from authenticated scan)
+        if (asset.installed_software && asset.installed_software.length > 0) {
+            html += '<div class="asset-modal-section full-width">';
+            html += '<div class="asset-section-title">Installed Software (' + asset.installed_software.length + ' packages)</div>';
+            html += '<div class="software-table-wrapper">';
+            html += '<table class="asset-ports-table">';
+            html += '<thead><tr><th>Package</th><th>Version</th><th>CPE</th></tr></thead>';
+            html += '<tbody>';
+            var maxShow = 200;
+            var softwareToShow = asset.installed_software.slice(0, maxShow);
+            softwareToShow.forEach(function(pkg) {
+                html += '<tr>';
+                html += '<td><strong>' + escapeHtml(pkg.name) + '</strong></td>';
+                html += '<td>' + escapeHtml(pkg.version) + '</td>';
+                html += '<td class="asset-port-product" style="font-size:10px">' + escapeHtml(pkg.cpe || '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            if (asset.installed_software.length > maxShow) {
+                html += '<p class="text-muted" style="padding:8px">Showing ' + maxShow + ' of ' + asset.installed_software.length + ' packages</p>';
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+
+        // CVE Matches section (from authenticated scan + NVD)
+        if (asset.cve_matches && asset.cve_matches.length > 0) {
+            html += '<div class="asset-modal-section full-width">';
+            html += '<div class="asset-section-title">Known Vulnerabilities - CVE Matches (' + asset.cve_matches.length + ')</div>';
+            html += '<table class="asset-ports-table">';
+            html += '<thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Affected Package</th><th>Description</th></tr></thead>';
+            html += '<tbody>';
+            asset.cve_matches.forEach(function(cve) {
+                html += '<tr>';
+                html += '<td><a href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(cve.cve_id) + '" target="_blank" rel="noopener" class="cve-link">' + escapeHtml(cve.cve_id) + '</a></td>';
+                html += '<td><span class="severity-badge ' + (cve.severity || 'info') + '">' + (cve.severity || 'N/A').toUpperCase() + '</span></td>';
+                html += '<td>';
+                if (cve.cvss_score !== null && cve.cvss_score !== undefined) {
+                    var cvssClass = cve.cvss_score >= 9.0 ? 'critical' : (cve.cvss_score >= 7.0 ? 'high' : (cve.cvss_score >= 4.0 ? 'medium' : 'low'));
+                    html += '<span class="cvss-badge ' + cvssClass + '">' + cve.cvss_score.toFixed(1) + '</span>';
+                } else {
+                    html += '-';
+                }
+                html += '</td>';
+                // Extract package name from CPE
+                var affectedPkg = cve.affected_cpe ? cve.affected_cpe.split(':')[4] || '-' : '-';
+                html += '<td>' + escapeHtml(affectedPkg) + '</td>';
+                html += '<td class="desc-cell" style="max-width:300px">' + escapeHtml((cve.description || '').substring(0, 120)) + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '</div>';
+        }
 
         // DNS Aliases section (if any)
         if (asset.aliases && asset.aliases.length > 0) {
@@ -715,45 +784,56 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==================== Scan Profiles ====================
     var selectedProfile = '';
     var profilesLoaded = false;
+    var profilesData = {};
 
     function loadProfiles() {
         if (profilesLoaded) return;
+        var dropdown = document.getElementById('profile-dropdown');
+        if (!dropdown) return;
+
         fetch('/api/scan-profiles')
             .then(function(response) { return response.json(); })
             .then(function(data) {
-                var container = document.getElementById('profile-selector');
-                if (!container || !data.profiles) return;
-
-                var html = '<div class="profile-chips">';
-                html += '<button type="button" class="profile-chip active" data-profile="">';
-                html += '<span class="profile-icon">⚙️</span>';
-                html += '<span class="profile-name">Custom</span>';
-                html += '</button>';
+                if (!data.profiles) return;
 
                 data.profiles.forEach(function(p) {
-                    html += '<button type="button" class="profile-chip" data-profile="' + p.id + '" title="' + escapeHtml(p.description) + '">';
-                    html += '<span class="profile-icon">' + (p.icon || '📋') + '</span>';
-                    html += '<span class="profile-name">' + escapeHtml(p.name) + '</span>';
-                    html += '</button>';
+                    profilesData[p.id] = p;
+                    var opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = (p.icon || '📋') + ' ' + p.name;
+                    opt.title = p.description || '';
+                    dropdown.appendChild(opt);
                 });
-                html += '</div>';
-
-                container.innerHTML = html;
                 profilesLoaded = true;
-
-                // Bind click handlers
-                container.querySelectorAll('.profile-chip').forEach(function(chip) {
-                    chip.addEventListener('click', function() {
-                        container.querySelectorAll('.profile-chip').forEach(function(c) { c.classList.remove('active'); });
-                        this.classList.add('active');
-                        selectedProfile = this.getAttribute('data-profile');
-                    });
-                });
             })
-            .catch(function(err) {
-                var container = document.getElementById('profile-selector');
-                if (container) container.innerHTML = '<span class="text-muted">Could not load profiles</span>';
-            });
+            .catch(function() {});
+
+        dropdown.addEventListener('change', function() {
+            selectedProfile = this.value;
+            var authGroup = document.getElementById('auth-credentials-group');
+            var profile = profilesData[selectedProfile];
+            if (profile && profile.auth_required) {
+                authGroup.style.display = 'block';
+            } else {
+                authGroup.style.display = 'none';
+            }
+        });
+    }
+
+    // Credential type toggle
+    var credTypeSelect = document.getElementById('cred-type');
+    if (credTypeSelect) {
+        credTypeSelect.addEventListener('change', function() {
+            var keyField = document.getElementById('cred-key-field');
+            var passField = document.getElementById('cred-password-field');
+            if (this.value === 'ssh_key') {
+                keyField.style.display = '';
+                passField.style.display = 'none';
+            } else {
+                keyField.style.display = 'none';
+                passField.style.display = '';
+            }
+        });
     }
 
     // Load profiles on page load
@@ -764,6 +844,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!ip) {
             scanOutput.innerHTML = '<p class="error">Please enter an IP address.</p>';
+            return;
+        }
+
+        // Check if authenticated scan profile is selected
+        var profile = profilesData[selectedProfile];
+        if (profile && profile.auth_required) {
+            startAuthScan(ip);
             return;
         }
 
@@ -801,6 +888,49 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         addLog('Severity: ' + settings.severity + ', Rate limit: ' + settings.rateLimit + ' req/sec, Timeout: ' + settings.vulnTimeout + 's', 'debug');
     }
+
+    function startAuthScan(ip) {
+        portScanBtn.disabled = true;
+        vulnScanBtn.disabled = true;
+        vulnScanBtn.textContent = 'Scanning...';
+        stopScanBtn.style.display = 'inline-block';
+
+        var credType = document.getElementById('cred-type').value;
+        var scanData = {
+            ip: ip,
+            username: document.getElementById('cred-username').value || 'root',
+            cred_type: credType,
+            key_path: document.getElementById('cred-key-path').value,
+            password: document.getElementById('cred-password').value,
+            ssh_port: document.getElementById('cred-ssh-port').value || 22,
+            nvd_api_key: document.getElementById('cred-nvd-key').value
+        };
+
+        socket.emit('start_auth_scan', scanData);
+        progressContainer.style.display = 'block';
+        progressBar.value = 10;
+        progressMessage.textContent = 'Authenticated SSH scan in progress...';
+        scanOutput.innerHTML = '<p>Running authenticated scan on ' + ip + '...</p>' +
+            '<p class="info">Connecting via SSH, detecting OS, gathering packages, querying NVD for CVEs.</p>';
+        addLog('Starting authenticated SSH scan for ' + ip, 'info');
+    }
+
+    // Auth scan complete handler
+    socket.on('auth_scan_complete', function(data) {
+        progressBar.value = 100;
+
+        var html = '<h3>Authenticated Scan Results for ' + data.ip + '</h3>';
+        if (data.os_info && data.os_info.pretty_name) {
+            html += '<p class="info">OS: ' + escapeHtml(data.os_info.pretty_name) + '</p>';
+        }
+        html += '<p class="success">Found ' + data.package_count + ' installed packages, ' + data.cve_count + ' CVE matches.</p>';
+        html += '<p>View full details in the <strong>Asset Details</strong> modal.</p>';
+        scanOutput.innerHTML = html;
+
+        addLog('Auth scan complete: ' + data.package_count + ' packages, ' + data.cve_count + ' CVEs', 'success');
+        resetScanButtons();
+        setTimeout(function() { progressContainer.style.display = 'none'; }, 1000);
+    });
 
     function stopScan() {
         addLog('Requesting scan cancellation...', 'warning');

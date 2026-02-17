@@ -40,7 +40,47 @@
                 <div class="form-group" id="profile-group">
                     <label>Scan Profile:</label>
                     <div class="profile-selector" id="profile-selector">
-                        <div class="profile-loading">Loading profiles...</div>
+                        <select id="profile-dropdown" class="profile-dropdown">
+                            <option value="">⚙️ Custom</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" id="auth-credentials-group" style="display:none;">
+                    <label>SSH Credentials:</label>
+                    <div class="credentials-form">
+                        <div class="cred-row">
+                            <div class="cred-field">
+                                <label for="cred-username">Username</label>
+                                <input type="text" id="cred-username" placeholder="root" value="root">
+                            </div>
+                            <div class="cred-field">
+                                <label for="cred-type">Auth Type</label>
+                                <select id="cred-type">
+                                    <option value="ssh_key">SSH Key</option>
+                                    <option value="ssh_password">Password</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="cred-row">
+                            <div class="cred-field" id="cred-key-field">
+                                <label for="cred-key-path">Key Path</label>
+                                <input type="text" id="cred-key-path" placeholder="/home/user/.ssh/id_rsa">
+                            </div>
+                            <div class="cred-field" id="cred-password-field" style="display:none;">
+                                <label for="cred-password">Password</label>
+                                <input type="password" id="cred-password" placeholder="••••••••">
+                            </div>
+                            <div class="cred-field">
+                                <label for="cred-ssh-port">SSH Port</label>
+                                <input type="number" id="cred-ssh-port" value="22" min="1" max="65535">
+                            </div>
+                        </div>
+                        <div class="cred-row">
+                            <div class="cred-field">
+                                <label for="cred-nvd-key">NVD API Key (optional)</label>
+                                <input type="text" id="cred-nvd-key" placeholder="Faster CVE lookups with API key">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </form>

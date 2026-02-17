@@ -427,6 +427,41 @@ def init_db():
                         scan_date TEXT,
                         UNIQUE(ip, port, protocol, signature_id))''')
 
+    # Authenticated scan: OS details per asset
+    cursor.execute('''CREATE TABLE IF NOT EXISTS asset_os_details (
+                        id INTEGER PRIMARY KEY,
+                        ip TEXT UNIQUE,
+                        distro TEXT,
+                        version TEXT,
+                        kernel TEXT,
+                        arch TEXT,
+                        os_family TEXT,
+                        os_id TEXT,
+                        pretty_name TEXT,
+                        scan_date TEXT)''')
+
+    # Authenticated scan: installed software inventory
+    cursor.execute('''CREATE TABLE IF NOT EXISTS installed_software (
+                        id INTEGER PRIMARY KEY,
+                        ip TEXT,
+                        package_name TEXT,
+                        package_version TEXT,
+                        cpe TEXT,
+                        scan_date TEXT,
+                        UNIQUE(ip, package_name))''')
+
+    # Authenticated scan: CVE matches from NVD
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cve_matches (
+                        id INTEGER PRIMARY KEY,
+                        ip TEXT,
+                        cve_id TEXT,
+                        severity TEXT,
+                        cvss_score REAL,
+                        description TEXT,
+                        affected_cpe TEXT,
+                        scan_date TEXT,
+                        UNIQUE(ip, cve_id))''')
+
     # Create indexes for better query performance
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_scans_ip ON scans(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_vulns_ip ON vulnerabilities(ip)''')
@@ -434,6 +469,9 @@ def init_db():
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_assets_ip ON assets(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_fingerprints_ip ON fingerprints(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_fingerprints_port ON fingerprints(ip, port)''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_installed_software_ip ON installed_software(ip)''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_cve_matches_ip ON cve_matches(ip)''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_asset_os_ip ON asset_os_details(ip)''')
 
     conn.commit()
     conn.close()
@@ -596,6 +634,11 @@ def get_asset_details(ip):
         fp_summary = get_fingerprint_summary(ip)
         asset['fingerprints'] = fp_summary.get('technologies', [])
         asset['fingerprints_by_port'] = fp_summary.get('by_port', {})
+
+        # Get authenticated scan data
+        asset['auth_os'] = get_asset_os_details(ip)
+        asset['installed_software'] = get_installed_software(ip)
+        asset['cve_matches'] = get_cve_matches(ip)
 
         return asset
     except sqlite3.Error as e:
@@ -1482,5 +1525,94 @@ def get_vulnerability_summary():
     except sqlite3.Error as e:
         logger.error(f"Database error getting vulnerability summary: {e}")
         return {'total': 0, 'affected_hosts': 0, 'by_severity': {}}
+    finally:
+        conn.close()
+
+
+# ============== Authenticated Scan Storage ==============
+
+def store_auth_scan_results(ip, os_info, packages, cves):
+    """Store results from an authenticated SSH scan."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    scan_date = datetime.now().isoformat()
+
+    try:
+        # Store OS details
+        cursor.execute('''INSERT OR REPLACE INTO asset_os_details
+            (ip, distro, version, kernel, arch, os_family, os_id, pretty_name, scan_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (ip, os_info.get('distro'), os_info.get('version'), os_info.get('kernel'),
+             os_info.get('arch'), os_info.get('os_family'), os_info.get('os_id'),
+             os_info.get('pretty_name'), scan_date))
+
+        # Store packages
+        for pkg in packages:
+            cursor.execute('''INSERT OR REPLACE INTO installed_software
+                (ip, package_name, package_version, cpe, scan_date)
+                VALUES (?, ?, ?, ?, ?)''',
+                (ip, pkg['name'], pkg['version'], pkg.get('cpe', ''), scan_date))
+
+        # Store CVE matches
+        for cve in cves:
+            cursor.execute('''INSERT OR REPLACE INTO cve_matches
+                (ip, cve_id, severity, cvss_score, description, affected_cpe, scan_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (ip, cve['cve_id'], cve['severity'], cve.get('cvss_score'),
+                 cve.get('description', ''), cve.get('affected_cpe', ''), scan_date))
+
+        conn.commit()
+        logger.info(f"Stored auth scan: {ip} - OS: {os_info.get('distro')}, "
+                     f"{len(packages)} packages, {len(cves)} CVEs")
+    except sqlite3.Error as e:
+        logger.error(f"Database error storing auth scan for {ip}: {e}")
+    finally:
+        conn.close()
+
+
+def get_asset_os_details(ip):
+    """Get authenticated OS details for an asset."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT distro, version, kernel, arch, os_family, os_id, pretty_name, scan_date
+                          FROM asset_os_details WHERE ip = ?''', (ip,))
+        row = cursor.fetchone()
+        if row:
+            return {
+                'distro': row[0], 'version': row[1], 'kernel': row[2],
+                'arch': row[3], 'os_family': row[4], 'os_id': row[5],
+                'pretty_name': row[6], 'scan_date': row[7]
+            }
+        return None
+    finally:
+        conn.close()
+
+
+def get_installed_software(ip):
+    """Get installed software inventory for an asset."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT package_name, package_version, cpe, scan_date
+                          FROM installed_software WHERE ip = ?
+                          ORDER BY package_name''', (ip,))
+        return [{'name': r[0], 'version': r[1], 'cpe': r[2], 'scan_date': r[3]}
+                for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_cve_matches(ip):
+    """Get CVE matches for an asset from authenticated scanning."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT cve_id, severity, cvss_score, description, affected_cpe, scan_date
+                          FROM cve_matches WHERE ip = ?
+                          ORDER BY cvss_score DESC''', (ip,))
+        return [{'cve_id': r[0], 'severity': r[1], 'cvss_score': r[2],
+                 'description': r[3], 'affected_cpe': r[4], 'scan_date': r[5]}
+                for r in cursor.fetchall()]
     finally:
         conn.close()

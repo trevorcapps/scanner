@@ -17,8 +17,10 @@ from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_
                        DB_PATH, dns_lookup, get_os_info_from_scan, store_asset_info,
                        get_asset_details, get_fingerprints, get_fingerprint_summary,
                        store_fingerprints, store_fpx_results, get_fingerprint_engine,
-                       fpx_check_installed)
+                       fpx_check_installed, store_auth_scan_results,
+                       get_asset_os_details, get_installed_software, get_cve_matches)
 from fingerprint.fpx import scan_host as fpx_scan_host
+from auth_scan import run_authenticated_scan
 
 # Configure logging
 logging.basicConfig(
@@ -832,6 +834,108 @@ def handle_start_vuln_scan(data):
 
     logger.info(f"Received Nuclei vulnerability scan request for {target} from session {sid} with options: {scan_options}")
     thread = threading.Thread(target=vuln_scan_target, args=(target, sid, scan_options))
+    thread.daemon = True
+    thread.start()
+
+
+@app.route('/api/asset/<ip>/auth-details')
+def get_asset_auth_details(ip):
+    """Get authenticated scan details: OS info, installed software, CVE matches."""
+    try:
+        if not validate_ip(ip):
+            return {'error': 'Invalid IP address'}, 400
+
+        os_details = get_asset_os_details(ip)
+        software = get_installed_software(ip)
+        cves = get_cve_matches(ip)
+
+        return {
+            'os_details': os_details,
+            'software': software,
+            'software_count': len(software),
+            'cves': cves,
+            'cve_count': len(cves)
+        }
+    except Exception as e:
+        logger.error(f"Error getting auth details for {ip}: {e}")
+        return {'error': str(e)}, 500
+
+
+@socketio.on('start_auth_scan')
+def handle_start_auth_scan(data):
+    """Handle authenticated SSH scan request."""
+    target = data.get('ip', '').strip()
+    sid = request.sid
+
+    if not target:
+        emit('scan_error', {'error': 'IP address is required'})
+        return
+
+    if not validate_ip(target):
+        emit('scan_error', {'error': 'Invalid IP address'})
+        return
+
+    # Extract credentials
+    cred_type = data.get('cred_type', 'ssh_key')
+    username = data.get('username', 'root')
+    password = data.get('password', '')
+    key_path = data.get('key_path', '')
+    ssh_port = int(data.get('ssh_port', 22))
+    nvd_api_key = data.get('nvd_api_key', '') or None
+
+    if cred_type == 'ssh_password' and not password:
+        emit('scan_error', {'error': 'Password is required for password authentication'})
+        return
+    if cred_type == 'ssh_key' and not key_path:
+        emit('scan_error', {'error': 'Key path is required for key authentication'})
+        return
+
+    def run_scan(ip, sid):
+        try:
+            socketio.emit('scan_progress', {
+                'status': 'running',
+                'message': f'Authenticated scan on {ip}...',
+                'current': 1, 'total': 1, 'ip': ip
+            }, room=sid)
+
+            def log_cb(msg, level='info'):
+                emit_log(sid, msg, level)
+
+            result = run_authenticated_scan(
+                host=ip, port=ssh_port, username=username,
+                password=password if cred_type == 'ssh_password' else None,
+                key_path=key_path if cred_type == 'ssh_key' else None,
+                nvd_api_key=nvd_api_key, log_callback=log_cb
+            )
+
+            # Store results
+            store_auth_scan_results(ip, result['os_info'], result['packages'], result['cves'])
+            emit_log(sid, f'Stored results: {len(result["packages"])} packages, {len(result["cves"])} CVEs', 'success')
+
+            socketio.emit('auth_scan_complete', {
+                'ip': ip,
+                'os_info': result['os_info'],
+                'package_count': len(result['packages']),
+                'cve_count': len(result['cves']),
+                'success': True
+            }, room=sid)
+
+        except Exception as e:
+            logger.error(f"Auth scan error for {ip}: {e}")
+            emit_log(sid, f'Auth scan error: {e}', 'error')
+            socketio.emit('scan_error', {'error': str(e)}, room=sid)
+        finally:
+            with scan_lock:
+                if sid in active_scans:
+                    del active_scans[sid]
+
+    # Mask credentials in log
+    emit_log(sid, f'Starting authenticated scan: {target}:{ssh_port} as {username} ({cred_type})', 'info')
+
+    with scan_lock:
+        active_scans[sid] = {'type': 'auth_scan', 'target': target, 'cancelled': False}
+
+    thread = threading.Thread(target=run_scan, args=(target, sid))
     thread.daemon = True
     thread.start()
 

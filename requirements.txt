@@ -4,3 +4,4 @@ wtforms
 python-nmap
 matplotlib
 flask_socketio
+paramiko
