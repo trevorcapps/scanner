@@ -600,16 +600,28 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '<div class="asset-modal-section full-width">';
             html += '<div class="asset-section-title">Known Vulnerabilities - CVE Matches (' + asset.cve_matches.length + ')</div>';
             html += '<table class="asset-ports-table">';
-            html += '<thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Affected Package</th><th>Description</th></tr></thead>';
+            html += '<thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Exploit</th><th>Affected Package</th><th>Description</th></tr></thead>';
             html += '<tbody>';
             asset.cve_matches.forEach(function(cve) {
-                html += '<tr>';
+                html += '<tr' + (cve.has_exploit ? ' class="exploit-row"' : '') + '>';
                 html += '<td><a href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(cve.cve_id) + '" target="_blank" rel="noopener" class="cve-link">' + escapeHtml(cve.cve_id) + '</a></td>';
                 html += '<td><span class="severity-badge ' + (cve.severity || 'info') + '">' + (cve.severity || 'N/A').toUpperCase() + '</span></td>';
                 html += '<td>';
                 if (cve.cvss_score !== null && cve.cvss_score !== undefined) {
                     var cvssClass = cve.cvss_score >= 9.0 ? 'critical' : (cve.cvss_score >= 7.0 ? 'high' : (cve.cvss_score >= 4.0 ? 'medium' : 'low'));
                     html += '<span class="cvss-badge ' + cvssClass + '">' + cve.cvss_score.toFixed(1) + '</span>';
+                } else {
+                    html += '-';
+                }
+                html += '</td>';
+                // Exploit column
+                html += '<td>';
+                if (cve.has_exploit) {
+                    if (cve.exploit_url) {
+                        html += '<a href="' + escapeHtml(cve.exploit_url) + '" target="_blank" rel="noopener" class="exploit-link" title="Public exploit available on ExploitDB">⚠️ Exploit</a>';
+                    } else {
+                        html += '<span class="exploit-badge" title="Public exploit available">⚠️</span>';
+                    }
                 } else {
                     html += '-';
                 }
@@ -1470,7 +1482,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         var vulnClass = vulnCounts.critical > 0 ? 'critical' : (vulnCounts.high > 0 ? 'high' : 'medium');
 
                         html += '<tr>';
-                        html += '<td class="asset-ip-cell"><strong>' + asset.ip + '</strong></td>';
+                        var listDisplayName = asset.hostname ? (escapeHtml(asset.hostname) + ' <span class="text-muted">(' + asset.ip + ')</span>') : asset.ip;
+                        html += '<td class="asset-ip-cell"><strong>' + listDisplayName + '</strong></td>';
                         html += '<td>' + (asset.device_icon || '') + ' ' + escapeHtml(asset.device_type || '') + '</td>';
                         html += '<td>' + escapeHtml(asset.hostname || asset.reverse_dns || '') + '</td>';
                         html += '<td>' + asset.port_count + '</td>';
@@ -1508,7 +1521,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (asset.device_icon) {
                             html += '<span class="asset-device-icon" title="' + escapeHtml(asset.device_type || '') + '">' + asset.device_icon + '</span>';
                         }
-                        html += '<span class="asset-ip">' + asset.ip + '</span>';
+                        if (asset.hostname) {
+                            html += '<span class="asset-ip">' + escapeHtml(asset.hostname) + ' <span class="text-muted">(' + asset.ip + ')</span></span>';
+                        } else {
+                            html += '<span class="asset-ip">' + asset.ip + '</span>';
+                        }
                         html += '</div>';
                         html += '<div class="asset-badges">';
                         if (asset.device_type && asset.device_type !== 'unknown') {
@@ -1522,9 +1539,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         html += '</div>';
                         html += '</div>';
 
-                        // Hostname / reverse DNS
-                        if (asset.hostname || asset.reverse_dns) {
-                            html += '<div class="asset-hostname-line">' + escapeHtml(asset.hostname || asset.reverse_dns) + '</div>';
+                        // Reverse DNS (only show if different from hostname)
+                        if (!asset.hostname && (asset.reverse_dns)) {
+                            html += '<div class="asset-hostname-line">' + escapeHtml(asset.reverse_dns) + '</div>';
                         }
                         if (asset.mac_address) {
                             html += '<div class="asset-mac-line">' + escapeHtml(asset.mac_address) + (asset.mac_vendor ? ' (' + escapeHtml(asset.mac_vendor) + ')' : '') + '</div>';

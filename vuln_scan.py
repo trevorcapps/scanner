@@ -508,6 +508,9 @@ def init_db():
                         cvss_score REAL,
                         description TEXT,
                         affected_cpe TEXT,
+                        has_exploit INTEGER DEFAULT 0,
+                        exploit_ids TEXT,
+                        exploit_url TEXT,
                         scan_date TEXT,
                         UNIQUE(ip, cve_id))''')
 
@@ -538,6 +541,18 @@ def init_db():
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_cve_matches_ip ON cve_matches(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_asset_os_ip ON asset_os_details(ip)''')
 
+    # Add exploit columns to cve_matches if missing (migration for existing DBs)
+    try:
+        cursor.execute("PRAGMA table_info(cve_matches)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        for col, typedef in [('has_exploit', 'INTEGER DEFAULT 0'),
+                             ('exploit_ids', 'TEXT'),
+                             ('exploit_url', 'TEXT')]:
+            if col not in existing_cols:
+                cursor.execute(f'ALTER TABLE cve_matches ADD COLUMN {col} {typedef}')
+    except Exception as e:
+        logger.debug(f"Column migration check: {e}")
+
     conn.commit()
     conn.close()
 
@@ -547,6 +562,13 @@ def init_db():
         init_nvd_tables(DB_PATH)
     except Exception as e:
         logger.warning(f"Could not initialize NVD tables: {e}")
+
+    # Initialize CPE dictionary tables
+    try:
+        from cpe_dict import init_cpe_tables
+        init_cpe_tables(DB_PATH)
+    except Exception as e:
+        logger.warning(f"Could not initialize CPE tables: {e}")
 
 # Function to store scan results in the database
 def store_scan(ip, scan_results):
@@ -1625,13 +1647,17 @@ def store_auth_scan_results(ip, os_info, packages, cves):
                 VALUES (?, ?, ?, ?, ?)''',
                 (ip, pkg['name'], pkg['version'], pkg.get('cpe', ''), scan_date))
 
-        # Store CVE matches
+        # Store CVE matches (with exploit cross-reference)
         for cve in cves:
             cursor.execute('''INSERT OR REPLACE INTO cve_matches
-                (ip, cve_id, severity, cvss_score, description, affected_cpe, scan_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (ip, cve_id, severity, cvss_score, description, affected_cpe,
+                 has_exploit, exploit_ids, exploit_url, scan_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (ip, cve['cve_id'], cve['severity'], cve.get('cvss_score'),
-                 cve.get('description', ''), cve.get('affected_cpe', ''), scan_date))
+                 cve.get('description', ''), cve.get('affected_cpe', ''),
+                 1 if cve.get('has_exploit') else 0,
+                 cve.get('exploit_ids', ''), cve.get('exploit_url', ''),
+                 scan_date))
 
         conn.commit()
         logger.info(f"Stored auth scan: {ip} - OS: {os_info.get('distro')}, "
@@ -1680,11 +1706,14 @@ def get_cve_matches(ip):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute('''SELECT cve_id, severity, cvss_score, description, affected_cpe, scan_date
+        cursor.execute('''SELECT cve_id, severity, cvss_score, description, affected_cpe,
+                          has_exploit, exploit_ids, exploit_url, scan_date
                           FROM cve_matches WHERE ip = ?
-                          ORDER BY cvss_score DESC''', (ip,))
+                          ORDER BY has_exploit DESC, cvss_score DESC''', (ip,))
         return [{'cve_id': r[0], 'severity': r[1], 'cvss_score': r[2],
-                 'description': r[3], 'affected_cpe': r[4], 'scan_date': r[5]}
+                 'description': r[3], 'affected_cpe': r[4],
+                 'has_exploit': bool(r[5]), 'exploit_ids': r[6] or '',
+                 'exploit_url': r[7] or '', 'scan_date': r[8]}
                 for r in cursor.fetchall()]
     finally:
         conn.close()

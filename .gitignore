@@ -4,5 +4,7 @@ __pycache__/
 env/
 venv/
 vuln_scan.db
+vuln_scan.db-journal
 tmp.json
 scan_network.py
+vulscan/

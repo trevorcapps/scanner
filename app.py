@@ -26,6 +26,10 @@ from fingerprint.fpx import scan_host as fpx_scan_host
 from auth_scan import run_authenticated_scan
 from device_type import get_device_icon, DEVICE_TYPE_ICONS
 from nvd_feeds import sync_nvd_database, get_nvd_sync_status
+from fingerprint.wap_engine import analyze_response as wap_analyze, get_wappalyzer
+from fingerprint.jarm import scan_host_tls_ports as jarm_scan
+from vulscan_integration import is_vulscan_available, get_vulscan_nmap_args, parse_vulscan_output, store_vulscan_results
+from exploit_ref import enrich_cves_with_exploits, ensure_exploit_db
 
 # Configure logging
 logging.basicConfig(
@@ -451,6 +455,86 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             except Exception as e:
                 logger.error(f"fingerprintx error for {ip}: {e}")
                 emit_log(sid, f'fingerprintx error: {e}', 'warning')
+
+            # Wappalyzer web technology detection
+            try:
+                wap = get_wappalyzer()
+                if wap:
+                    emit_log(sid, f'Running Wappalyzer technology detection on {ip}', 'debug')
+                    wap_stored = 0
+                    for port_info in ports_for_fp:
+                        port_num = port_info['port']
+                        service = port_info.get('service', '')
+                        if service in ('http', 'https', 'http-proxy') or port_num in (80, 443, 8080, 8443):
+                            scheme = 'https' if port_num == 443 or service == 'https' else 'http'
+                            url = f"{scheme}://{ip}:{port_num}"
+                            try:
+                                import urllib.request
+                                req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+                                with urllib.request.urlopen(req, timeout=5) as resp:
+                                    html = resp.read().decode('utf-8', errors='replace')
+                                    headers = dict(resp.headers)
+                                wap_results = wap_analyze(url, html, headers)
+                                if wap_results:
+                                    # Store as fingerprints
+                                    from vuln_scan import store_fingerprints as _store_fp
+                                    from fingerprint.engine import FingerprintResult, FingerprintMatch
+                                    for wr in wap_results:
+                                        cat = wr['categories'][0] if wr.get('categories') else 'web-technology'
+                                        sig_id = f"wap-{wr['name'].lower().replace(' ', '-')}"
+                                        conn = __import__('sqlite3').connect(DB_PATH)
+                                        cur = conn.cursor()
+                                        cur.execute('''INSERT OR REPLACE INTO fingerprints
+                                            (ip, port, protocol, signature_id, name, category, vendor,
+                                             version, cpe, confidence, evidence_json,
+                                             tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                                             http_title, http_server, favicon_hash, scan_date)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                            (ip, port_num, 'tcp', sig_id, wr['name'], cat, '',
+                                             wr.get('version'), None, wr.get('confidence', 100),
+                                             json.dumps(['wappalyzer']),
+                                             None, None, None, 0, '', '', None,
+                                             datetime.now().isoformat()))
+                                        conn.commit()
+                                        conn.close()
+                                        wap_stored += 1
+                                    emit_log(sid, f'  Wappalyzer found {len(wap_results)} tech(s) on port {port_num}', 'info')
+                            except Exception as e:
+                                logger.debug(f"Wappalyzer HTTP fetch error for {ip}:{port_num}: {e}")
+                    if wap_stored:
+                        emit_log(sid, f'Wappalyzer: detected {wap_stored} web technologies on {ip}', 'success')
+            except Exception as e:
+                logger.debug(f"Wappalyzer error for {ip}: {e}")
+
+            # JARM TLS fingerprinting
+            try:
+                emit_log(sid, f'Running JARM TLS fingerprinting on {ip}', 'debug')
+                def jarm_log(msg):
+                    emit_log(sid, msg, 'debug')
+                jarm_results = jarm_scan(ip, ports_for_fp, timeout=10, log_callback=jarm_log)
+                if jarm_results:
+                    import sqlite3 as _sq3
+                    conn = _sq3.connect(DB_PATH)
+                    cur = conn.cursor()
+                    for jr in jarm_results:
+                        sig_id = f"jarm-{jr['port']}"
+                        name = jr.get('identified_as') or 'TLS Fingerprint'
+                        cur.execute('''INSERT OR REPLACE INTO fingerprints
+                            (ip, port, protocol, signature_id, name, category, vendor,
+                             version, cpe, confidence, evidence_json,
+                             tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                             http_title, http_server, favicon_hash, scan_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                            (ip, jr['port'], 'tcp', sig_id, name, 'tls-fingerprint', '',
+                             None, None, 70 if jr.get('identified_as') else 50,
+                             json.dumps([f"jarm:{jr['jarm_hash']}"]),
+                             None, None, None, 0, '', '', None,
+                             datetime.now().isoformat()))
+                    conn.commit()
+                    conn.close()
+                    emit_log(sid, f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {ip}', 'success')
+            except Exception as e:
+                logger.debug(f"JARM error for {ip}: {e}")
 
             # Classify device type using all available signals
             try:
@@ -890,6 +974,18 @@ def get_asset_auth_details(ip):
         software = get_installed_software(ip)
         cves = get_cve_matches(ip)
 
+        # Enrich CVEs with exploit info if not already present
+        for cve in cves:
+            if not cve.get('has_exploit') and cve.get('cve_id'):
+                try:
+                    from exploit_ref import lookup_exploits
+                    info = lookup_exploits(cve['cve_id'])
+                    cve['has_exploit'] = info['has_exploit']
+                    cve['exploit_ids'] = ','.join(info['exploit_ids'])
+                    cve['exploit_url'] = info['exploit_urls'][0] if info['exploit_urls'] else ''
+                except Exception:
+                    pass
+
         return {
             'os_details': os_details,
             'software': software,
@@ -979,6 +1075,22 @@ def handle_start_nvd_sync(data):
     def run_sync():
         try:
             sync_nvd_database(socketio=socketio, api_key=api_key, full_sync=full_sync)
+
+            # Also sync CPE dictionary
+            try:
+                from cpe_dict import sync_cpe_dictionary
+                socketio.emit('nvd_sync_progress', {'status': 'running', 'message': 'Syncing CPE dictionary...'})
+                sync_cpe_dictionary(socketio=socketio)
+            except Exception as e:
+                logger.warning(f"CPE dictionary sync error: {e}")
+
+            # Update ExploitDB mapping
+            try:
+                ensure_exploit_db()
+                socketio.emit('nvd_sync_progress', {'status': 'running', 'message': 'ExploitDB mapping updated'})
+            except Exception as e:
+                logger.warning(f"ExploitDB update error: {e}")
+
         except Exception as e:
             logger.error(f"NVD sync error: {e}")
             socketio.emit('nvd_sync_progress', {'status': 'error', 'message': str(e)})

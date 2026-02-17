@@ -3476,3 +3476,27 @@ tr.vuln-info {
     font-weight: 500;
     text-transform: capitalize;
 }
+
+/* Exploit indicators */
+.exploit-row {
+    background-color: rgba(255, 0, 0, 0.05) !important;
+}
+.exploit-link {
+    color: #dc3545;
+    font-weight: 600;
+    text-decoration: none;
+}
+.exploit-link:hover {
+    text-decoration: underline;
+}
+.exploit-badge {
+    font-size: 1.1em;
+}
+
+/* JARM hash display */
+.jarm-hash {
+    font-family: monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: var(--text-secondary);
+}

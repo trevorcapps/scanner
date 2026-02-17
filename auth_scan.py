@@ -334,6 +334,20 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
     finally:
         client.close()
 
+    # Try to improve CPE accuracy using CPE dictionary (fuzzy matching)
+    try:
+        from cpe_dict import search_cpe
+        improved = 0
+        for pkg in packages:
+            better_cpe = search_cpe(pkg['name'], pkg['version'])
+            if better_cpe:
+                pkg['cpe'] = better_cpe
+                improved += 1
+        if improved > 0:
+            log(f'Improved {improved} CPEs via dictionary lookup', 'debug')
+    except Exception as e:
+        log(f'CPE dictionary lookup unavailable: {e}', 'debug')
+
     # Query NVD for CVE matches (outside SSH session)
     cves = []
     if packages:
@@ -391,6 +405,18 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
                     log(f'  NVD query error for {pkg["name"]}: {e}', 'debug')
 
         log(f'NVD lookup complete: {len(cves)} total CVE matches', 'success' if not cves else 'warning')
+
+    # Cross-reference CVEs with ExploitDB
+    if cves:
+        try:
+            from exploit_ref import enrich_cves_with_exploits
+            log(f'Cross-referencing {len(cves)} CVEs with ExploitDB...', 'info')
+            cves = enrich_cves_with_exploits(cves)
+            exploit_count = sum(1 for c in cves if c.get('has_exploit'))
+            if exploit_count:
+                log(f'⚠️ {exploit_count} CVE(s) have known public exploits!', 'warning')
+        except Exception as e:
+            log(f'ExploitDB cross-reference unavailable: {e}', 'debug')
 
     return {
         'os_info': os_info,
