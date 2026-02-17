@@ -5,3 +5,4 @@ env/
 venv/
 vuln_scan.db
 tmp.json
+scan_network.py

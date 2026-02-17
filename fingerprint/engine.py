@@ -393,7 +393,7 @@ class FingerprintEngine:
             for resp_header, resp_value in headers.items():
                 if resp_header.lower() == header_name.lower():
                     if re.search(pattern, resp_value, re.IGNORECASE):
-                        confidence += 30
+                        confidence += 40
                         hit_count += 1
                         evidence.append(f'header:{resp_header}={resp_value[:80]}')
                     break
@@ -408,13 +408,13 @@ class FingerprintEngine:
                     evidence.append(f'html_match:{pattern[:50]}')
         if html_hits > 0:
             # More hits = more confidence, but diminishing returns
-            confidence += min(15 + (html_hits * 10), 40)
+            confidence += min(20 + (html_hits * 12), 50)
             hit_count += html_hits
 
         # ── Favicon hash matching ───────────────────────────────────────
         favicon_hashes = matches.get('favicon_hashes', [])
         if favicon_hash is not None and favicon_hash in favicon_hashes:
-            confidence += 40
+            confidence += 50
             hit_count += 1
             evidence.append(f'favicon_hash:{favicon_hash}')
 
@@ -427,7 +427,7 @@ class FingerprintEngine:
         ]))
         for pattern in tls_org_patterns:
             if tls_orgs and re.search(pattern, tls_orgs, re.IGNORECASE):
-                confidence += 25
+                confidence += 35
                 hit_count += 1
                 evidence.append(f'tls_org:{pattern}')
                 break
@@ -442,14 +442,14 @@ class FingerprintEngine:
 
         for pattern in banner_patterns:
             if re.search(pattern, banner_text, re.IGNORECASE):
-                confidence += 30
+                confidence += 40
                 hit_count += 1
                 evidence.append(f'banner:{banner_text[:80]}')
                 break
 
         nmap_services = matches.get('nmap_services', [])
         if nmap_service in nmap_services:
-            confidence += 25
+            confidence += 30
             hit_count += 1
             evidence.append(f'nmap_service:{nmap_service}')
 
@@ -499,12 +499,18 @@ class FingerprintEngine:
         base = sig.get('confidence_base', 50)
         # Scale: multiple detection methods increase confidence
         if hit_count >= 3:
+            confidence += 15
+        if hit_count >= 5:
             confidence += 10
         if version:
-            confidence += 5
+            confidence += 10
 
-        # Normalize to 0-100 range, weighted by base confidence
-        final_confidence = min(int((confidence / 100) * base), 100)
+        # Normalize: confidence is raw points, scale relative to base
+        # A single strong signal (40pts) with base 90 = 36% → too low
+        # Instead: treat confidence as a percentage of "max possible"
+        # and blend with base confidence
+        raw_pct = min(confidence / 80, 1.0)  # 80 points = full confidence
+        final_confidence = min(int(raw_pct * base), 100)
 
         # Build CPE string if we have a prefix and version
         cpe = None

@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Cerebus endpoint fingerprint signatures",
-    "last_updated": "2026-02-16"
+    "last_updated": "2026-02-17"
   },
   "signatures": [
     {
@@ -112,12 +112,19 @@
         "headers": {
           "Server": "Apache-Coyote"
         },
-        "html_patterns": ["Apache Tomcat", "Tomcat Manager", "tomcat\\.css"],
+        "html_patterns": [
+          "Apache Tomcat",
+          "Tomcat Manager",
+          "tomcat\\.css"
+        ],
         "version_patterns": {
           "headers": {
             "Server": "Apache-Coyote/([\\d.]+)"
           },
-          "html": ["Apache Tomcat/([\\d.]+)", "Tomcat Version ([\\d.]+)"]
+          "html": [
+            "Apache Tomcat/([\\d.]+)",
+            "Tomcat Version ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -222,9 +229,14 @@
         "headers": {
           "Link": "wp-json"
         },
-        "url_paths": ["/wp-login.php", "/wp-admin/"],
+        "url_paths": [
+          "/wp-login.php",
+          "/wp-admin/"
+        ],
         "version_patterns": {
-          "html": ["<meta name=\"generator\" content=\"WordPress ([\\d.]+)\""]
+          "html": [
+            "<meta name=\"generator\" content=\"WordPress ([\\d.]+)\""
+          ]
         }
       },
       "confidence_base": 85
@@ -236,7 +248,12 @@
       "vendor": "Drupal",
       "cpe_prefix": "cpe:2.3:a:drupal:drupal",
       "matches": {
-        "html_patterns": ["Drupal\\.settings", "drupal\\.js", "sites/default/files", "drupal-"],
+        "html_patterns": [
+          "Drupal\\.settings",
+          "drupal\\.js",
+          "sites/default/files",
+          "drupal-"
+        ],
         "headers": {
           "X-Generator": "Drupal",
           "X-Drupal-Cache": ".*"
@@ -251,7 +268,11 @@
       "vendor": "Joomla",
       "cpe_prefix": "cpe:2.3:a:joomla:joomla\\!",
       "matches": {
-        "html_patterns": ["/media/jui/", "Joomla!", "/administrator/"],
+        "html_patterns": [
+          "/media/jui/",
+          "Joomla!",
+          "/administrator/"
+        ],
         "headers": {
           "X-Content-Encoded-By": "Joomla"
         }
@@ -265,10 +286,20 @@
       "vendor": "Grafana Labs",
       "cpe_prefix": "cpe:2.3:a:grafana:grafana",
       "matches": {
-        "html_patterns": ["grafana-app", "\"appTitle\":\"Grafana\"", "grafana\\.css"],
-        "url_paths": ["/api/health", "/login"],
+        "html_patterns": [
+          "grafana-app",
+          "\"appTitle\":\"Grafana\"",
+          "grafana\\.css"
+        ],
+        "url_paths": [
+          "/api/health",
+          "/login"
+        ],
         "version_patterns": {
-          "html": ["Grafana v([\\d.]+)", "\"version\":\"([\\d.]+)\""]
+          "html": [
+            "Grafana v([\\d.]+)",
+            "\"version\":\"([\\d.]+)\""
+          ]
         }
       },
       "confidence_base": 85
@@ -280,9 +311,14 @@
       "vendor": "Elastic",
       "cpe_prefix": "cpe:2.3:a:elastic:kibana",
       "matches": {
-        "html_patterns": ["kbn-injected-metadata", "kibana"],
+        "html_patterns": [
+          "kbn-injected-metadata",
+          "kibana"
+        ],
         "version_patterns": {
-          "html": ["\"version\":\"([\\d.]+)\""]
+          "html": [
+            "\"version\":\"([\\d.]+)\""
+          ]
         }
       },
       "confidence_base": 80
@@ -294,9 +330,14 @@
       "vendor": "Elastic",
       "cpe_prefix": "cpe:2.3:a:elastic:elasticsearch",
       "matches": {
-        "html_patterns": ["\"cluster_name\"", "\"tagline\" : \"You Know, for Search\""],
+        "html_patterns": [
+          "\"cluster_name\"",
+          "\"tagline\" : \"You Know, for Search\""
+        ],
         "version_patterns": {
-          "html": ["\"number\" : \"([\\d.]+)\""]
+          "html": [
+            "\"number\" : \"([\\d.]+)\""
+          ]
         }
       },
       "confidence_base": 95
@@ -312,7 +353,11 @@
           "X-Jenkins": ".*",
           "X-Hudson": ".*"
         },
-        "html_patterns": ["Dashboard \\[Jenkins\\]", "jenkins\\.css", "/jenkins/"],
+        "html_patterns": [
+          "Dashboard \\[Jenkins\\]",
+          "jenkins\\.css",
+          "/jenkins/"
+        ],
         "version_patterns": {
           "headers": {
             "X-Jenkins": "([\\d.]+)"
@@ -328,7 +373,11 @@
       "vendor": "GitLab",
       "cpe_prefix": "cpe:2.3:a:gitlab:gitlab",
       "matches": {
-        "html_patterns": ["gon\\.gitlab", "GitLab", "gitlab-logo"],
+        "html_patterns": [
+          "gon\\.gitlab",
+          "GitLab",
+          "gitlab-logo"
+        ],
         "headers": {
           "X-GitLab-Custom-Error": ".*"
         }
@@ -342,9 +391,14 @@
       "vendor": "SonarSource",
       "cpe_prefix": "cpe:2.3:a:sonarsource:sonarqube",
       "matches": {
-        "html_patterns": ["SonarQube", "sonar\\.css"],
+        "html_patterns": [
+          "SonarQube",
+          "sonar\\.css"
+        ],
         "version_patterns": {
-          "html": ["SonarQube ([\\d.]+)"]
+          "html": [
+            "SonarQube ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -356,9 +410,17 @@
       "vendor": "Palo Alto Networks",
       "cpe_prefix": "cpe:2.3:o:paloaltonetworks:pan-os",
       "matches": {
-        "html_patterns": ["Palo Alto Networks", "/php/login\\.php", "pan-os"],
-        "tls_org_patterns": ["Palo Alto"],
-        "favicon_hashes": [-1067007053]
+        "html_patterns": [
+          "Palo Alto Networks",
+          "/php/login\\.php",
+          "pan-os"
+        ],
+        "tls_org_patterns": [
+          "Palo Alto"
+        ],
+        "favicon_hashes": [
+          -1067007053
+        ]
       },
       "confidence_base": 85
     },
@@ -369,12 +431,20 @@
       "vendor": "Fortinet",
       "cpe_prefix": "cpe:2.3:o:fortinet:fortios",
       "matches": {
-        "html_patterns": ["FortiGate", "fortinet", "fgt_lang"],
+        "html_patterns": [
+          "FortiGate",
+          "fortinet",
+          "fgt_lang"
+        ],
         "headers": {
           "Server": "xxxxxxxx-xxxxx"
         },
-        "tls_org_patterns": ["Fortinet"],
-        "favicon_hashes": [945408572]
+        "tls_org_patterns": [
+          "Fortinet"
+        ],
+        "favicon_hashes": [
+          945408572
+        ]
       },
       "confidence_base": 85
     },
@@ -385,8 +455,14 @@
       "vendor": "Cisco",
       "cpe_prefix": "cpe:2.3:o:cisco:adaptive_security_appliance_software",
       "matches": {
-        "html_patterns": ["webvpn", "Cisco Adaptive Security", "ASDM"],
-        "tls_org_patterns": ["Cisco"]
+        "html_patterns": [
+          "webvpn",
+          "Cisco Adaptive Security",
+          "ASDM"
+        ],
+        "tls_org_patterns": [
+          "Cisco"
+        ]
       },
       "confidence_base": 80
     },
@@ -397,8 +473,14 @@
       "vendor": "Sophos",
       "cpe_prefix": "cpe:2.3:a:sophos:xg_firewall",
       "matches": {
-        "html_patterns": ["Sophos", "cyberoam", "SFOS"],
-        "tls_org_patterns": ["Sophos"]
+        "html_patterns": [
+          "Sophos",
+          "cyberoam",
+          "SFOS"
+        ],
+        "tls_org_patterns": [
+          "Sophos"
+        ]
       },
       "confidence_base": 80
     },
@@ -409,11 +491,21 @@
       "vendor": "VMware",
       "cpe_prefix": "cpe:2.3:a:vmware:vcenter_server",
       "matches": {
-        "html_patterns": ["vSphere Client", "VMware vCenter", "vmware-vsphere"],
-        "url_paths": ["/ui/"],
-        "tls_org_patterns": ["VMware"],
+        "html_patterns": [
+          "vSphere Client",
+          "VMware vCenter",
+          "vmware-vsphere"
+        ],
+        "url_paths": [
+          "/ui/"
+        ],
+        "tls_org_patterns": [
+          "VMware"
+        ],
         "version_patterns": {
-          "html": ["VMware vCenter Server ([\\d.]+)"]
+          "html": [
+            "VMware vCenter Server ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -425,10 +517,18 @@
       "vendor": "VMware",
       "cpe_prefix": "cpe:2.3:o:vmware:esxi",
       "matches": {
-        "html_patterns": ["VMware ESXi", "esxui", "ID_EESX_Welcome"],
-        "tls_org_patterns": ["VMware"],
+        "html_patterns": [
+          "VMware ESXi",
+          "esxui",
+          "ID_EESX_Welcome"
+        ],
+        "tls_org_patterns": [
+          "VMware"
+        ],
         "version_patterns": {
-          "html": ["ESXi ([\\d.]+)"]
+          "html": [
+            "ESXi ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -440,10 +540,18 @@
       "vendor": "Proxmox",
       "cpe_prefix": "cpe:2.3:a:proxmox:virtual_environment",
       "matches": {
-        "html_patterns": ["Proxmox", "pvemanager", "PVE\\."],
-        "tls_org_patterns": ["Proxmox"],
+        "html_patterns": [
+          "Proxmox",
+          "pvemanager",
+          "PVE\\."
+        ],
+        "tls_org_patterns": [
+          "Proxmox"
+        ],
         "version_patterns": {
-          "html": ["pvemanager/([\\d.]+)"]
+          "html": [
+            "pvemanager/([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -455,10 +563,18 @@
       "vendor": "Dell",
       "cpe_prefix": "cpe:2.3:a:dell:idrac",
       "matches": {
-        "html_patterns": ["iDRAC", "Dell Integrated", "restgui"],
-        "tls_org_patterns": ["Dell"],
+        "html_patterns": [
+          "iDRAC",
+          "Dell Integrated",
+          "restgui"
+        ],
+        "tls_org_patterns": [
+          "Dell"
+        ],
         "version_patterns": {
-          "html": ["iDRAC[\\s-]*([\\d]+)"]
+          "html": [
+            "iDRAC[\\s-]*([\\d]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -470,10 +586,19 @@
       "vendor": "HPE",
       "cpe_prefix": "cpe:2.3:a:hp:integrated_lights-out",
       "matches": {
-        "html_patterns": ["Integrated Lights-Out", "iLO [\\d]", "HP Integrated"],
-        "tls_org_patterns": ["Hewlett-Packard", "HPE"],
+        "html_patterns": [
+          "Integrated Lights-Out",
+          "iLO [\\d]",
+          "HP Integrated"
+        ],
+        "tls_org_patterns": [
+          "Hewlett-Packard",
+          "HPE"
+        ],
         "version_patterns": {
-          "html": ["iLO ([\\d]+)"]
+          "html": [
+            "iLO ([\\d]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -484,9 +609,18 @@
       "category": "network",
       "vendor": "Cisco",
       "matches": {
-        "html_patterns": ["Cisco Systems", "cisco-logo", "Level [0-9]+ Access"],
-        "tls_org_patterns": ["Cisco"],
-        "banner_patterns": ["Cisco IOS", "cisco"]
+        "html_patterns": [
+          "Cisco Systems",
+          "cisco-logo",
+          "Level [0-9]+ Access"
+        ],
+        "tls_org_patterns": [
+          "Cisco"
+        ],
+        "banner_patterns": [
+          "Cisco IOS",
+          "cisco"
+        ]
       },
       "confidence_base": 75
     },
@@ -496,8 +630,14 @@
       "category": "network",
       "vendor": "Ubiquiti",
       "matches": {
-        "html_patterns": ["UniFi", "ubiquiti", "ubnt"],
-        "tls_org_patterns": ["Ubiquiti"]
+        "html_patterns": [
+          "UniFi",
+          "ubiquiti",
+          "ubnt"
+        ],
+        "tls_org_patterns": [
+          "Ubiquiti"
+        ]
       },
       "confidence_base": 80
     },
@@ -508,8 +648,15 @@
       "vendor": "MikroTik",
       "cpe_prefix": "cpe:2.3:o:mikrotik:routeros",
       "matches": {
-        "html_patterns": ["RouterOS", "mikrotik", "webfig"],
-        "banner_patterns": ["MikroTik", "RouterOS"]
+        "html_patterns": [
+          "RouterOS",
+          "mikrotik",
+          "webfig"
+        ],
+        "banner_patterns": [
+          "MikroTik",
+          "RouterOS"
+        ]
       },
       "confidence_base": 85
     },
@@ -520,10 +667,19 @@
       "vendor": "Synology",
       "cpe_prefix": "cpe:2.3:a:synology:diskstation_manager",
       "matches": {
-        "html_patterns": ["Synology", "SYNO\\.SDS", "DiskStation"],
-        "tls_org_patterns": ["Synology"],
+        "html_patterns": [
+          "Synology",
+          "SYNO\\.SDS",
+          "DiskStation"
+        ],
+        "tls_org_patterns": [
+          "Synology"
+        ],
         "version_patterns": {
-          "html": ["DiskStation Manager ([\\d.]+)", "DSM ([\\d.]+)"]
+          "html": [
+            "DiskStation Manager ([\\d.]+)",
+            "DSM ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -535,8 +691,14 @@
       "vendor": "QNAP",
       "cpe_prefix": "cpe:2.3:o:qnap:qts",
       "matches": {
-        "html_patterns": ["QNAP", "QTS", "qnap\\.css"],
-        "tls_org_patterns": ["QNAP"]
+        "html_patterns": [
+          "QNAP",
+          "QTS",
+          "qnap\\.css"
+        ],
+        "tls_org_patterns": [
+          "QNAP"
+        ]
       },
       "confidence_base": 85
     },
@@ -547,11 +709,17 @@
       "vendor": "Citrix",
       "cpe_prefix": "cpe:2.3:a:citrix:netscaler",
       "matches": {
-        "html_patterns": ["NetScaler", "Citrix Gateway", "ns_\\."],
+        "html_patterns": [
+          "NetScaler",
+          "Citrix Gateway",
+          "ns_\\."
+        ],
         "headers": {
           "Set-Cookie": "NSC_"
         },
-        "tls_org_patterns": ["Citrix"]
+        "tls_org_patterns": [
+          "Citrix"
+        ]
       },
       "confidence_base": 85
     },
@@ -562,12 +730,18 @@
       "vendor": "F5",
       "cpe_prefix": "cpe:2.3:a:f5:big-ip",
       "matches": {
-        "html_patterns": ["BIG-IP", "F5 Networks", "tmui"],
+        "html_patterns": [
+          "BIG-IP",
+          "F5 Networks",
+          "tmui"
+        ],
         "headers": {
           "Server": "BigIP",
           "Set-Cookie": "BIGipServer"
         },
-        "tls_org_patterns": ["F5"]
+        "tls_org_patterns": [
+          "F5"
+        ]
       },
       "confidence_base": 85
     },
@@ -578,7 +752,10 @@
       "vendor": "HAProxy Technologies",
       "cpe_prefix": "cpe:2.3:a:haproxy:haproxy",
       "matches": {
-        "html_patterns": ["HAProxy", "Statistics Report for HAProxy"],
+        "html_patterns": [
+          "HAProxy",
+          "Statistics Report for HAProxy"
+        ],
         "headers": {
           "Server": "HAProxy"
         }
@@ -592,9 +769,14 @@
       "vendor": "VMware",
       "cpe_prefix": "cpe:2.3:a:pivotal_software:rabbitmq",
       "matches": {
-        "html_patterns": ["RabbitMQ Management", "rabbitmq"],
+        "html_patterns": [
+          "RabbitMQ Management",
+          "rabbitmq"
+        ],
         "version_patterns": {
-          "html": ["RabbitMQ ([\\d.]+)"]
+          "html": [
+            "RabbitMQ ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -606,9 +788,14 @@
       "vendor": "Apache",
       "cpe_prefix": "cpe:2.3:a:apache:couchdb",
       "matches": {
-        "html_patterns": ["CouchDB", "\"couchdb\":\"Welcome\""],
+        "html_patterns": [
+          "CouchDB",
+          "\"couchdb\":\"Welcome\""
+        ],
         "version_patterns": {
-          "html": ["\"version\":\"([\\d.]+)\""]
+          "html": [
+            "\"version\":\"([\\d.]+)\""
+          ]
         }
       },
       "confidence_base": 90
@@ -620,7 +807,10 @@
       "vendor": "MongoDB",
       "cpe_prefix": "cpe:2.3:a:mongodb:mongodb",
       "matches": {
-        "banner_patterns": ["MongoDB", "mongod"]
+        "banner_patterns": [
+          "MongoDB",
+          "mongod"
+        ]
       },
       "confidence_base": 80
     },
@@ -631,7 +821,10 @@
       "vendor": "Redis",
       "cpe_prefix": "cpe:2.3:a:redis:redis",
       "matches": {
-        "banner_patterns": ["redis_version", "Redis"]
+        "banner_patterns": [
+          "redis_version",
+          "Redis"
+        ]
       },
       "confidence_base": 85
     },
@@ -642,7 +835,10 @@
       "vendor": "Oracle",
       "cpe_prefix": "cpe:2.3:a:oracle:mysql",
       "matches": {
-        "banner_patterns": ["mysql", "MariaDB"]
+        "banner_patterns": [
+          "mysql",
+          "MariaDB"
+        ]
       },
       "confidence_base": 75
     },
@@ -653,7 +849,10 @@
       "vendor": "PostgreSQL",
       "cpe_prefix": "cpe:2.3:a:postgresql:postgresql",
       "matches": {
-        "banner_patterns": ["PostgreSQL", "postgres"]
+        "banner_patterns": [
+          "PostgreSQL",
+          "postgres"
+        ]
       },
       "confidence_base": 75
     },
@@ -664,7 +863,11 @@
       "vendor": "Microsoft",
       "cpe_prefix": "cpe:2.3:a:microsoft:sql_server",
       "matches": {
-        "banner_patterns": ["SQL Server", "MSSQL", "Microsoft SQL"]
+        "banner_patterns": [
+          "SQL Server",
+          "MSSQL",
+          "Microsoft SQL"
+        ]
       },
       "confidence_base": 80
     },
@@ -675,12 +878,20 @@
       "vendor": "Microsoft",
       "cpe_prefix": "cpe:2.3:a:microsoft:exchange_server",
       "matches": {
-        "html_patterns": ["Outlook Web App", "OWA", "/owa/", "Exchange"],
+        "html_patterns": [
+          "Outlook Web App",
+          "OWA",
+          "/owa/",
+          "Exchange"
+        ],
         "headers": {
           "X-OWA-Version": ".*",
           "X-FEServer": ".*"
         },
-        "url_paths": ["/owa/", "/ecp/"],
+        "url_paths": [
+          "/owa/",
+          "/ecp/"
+        ],
         "version_patterns": {
           "headers": {
             "X-OWA-Version": "([\\d.]+)"
@@ -696,9 +907,14 @@
       "vendor": "Roundcube",
       "cpe_prefix": "cpe:2.3:a:roundcube:webmail",
       "matches": {
-        "html_patterns": ["roundcube", "rcmain"],
+        "html_patterns": [
+          "roundcube",
+          "rcmain"
+        ],
         "version_patterns": {
-          "html": ["Roundcube Webmail ([\\d.]+)"]
+          "html": [
+            "Roundcube Webmail ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -710,9 +926,14 @@
       "vendor": "Zabbix",
       "cpe_prefix": "cpe:2.3:a:zabbix:zabbix",
       "matches": {
-        "html_patterns": ["Zabbix", "zabbix\\.php"],
+        "html_patterns": [
+          "Zabbix",
+          "zabbix\\.php"
+        ],
         "version_patterns": {
-          "html": ["Zabbix ([\\d.]+)"]
+          "html": [
+            "Zabbix ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -724,9 +945,14 @@
       "vendor": "Nagios",
       "cpe_prefix": "cpe:2.3:a:nagios:nagios",
       "matches": {
-        "html_patterns": ["Nagios", "nagios\\.css"],
+        "html_patterns": [
+          "Nagios",
+          "nagios\\.css"
+        ],
         "version_patterns": {
-          "html": ["Nagios[\\s®]* ([\\d.]+)"]
+          "html": [
+            "Nagios[\\s\u00ae]* ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -737,10 +963,17 @@
       "category": "monitoring",
       "vendor": "Prometheus",
       "matches": {
-        "html_patterns": ["Prometheus Time Series", "prometheus"],
-        "url_paths": ["/api/v1/status/config"],
+        "html_patterns": [
+          "Prometheus Time Series",
+          "prometheus"
+        ],
+        "url_paths": [
+          "/api/v1/status/config"
+        ],
         "version_patterns": {
-          "html": ["Prometheus ([\\d.]+)"]
+          "html": [
+            "Prometheus ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -752,9 +985,13 @@
       "vendor": "OpenBSD",
       "cpe_prefix": "cpe:2.3:a:openbsd:openssh",
       "matches": {
-        "banner_patterns": ["OpenSSH"],
+        "banner_patterns": [
+          "OpenSSH"
+        ],
         "version_patterns": {
-          "banner": ["OpenSSH[_\\s]([\\d.p]+)"]
+          "banner": [
+            "OpenSSH[_\\s]([\\d.p]+)"
+          ]
         }
       },
       "confidence_base": 95
@@ -765,8 +1002,13 @@
       "category": "remote-access",
       "vendor": "Microsoft",
       "matches": {
-        "banner_patterns": ["Microsoft Terminal", "Remote Desktop"],
-        "nmap_services": ["ms-wbt-server"]
+        "banner_patterns": [
+          "Microsoft Terminal",
+          "Remote Desktop"
+        ],
+        "nmap_services": [
+          "ms-wbt-server"
+        ]
       },
       "confidence_base": 85
     },
@@ -777,8 +1019,13 @@
       "vendor": "OpenVPN",
       "cpe_prefix": "cpe:2.3:a:openvpn:openvpn",
       "matches": {
-        "html_patterns": ["OpenVPN", "openvpn"],
-        "banner_patterns": ["OpenVPN"]
+        "html_patterns": [
+          "OpenVPN",
+          "openvpn"
+        ],
+        "banner_patterns": [
+          "OpenVPN"
+        ]
       },
       "confidence_base": 80
     },
@@ -788,7 +1035,9 @@
       "category": "vpn",
       "vendor": "WireGuard",
       "matches": {
-        "banner_patterns": ["WireGuard"]
+        "banner_patterns": [
+          "WireGuard"
+        ]
       },
       "confidence_base": 75
     },
@@ -798,11 +1047,18 @@
       "category": "web-framework",
       "vendor": "VMware",
       "matches": {
-        "html_patterns": ["Whitelabel Error Page", "\"timestamp\"", "spring"],
+        "html_patterns": [
+          "Whitelabel Error Page",
+          "\"timestamp\"",
+          "spring"
+        ],
         "headers": {
           "X-Application-Context": ".*"
         },
-        "url_paths": ["/actuator/health", "/actuator/info"]
+        "url_paths": [
+          "/actuator/health",
+          "/actuator/info"
+        ]
       },
       "confidence_base": 75
     },
@@ -812,7 +1068,11 @@
       "category": "web-framework",
       "vendor": "Django",
       "matches": {
-        "html_patterns": ["csrfmiddlewaretoken", "The install worked successfully", "__django__"],
+        "html_patterns": [
+          "csrfmiddlewaretoken",
+          "The install worked successfully",
+          "__django__"
+        ],
         "headers": {
           "Set-Cookie": "csrftoken"
         }
@@ -845,7 +1105,9 @@
         "headers": {
           "Set-Cookie": "laravel_session"
         },
-        "html_patterns": ["laravel"]
+        "html_patterns": [
+          "laravel"
+        ]
       },
       "confidence_base": 80
     },
@@ -859,7 +1121,10 @@
           "X-Powered-By": "Next.js",
           "x-nextjs-cache": ".*"
         },
-        "html_patterns": ["_next/static", "__NEXT_DATA__"]
+        "html_patterns": [
+          "_next/static",
+          "__NEXT_DATA__"
+        ]
       },
       "confidence_base": 85
     },
@@ -869,7 +1134,12 @@
       "category": "js-framework",
       "vendor": "Meta",
       "matches": {
-        "html_patterns": ["react-root", "__REACT", "data-reactroot", "react\\.production"]
+        "html_patterns": [
+          "react-root",
+          "__REACT",
+          "data-reactroot",
+          "react\\.production"
+        ]
       },
       "confidence_base": 60
     },
@@ -879,7 +1149,12 @@
       "category": "js-framework",
       "vendor": "Google",
       "matches": {
-        "html_patterns": ["ng-version", "ng-app", "angular\\.min\\.js", "ng-controller"]
+        "html_patterns": [
+          "ng-version",
+          "ng-app",
+          "angular\\.min\\.js",
+          "ng-controller"
+        ]
       },
       "confidence_base": 65
     },
@@ -889,7 +1164,13 @@
       "category": "js-framework",
       "vendor": "Evan You",
       "matches": {
-        "html_patterns": ["v-app", "vue\\.min\\.js", "v-cloak", "__vue__", "data-v-"]
+        "html_patterns": [
+          "v-app",
+          "vue\\.min\\.js",
+          "v-cloak",
+          "__vue__",
+          "data-v-"
+        ]
       },
       "confidence_base": 60
     },
@@ -899,7 +1180,12 @@
       "category": "itsm",
       "vendor": "ServiceNow",
       "matches": {
-        "html_patterns": ["ServiceNow", "service-now\\.com", "glide\\.js", "sn_"],
+        "html_patterns": [
+          "ServiceNow",
+          "service-now\\.com",
+          "glide\\.js",
+          "sn_"
+        ],
         "headers": {
           "X-Is-Logged-In": ".*"
         }
@@ -912,7 +1198,11 @@
       "category": "erp",
       "vendor": "SAP",
       "matches": {
-        "html_patterns": ["SAP NetWeaver", "sap-ui-core", "sap\\.ui"],
+        "html_patterns": [
+          "SAP NetWeaver",
+          "sap-ui-core",
+          "sap\\.ui"
+        ],
         "headers": {
           "Server": "SAP"
         }
@@ -926,7 +1216,11 @@
       "vendor": "Atlassian",
       "cpe_prefix": "cpe:2.3:a:atlassian:jira",
       "matches": {
-        "html_patterns": ["JIRA", "jira-", "atlassian-jira"],
+        "html_patterns": [
+          "JIRA",
+          "jira-",
+          "atlassian-jira"
+        ],
         "headers": {
           "X-AREQUESTID": ".*"
         }
@@ -940,7 +1234,11 @@
       "vendor": "Atlassian",
       "cpe_prefix": "cpe:2.3:a:atlassian:confluence",
       "matches": {
-        "html_patterns": ["Confluence", "confluence-", "ajs-"],
+        "html_patterns": [
+          "Confluence",
+          "confluence-",
+          "ajs-"
+        ],
         "headers": {
           "X-Confluence-Request-Time": ".*"
         }
@@ -954,10 +1252,17 @@
       "vendor": "HashiCorp",
       "cpe_prefix": "cpe:2.3:a:hashicorp:vault",
       "matches": {
-        "html_patterns": ["Vault", "vault-logo"],
-        "url_paths": ["/v1/sys/health"],
+        "html_patterns": [
+          "Vault",
+          "vault-logo"
+        ],
+        "url_paths": [
+          "/v1/sys/health"
+        ],
         "version_patterns": {
-          "html": ["Vault v([\\d.]+)"]
+          "html": [
+            "Vault v([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 80
@@ -969,10 +1274,17 @@
       "vendor": "Red Hat",
       "cpe_prefix": "cpe:2.3:a:redhat:keycloak",
       "matches": {
-        "html_patterns": ["Keycloak", "kc-logo"],
-        "url_paths": ["/auth/realms/"],
+        "html_patterns": [
+          "Keycloak",
+          "kc-logo"
+        ],
+        "url_paths": [
+          "/auth/realms/"
+        ],
         "version_patterns": {
-          "html": ["Keycloak ([\\d.]+)"]
+          "html": [
+            "Keycloak ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -983,7 +1295,10 @@
       "category": "storage",
       "vendor": "MinIO",
       "matches": {
-        "html_patterns": ["MinIO", "minio-loader"],
+        "html_patterns": [
+          "MinIO",
+          "minio-loader"
+        ],
         "headers": {
           "Server": "MinIO"
         }
@@ -996,7 +1311,11 @@
       "category": "container-management",
       "vendor": "Portainer.io",
       "matches": {
-        "html_patterns": ["Portainer", "portainer\\.css", "portainer-app"]
+        "html_patterns": [
+          "Portainer",
+          "portainer\\.css",
+          "portainer-app"
+        ]
       },
       "confidence_base": 85
     },
@@ -1006,8 +1325,13 @@
       "category": "container-management",
       "vendor": "SUSE",
       "matches": {
-        "html_patterns": ["Rancher", "rancher\\.css"],
-        "tls_org_patterns": ["Rancher"]
+        "html_patterns": [
+          "Rancher",
+          "rancher\\.css"
+        ],
+        "tls_org_patterns": [
+          "Rancher"
+        ]
       },
       "confidence_base": 80
     },
@@ -1017,7 +1341,10 @@
       "category": "ci-cd",
       "vendor": "Argo Project",
       "matches": {
-        "html_patterns": ["Argo CD", "argocd"]
+        "html_patterns": [
+          "Argo CD",
+          "argocd"
+        ]
       },
       "confidence_base": 80
     },
@@ -1028,9 +1355,14 @@
       "vendor": "Sonatype",
       "cpe_prefix": "cpe:2.3:a:sonatype:nexus",
       "matches": {
-        "html_patterns": ["Nexus Repository Manager", "nexus-ui"],
+        "html_patterns": [
+          "Nexus Repository Manager",
+          "nexus-ui"
+        ],
         "version_patterns": {
-          "html": ["Nexus Repository Manager ([\\d.]+)"]
+          "html": [
+            "Nexus Repository Manager ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -1041,9 +1373,14 @@
       "category": "container-registry",
       "vendor": "VMware",
       "matches": {
-        "html_patterns": ["Harbor", "harbor-app"],
+        "html_patterns": [
+          "Harbor",
+          "harbor-app"
+        ],
         "version_patterns": {
-          "html": ["Harbor ([\\d.]+)"]
+          "html": [
+            "Harbor ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 80
@@ -1055,9 +1392,15 @@
       "vendor": "Splunk",
       "cpe_prefix": "cpe:2.3:a:splunk:splunk",
       "matches": {
-        "html_patterns": ["Splunk", "splunkweb", "splunk\\.css"],
+        "html_patterns": [
+          "Splunk",
+          "splunkweb",
+          "splunk\\.css"
+        ],
         "version_patterns": {
-          "html": ["Splunk ([\\d.]+)"]
+          "html": [
+            "Splunk ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -1068,7 +1411,10 @@
       "category": "siem",
       "vendor": "Wazuh",
       "matches": {
-        "html_patterns": ["Wazuh", "wazuh-app"]
+        "html_patterns": [
+          "Wazuh",
+          "wazuh-app"
+        ]
       },
       "confidence_base": 80
     },
@@ -1079,9 +1425,15 @@
       "vendor": "Netgate",
       "cpe_prefix": "cpe:2.3:a:netgate:pfsense",
       "matches": {
-        "html_patterns": ["pfSense", "pfsense-logo", "/csrf/csrf-magic\\.js"],
+        "html_patterns": [
+          "pfSense",
+          "pfsense-logo",
+          "/csrf/csrf-magic\\.js"
+        ],
         "version_patterns": {
-          "html": ["pfSense ([\\d.]+)"]
+          "html": [
+            "pfSense ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -1092,9 +1444,14 @@
       "category": "firewall",
       "vendor": "Deciso",
       "matches": {
-        "html_patterns": ["OPNsense", "opnsense_"],
+        "html_patterns": [
+          "OPNsense",
+          "opnsense_"
+        ],
         "version_patterns": {
-          "html": ["OPNsense ([\\d.]+)"]
+          "html": [
+            "OPNsense ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 90
@@ -1105,8 +1462,16 @@
       "category": "printer",
       "vendor": "HP",
       "matches": {
-        "html_patterns": ["HP Color LaserJet", "HP LaserJet", "Hewlett-Packard", "hp/device/"],
-        "tls_org_patterns": ["Hewlett-Packard", "HP Inc"]
+        "html_patterns": [
+          "HP Color LaserJet",
+          "HP LaserJet",
+          "Hewlett-Packard",
+          "hp/device/"
+        ],
+        "tls_org_patterns": [
+          "Hewlett-Packard",
+          "HP Inc"
+        ]
       },
       "confidence_base": 80
     },
@@ -1116,8 +1481,13 @@
       "category": "printer",
       "vendor": "Xerox",
       "matches": {
-        "html_patterns": ["Xerox", "xerox\\.css"],
-        "tls_org_patterns": ["Xerox"]
+        "html_patterns": [
+          "Xerox",
+          "xerox\\.css"
+        ],
+        "tls_org_patterns": [
+          "Xerox"
+        ]
       },
       "confidence_base": 80
     },
@@ -1127,8 +1497,13 @@
       "category": "printer",
       "vendor": "Ricoh",
       "matches": {
-        "html_patterns": ["RICOH", "ricoh\\.css"],
-        "tls_org_patterns": ["Ricoh"]
+        "html_patterns": [
+          "RICOH",
+          "ricoh\\.css"
+        ],
+        "tls_org_patterns": [
+          "Ricoh"
+        ]
       },
       "confidence_base": 80
     },
@@ -1138,8 +1513,13 @@
       "category": "camera",
       "vendor": "Ubiquiti",
       "matches": {
-        "html_patterns": ["UniFi Protect", "protect\\.ui\\."],
-        "tls_org_patterns": ["Ubiquiti"]
+        "html_patterns": [
+          "UniFi Protect",
+          "protect\\.ui\\."
+        ],
+        "tls_org_patterns": [
+          "Ubiquiti"
+        ]
       },
       "confidence_base": 80
     },
@@ -1150,7 +1530,11 @@
       "vendor": "Hikvision",
       "cpe_prefix": "cpe:2.3:o:hikvision",
       "matches": {
-        "html_patterns": ["HIKVISION", "hikvision", "webComponents"],
+        "html_patterns": [
+          "HIKVISION",
+          "hikvision",
+          "webComponents"
+        ],
         "headers": {
           "Server": "DNVRS-Webs"
         }
@@ -1164,7 +1548,10 @@
       "vendor": "Dahua",
       "cpe_prefix": "cpe:2.3:o:dahuasecurity",
       "matches": {
-        "html_patterns": ["Dahua", "DSSPro"],
+        "html_patterns": [
+          "Dahua",
+          "DSSPro"
+        ],
         "headers": {
           "Server": "DH-NVR"
         }
@@ -1178,10 +1565,17 @@
       "vendor": "phpMyAdmin",
       "cpe_prefix": "cpe:2.3:a:phpmyadmin:phpmyadmin",
       "matches": {
-        "html_patterns": ["phpMyAdmin", "pma_navigation"],
-        "url_paths": ["/phpmyadmin/"],
+        "html_patterns": [
+          "phpMyAdmin",
+          "pma_navigation"
+        ],
+        "url_paths": [
+          "/phpmyadmin/"
+        ],
         "version_patterns": {
-          "html": ["phpMyAdmin ([\\d.]+)"]
+          "html": [
+            "phpMyAdmin ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -1192,9 +1586,14 @@
       "category": "database-admin",
       "vendor": "pgAdmin",
       "matches": {
-        "html_patterns": ["pgAdmin", "pgadmin"],
+        "html_patterns": [
+          "pgAdmin",
+          "pgadmin"
+        ],
         "version_patterns": {
-          "html": ["pgAdmin ([\\d]+)"]
+          "html": [
+            "pgAdmin ([\\d]+)"
+          ]
         }
       },
       "confidence_base": 85
@@ -1231,7 +1630,9 @@
       "category": "reverse-proxy",
       "vendor": "Traefik Labs",
       "matches": {
-        "html_patterns": ["Traefik"],
+        "html_patterns": [
+          "Traefik"
+        ],
         "headers": {
           "Server": "Traefik"
         }
@@ -1257,12 +1658,233 @@
       "category": "automation",
       "vendor": "Red Hat",
       "matches": {
-        "html_patterns": ["AWX", "Ansible Tower", "ansible-tower"],
+        "html_patterns": [
+          "AWX",
+          "Ansible Tower",
+          "ansible-tower"
+        ],
         "version_patterns": {
-          "html": ["AWX ([\\d.]+)", "Tower ([\\d.]+)"]
+          "html": [
+            "AWX ([\\d.]+)",
+            "Tower ([\\d.]+)"
+          ]
         }
       },
       "confidence_base": 80
+    },
+    {
+      "id": "pihole",
+      "name": "Pi-hole",
+      "category": "dns",
+      "vendor": "Pi-hole",
+      "matches": {
+        "html_patterns": [
+          "Pi-hole",
+          "pi-hole",
+          "pihole",
+          "AdminLTE"
+        ],
+        "headers": {
+          "X-Pi-hole": ".*"
+        },
+        "url_paths": [
+          "/admin/",
+          "/admin/api.php"
+        ],
+        "banner_patterns": [
+          "pi-hole",
+          "dnsmasq-pi-hole"
+        ],
+        "version_patterns": {
+          "banner": [
+            "pi-hole[- ]?v?([\\d.]+)"
+          ]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "dnsmasq",
+      "name": "dnsmasq",
+      "category": "dns",
+      "vendor": "Simon Kelley",
+      "cpe_prefix": "cpe:2.3:a:thekelleys:dnsmasq",
+      "matches": {
+        "banner_patterns": [
+          "dnsmasq"
+        ],
+        "version_patterns": {
+          "banner": [
+            "dnsmasq[- /]([\\d.]+)"
+          ]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "adguard-home",
+      "name": "AdGuard Home",
+      "category": "dns",
+      "vendor": "AdGuard",
+      "matches": {
+        "html_patterns": [
+          "AdGuard Home",
+          "adguard"
+        ],
+        "url_paths": [
+          "/control/status"
+        ]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "unbound",
+      "name": "Unbound DNS",
+      "category": "dns",
+      "vendor": "NLnet Labs",
+      "cpe_prefix": "cpe:2.3:a:nlnetlabs:unbound",
+      "matches": {
+        "banner_patterns": [
+          "unbound"
+        ]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "bind9",
+      "name": "ISC BIND",
+      "category": "dns",
+      "vendor": "ISC",
+      "cpe_prefix": "cpe:2.3:a:isc:bind",
+      "matches": {
+        "banner_patterns": [
+          "BIND",
+          "named"
+        ],
+        "version_patterns": {
+          "banner": [
+            "BIND[\\s/]([\\d.]+)"
+          ]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "home-assistant",
+      "name": "Home Assistant",
+      "category": "home-automation",
+      "vendor": "Home Assistant",
+      "matches": {
+        "html_patterns": [
+          "Home Assistant",
+          "home-assistant",
+          "hass"
+        ],
+        "url_paths": [
+          "/api/"
+        ]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "openwrt",
+      "name": "OpenWrt",
+      "category": "router",
+      "vendor": "OpenWrt",
+      "cpe_prefix": "cpe:2.3:o:openwrt:openwrt",
+      "matches": {
+        "html_patterns": [
+          "OpenWrt",
+          "LuCI"
+        ],
+        "banner_patterns": [
+          "OpenWrt"
+        ]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "truenas",
+      "name": "TrueNAS",
+      "category": "nas",
+      "vendor": "iXsystems",
+      "matches": {
+        "html_patterns": [
+          "TrueNAS",
+          "FreeNAS",
+          "truenas"
+        ],
+        "tls_org_patterns": [
+          "iXsystems"
+        ]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "unraid",
+      "name": "Unraid",
+      "category": "nas",
+      "vendor": "Lime Technology",
+      "matches": {
+        "html_patterns": [
+          "Unraid",
+          "unraid",
+          "UNRAID"
+        ]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "docker-registry",
+      "name": "Docker Registry",
+      "category": "container-registry",
+      "vendor": "Docker",
+      "matches": {
+        "headers": {
+          "Docker-Distribution-Api-Version": ".*"
+        },
+        "url_paths": [
+          "/v2/"
+        ]
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "cockpit",
+      "name": "Cockpit",
+      "category": "management",
+      "vendor": "Red Hat",
+      "matches": {
+        "html_patterns": [
+          "Cockpit",
+          "cockpit-ws"
+        ],
+        "headers": {
+          "Server": "Cockpit"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "webmin",
+      "name": "Webmin",
+      "category": "management",
+      "vendor": "Webmin",
+      "cpe_prefix": "cpe:2.3:a:webmin:webmin",
+      "matches": {
+        "html_patterns": [
+          "Webmin"
+        ],
+        "headers": {
+          "Server": "MiniServ"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "MiniServ/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 85
     }
   ]
 }

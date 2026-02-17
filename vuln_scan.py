@@ -14,6 +14,7 @@ import shutil
 from datetime import datetime
 
 from fingerprint.engine import FingerprintEngine, FingerprintResult
+from fingerprint.fpx import scan_host as fpx_scan_host, check_installed as fpx_check_installed
 
 # Database path - use absolute path relative to this script's location
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vuln_scan.db')
@@ -1232,6 +1233,82 @@ def get_vulnerabilities(ip=None):
     except sqlite3.Error as e:
         logger.error(f"Database error retrieving vulnerabilities: {e}")
         return []
+    finally:
+        conn.close()
+
+
+def store_fpx_results(ip, fpx_results):
+    """Store fingerprintx protocol-level identification results.
+
+    Args:
+        ip: Target IP address
+        fpx_results: List of FpxResult objects from fingerprintx
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    scan_date = datetime.now().isoformat()
+
+    try:
+        stored_count = 0
+        for fpx in fpx_results:
+            sig_id = f"fpx-{fpx.service}"
+            name = fpx.service.upper() if len(fpx.service) <= 5 else fpx.service.title()
+
+            # Map fingerprintx service names to categories
+            service_categories = {
+                'ssh': 'remote-access', 'rdp': 'remote-access', 'vnc': 'remote-access',
+                'telnet': 'remote-access',
+                'http': 'web-server', 'https': 'web-server',
+                'mysql': 'database', 'postgresql': 'database', 'mssql': 'database',
+                'mongodb': 'database', 'redis': 'database', 'elasticsearch': 'database',
+                'couchdb': 'database', 'cassandra': 'database', 'oracle': 'database',
+                'influxdb': 'database', 'neo4j': 'database', 'memcached': 'database',
+                'smtp': 'email', 'imap': 'email', 'pop3': 'email',
+                'ftp': 'file-transfer', 'smb': 'file-transfer', 'rsync': 'file-transfer',
+                'dns': 'dns', 'ldap': 'directory', 'snmp': 'network-management',
+                'ntp': 'network-service', 'dhcp': 'network-service',
+                'kafka': 'message-queue', 'mqtt': 'message-queue',
+                'modbus': 'industrial', 'ipmi': 'management',
+            }
+            category = service_categories.get(fpx.service.lower(), 'service')
+
+            # Map to vendor where obvious
+            service_vendors = {
+                'ssh': 'OpenBSD' if fpx.version and 'openssh' in (fpx.version or '').lower() else 'Various',
+                'mysql': 'Oracle', 'mssql': 'Microsoft', 'postgresql': 'PostgreSQL',
+                'mongodb': 'MongoDB', 'redis': 'Redis', 'elasticsearch': 'Elastic',
+                'rdp': 'Microsoft', 'smb': 'Microsoft',
+            }
+            vendor = service_vendors.get(fpx.service.lower(), '')
+
+            # Build evidence from metadata
+            evidence = [f'fpx_protocol_handshake:{fpx.service}']
+            if fpx.metadata:
+                for k, v in fpx.metadata.items():
+                    if v and isinstance(v, str) and len(v) < 200:
+                        evidence.append(f'fpx_meta:{k}={v[:100]}')
+
+            # Protocol handshake = high confidence
+            confidence = 90
+
+            cursor.execute('''INSERT OR REPLACE INTO fingerprints
+                (ip, port, protocol, signature_id, name, category, vendor,
+                 version, cpe, confidence, evidence_json,
+                 tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                 http_title, http_server, favicon_hash, scan_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (ip, fpx.port, fpx.transport,
+                 sig_id, name, category, vendor,
+                 fpx.version, None, confidence,
+                 json.dumps(evidence),
+                 None, None, None, 0,
+                 '', '', None, scan_date))
+            stored_count += 1
+
+        conn.commit()
+        logger.info(f"Stored {stored_count} fingerprintx results for {ip}")
+    except sqlite3.Error as e:
+        logger.error(f"Database error storing fpx results for {ip}: {e}")
     finally:
         conn.close()
 

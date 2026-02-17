@@ -15,7 +15,9 @@ import vuln_scan
 from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_cidr,
                        DB_PATH, dns_lookup, get_os_info_from_scan, store_asset_info,
                        get_asset_details, get_fingerprints, get_fingerprint_summary,
-                       store_fingerprints, get_fingerprint_engine)
+                       store_fingerprints, store_fpx_results, get_fingerprint_engine,
+                       fpx_check_installed)
+from fingerprint.fpx import scan_host as fpx_scan_host
 
 # Configure logging
 logging.basicConfig(
@@ -372,6 +374,30 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             except Exception as e:
                 logger.error(f"Fingerprinting error for {ip}: {e}")
                 emit_log(sid, f'Fingerprinting error: {e}', 'warning')
+
+            # Run fingerprintx protocol-level identification
+            try:
+                if fpx_check_installed():
+                    emit_log(sid, f'Running protocol fingerprinting (fingerprintx) on {ip}', 'info')
+
+                    def fpx_log(msg):
+                        emit_log(sid, msg, 'debug')
+
+                    fpx_results = fpx_scan_host(ip, ports_for_fp, timeout_ms=3000,
+                                                log_callback=fpx_log)
+                    if fpx_results:
+                        store_fpx_results(ip, fpx_results)
+                        emit_log(sid, f'fingerprintx identified {len(fpx_results)} service(s) on {ip}', 'success')
+                        for r in fpx_results:
+                            ver = f' v{r.version}' if r.version else ''
+                            emit_log(sid, f'  Port {r.port}: {r.service}{ver} (protocol handshake)', 'info')
+                    else:
+                        emit_log(sid, f'fingerprintx: no additional services identified on {ip}', 'debug')
+                else:
+                    emit_log(sid, 'fingerprintx not installed — skipping protocol fingerprinting', 'debug')
+            except Exception as e:
+                logger.error(f"fingerprintx error for {ip}: {e}")
+                emit_log(sid, f'fingerprintx error: {e}', 'warning')
         else:
             emit_log(sid, f'No open ports found on {ip}', 'info')
 
@@ -683,18 +709,40 @@ def handle_start_fingerprint_scan(data):
             def fp_log(msg):
                 emit_log(sid, msg, 'debug')
 
+            # HTTP-level fingerprinting
             fp_results = engine.fingerprint_all_ports(ip, ports_for_fp, log_callback=fp_log)
             store_fingerprints(ip, fp_results)
 
             identified = sum(1 for r in fp_results if r.best_match is not None)
             total_ports = len(fp_results)
-            emit_log(sid, f'Fingerprinting complete: identified {identified}/{total_ports} services', 'success')
+            emit_log(sid, f'HTTP fingerprinting: identified {identified}/{total_ports} services', 'success')
 
             for r in fp_results:
                 if r.best_match:
                     m = r.best_match
                     ver = f' v{m.version}' if m.version else ''
                     emit_log(sid, f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)', 'info')
+
+            # Protocol-level fingerprinting (fingerprintx)
+            fpx_count = 0
+            try:
+                if fpx_check_installed():
+                    emit_log(sid, f'Running protocol fingerprinting (fingerprintx) on {ip}', 'info')
+
+                    def fpx_log(msg):
+                        emit_log(sid, msg, 'debug')
+
+                    fpx_results = fpx_scan_host(ip, ports_for_fp, timeout_ms=3000,
+                                                log_callback=fpx_log)
+                    if fpx_results:
+                        store_fpx_results(ip, fpx_results)
+                        fpx_count = len(fpx_results)
+                        emit_log(sid, f'fingerprintx identified {fpx_count} service(s)', 'success')
+                        for r in fpx_results:
+                            ver = f' v{r.version}' if r.version else ''
+                            emit_log(sid, f'  Port {r.port}: {r.service}{ver} (protocol handshake)', 'info')
+            except Exception as e:
+                emit_log(sid, f'fingerprintx error: {e}', 'warning')
 
             socketio.emit('scan_complete', {
                 'target': ip,
@@ -703,7 +751,8 @@ def handle_start_fingerprint_scan(data):
                 'failed_count': 0,
                 'total': 1,
                 'cancelled': False,
-                'fingerprint_results': [r.to_dict() for r in fp_results]
+                'fingerprint_results': [r.to_dict() for r in fp_results],
+                'fpx_count': fpx_count,
             }, room=sid)
 
         except Exception as e:
