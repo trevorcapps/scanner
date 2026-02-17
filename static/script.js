@@ -502,14 +502,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         html += '</div>';
 
+        // Identified Technologies section
+        if (asset.fingerprints && asset.fingerprints.length > 0) {
+            html += '<div class="asset-modal-section full-width">';
+            html += '<div class="asset-section-title">Identified Technologies</div>';
+            html += '<table class="asset-ports-table">';
+            html += '<thead><tr><th>Port</th><th>Technology</th><th>Version</th><th>Category</th><th>Vendor</th><th>Confidence</th><th>CPE</th></tr></thead>';
+            html += '<tbody>';
+            asset.fingerprints.forEach(function(fp) {
+                var confClass = fp.confidence >= 80 ? 'high-conf' : (fp.confidence >= 50 ? 'med-conf' : 'low-conf');
+                html += '<tr>';
+                html += '<td class="asset-port-number">' + fp.port + '</td>';
+                html += '<td class="asset-port-service"><strong>' + escapeHtml(fp.name || '') + '</strong></td>';
+                html += '<td class="asset-port-product">' + escapeHtml(fp.version || '-') + '</td>';
+                html += '<td><span class="tech-category-badge">' + escapeHtml(fp.category || '') + '</span></td>';
+                html += '<td>' + escapeHtml(fp.vendor || '') + '</td>';
+                html += '<td><span class="confidence-bar ' + confClass + '">' + fp.confidence + '%</span></td>';
+                html += '<td class="asset-port-product">' + escapeHtml(fp.cpe || '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '</div>';
+        }
+
         // Ports section (full width)
         html += '<div class="asset-modal-section full-width">';
         html += '<div class="asset-section-title">Open Ports & Services</div>';
         if (asset.ports && asset.ports.length > 0) {
             html += '<table class="asset-ports-table">';
-            html += '<thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Product</th><th>Version</th></tr></thead>';
+            html += '<thead><tr><th>Port</th><th>Protocol</th><th>State</th><th>Service</th><th>Product</th><th>Version</th><th>Identified As</th></tr></thead>';
             html += '<tbody>';
             asset.ports.forEach(function(port) {
+                var fpInfo = '';
+                if (port.fingerprint && port.fingerprint.name) {
+                    var verStr = port.fingerprint.version ? ' v' + port.fingerprint.version : '';
+                    fpInfo = port.fingerprint.name + verStr;
+                }
                 html += '<tr>';
                 html += '<td class="asset-port-number">' + port.port + '</td>';
                 html += '<td>' + escapeHtml(port.protocol || '') + '</td>';
@@ -517,6 +545,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 html += '<td class="asset-port-service">' + escapeHtml(port.service || '') + '</td>';
                 html += '<td class="asset-port-product">' + escapeHtml(port.product || '') + '</td>';
                 html += '<td class="asset-port-product">' + escapeHtml(port.version || '') + '</td>';
+                html += '<td class="asset-port-product">' + (fpInfo ? '<strong>' + escapeHtml(fpInfo) + '</strong>' : '<span class="text-muted">-</span>') + '</td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -628,6 +657,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Fingerprint scan button
+    var fingerprintScanBtn = document.getElementById('fingerprint-scan-btn');
+    if (fingerprintScanBtn) {
+        fingerprintScanBtn.addEventListener('click', function() {
+            startFingerprintScan();
+        });
+    }
+
     // Vulnerability scan button
     if (vulnScanBtn) {
         vulnScanBtn.addEventListener('click', function() {
@@ -712,9 +749,37 @@ document.addEventListener('DOMContentLoaded', function() {
         stopScanBtn.textContent = 'Stopping...';
     }
 
+    function startFingerprintScan() {
+        var ip = document.getElementById('ip').value.trim();
+
+        if (!ip) {
+            scanOutput.innerHTML = '<p class="error">Please enter an IP address.</p>';
+            return;
+        }
+
+        portScanBtn.disabled = true;
+        vulnScanBtn.disabled = true;
+        fingerprintScanBtn.disabled = true;
+        fingerprintScanBtn.textContent = 'Fingerprinting...';
+        stopScanBtn.style.display = 'inline-block';
+
+        socket.emit('start_fingerprint_scan', { ip: ip });
+        progressContainer.style.display = 'block';
+        progressBar.value = 10;
+        progressMessage.textContent = 'Fingerprint scan in progress...';
+        scanOutput.innerHTML = '<p>Running endpoint fingerprinting on ' + ip + '...</p>' +
+            '<p class="info">Probing HTTP headers, TLS certs, favicons, and service banners to identify technologies.</p>';
+
+        addLog('Starting fingerprint scan for ' + ip, 'info');
+    }
+
     function resetScanButtons() {
         portScanBtn.disabled = false;
         vulnScanBtn.disabled = false;
+        if (fingerprintScanBtn) {
+            fingerprintScanBtn.disabled = false;
+            fingerprintScanBtn.textContent = 'Fingerprint';
+        }
         portScanBtn.textContent = 'Port Scan';
         vulnScanBtn.textContent = 'Vulnerability Scan';
         stopScanBtn.style.display = 'none';
@@ -940,6 +1005,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         html += '</div>';
                         html += '</div>';
 
+                        // Technology fingerprint badges
+                        if (asset.technologies && asset.technologies.length > 0) {
+                            html += '<div class="asset-tech-stack">';
+                            asset.technologies.forEach(function(tech) {
+                                var verStr = tech.version ? ' ' + tech.version : '';
+                                var confClass = tech.confidence >= 80 ? 'high-conf' : (tech.confidence >= 50 ? 'med-conf' : 'low-conf');
+                                html += '<span class="tech-badge ' + confClass + '" title="' + escapeHtml(tech.category) + ' · ' + tech.confidence + '% confidence">';
+                                html += escapeHtml(tech.name + verStr);
+                                html += '</span>';
+                            });
+                            html += '</div>';
+                        }
+
                         if (hasVulns) {
                             html += '<div class="asset-vuln-summary">';
                             if (vulnCounts.critical > 0) html += '<span class="vuln-mini critical">' + vulnCounts.critical + ' Critical</span>';
@@ -954,6 +1032,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         html += '</div>';
                         html += '<div class="asset-actions">';
                         html += '<button class="btn-small btn-rescan" data-ip="' + asset.ip + '">Port Scan</button>';
+                        html += '<button class="btn-small btn-fingerprint" data-ip="' + asset.ip + '">Fingerprint</button>';
                         html += '<button class="btn-small btn-vuln-scan" data-ip="' + asset.ip + '">Vuln Scan</button>';
                         if (hasVulns) {
                             html += '<button class="btn-small btn-view-vulns" data-ip="' + asset.ip + '">View Vulns</button>';
@@ -986,6 +1065,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.querySelectorAll('.btn-rescan').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         switchToScanTab(this.getAttribute('data-ip'), 'port');
+                    });
+                });
+
+                document.querySelectorAll('.btn-fingerprint').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        switchToScanTab(this.getAttribute('data-ip'), 'fingerprint');
                     });
                 });
 
@@ -1286,6 +1371,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (scanType === 'vuln') {
             startVulnScan();
+        } else if (scanType === 'fingerprint') {
+            startFingerprintScan();
         } else {
             startPortScan();
         }

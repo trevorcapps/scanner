@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 import vuln_scan
 from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_cidr,
                        DB_PATH, dns_lookup, get_os_info_from_scan, store_asset_info,
-                       get_asset_details)
+                       get_asset_details, get_fingerprints, get_fingerprint_summary,
+                       store_fingerprints, get_fingerprint_engine)
 
 # Configure logging
 logging.basicConfig(
@@ -75,11 +76,17 @@ def get_assets():
             # Get vulnerability counts for this IP
             vuln_counts = vuln_scan.get_vulnerability_counts_by_severity(ip)
 
+            # Get fingerprint summary for this IP
+            fp_summary = get_fingerprint_summary(ip)
+            fp_techs = fp_summary.get('technologies', [])
+            fp_by_port = fp_summary.get('by_port', {})
+
             assets.append({
                 'ip': ip,
                 'last_scan': last_scan,
                 'port_count': port_count,
                 'vuln_counts': vuln_counts,
+                'technologies': fp_techs[:5],  # Top 5 technologies
                 'ports': [
                     {
                         'protocol': p[0],
@@ -87,7 +94,8 @@ def get_assets():
                         'state': p[2],
                         'service': p[3],
                         'product': p[4],
-                        'version': p[5]
+                        'version': p[5],
+                        'fingerprint': fp_by_port.get(p[1], {})
                     } for p in ports
                 ]
             })
@@ -138,6 +146,27 @@ def get_asset(ip):
         return {'asset': asset}
     except Exception as e:
         logger.error(f"Error retrieving asset {ip}: {e}")
+        return {'error': str(e)}, 500
+
+
+@app.route('/api/fingerprints/<ip>')
+def get_fingerprints_api(ip):
+    """Get fingerprint data for a specific IP."""
+    try:
+        if not validate_ip(ip):
+            return {'error': 'Invalid IP address'}, 400
+
+        port = request.args.get('port', type=int)
+        fingerprints = get_fingerprints(ip, port=port)
+        summary = get_fingerprint_summary(ip)
+
+        return {
+            'fingerprints': fingerprints,
+            'technologies': summary.get('technologies', []),
+            'by_port': {str(k): v for k, v in summary.get('by_port', {}).items()},
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving fingerprints for {ip}: {e}")
         return {'error': str(e)}, 500
 
 
@@ -303,6 +332,46 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             vuln_scan.store_scan(ip, scan_data)
             logger.info(f"Stored {len(scan_data)} ports for {ip}")
             emit_log(sid, f'Found {len(scan_data)} open port(s) on {ip}', 'success')
+
+            # Run fingerprinting on discovered ports
+            emit_log(sid, f'Starting endpoint fingerprinting on {ip}', 'info')
+            try:
+                engine = get_fingerprint_engine()
+                ports_for_fp = []
+                for result in scan_data:
+                    # scan_data is tuples: (protocol, port, state, service, product, version)
+                    if result[2] == 'open':
+                        ports_for_fp.append({
+                            'port': result[1],
+                            'protocol': result[0],
+                            'service': result[3],
+                            'product': result[4],
+                            'version': result[5],
+                            'extrainfo': '',
+                        })
+
+                if ports_for_fp:
+                    def fp_log(msg):
+                        emit_log(sid, msg, 'debug')
+
+                    fp_results = engine.fingerprint_all_ports(ip, ports_for_fp, log_callback=fp_log)
+                    store_fingerprints(ip, fp_results)
+
+                    # Count identified services
+                    identified = sum(1 for r in fp_results if r.best_match is not None)
+                    total = len(fp_results)
+                    emit_log(sid, f'Fingerprinting complete: identified {identified}/{total} services on {ip}', 'success')
+
+                    # Log top matches
+                    for r in fp_results:
+                        if r.best_match:
+                            m = r.best_match
+                            ver = f' v{m.version}' if m.version else ''
+                            emit_log(sid, f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)', 'info')
+
+            except Exception as e:
+                logger.error(f"Fingerprinting error for {ip}: {e}")
+                emit_log(sid, f'Fingerprinting error: {e}', 'warning')
         else:
             emit_log(sid, f'No open ports found on {ip}', 'info')
 
@@ -549,6 +618,109 @@ def vuln_scan_target(target, sid, scan_options=None):
         with scan_lock:
             if sid in active_scans:
                 del active_scans[sid]
+
+
+@socketio.on('start_fingerprint_scan')
+def handle_start_fingerprint_scan(data):
+    """Run fingerprinting on an already-scanned target using stored port data."""
+    target = data.get('ip', '').strip()
+    sid = request.sid
+
+    if not target:
+        emit('scan_error', {'error': 'IP address is required'})
+        return
+
+    if not validate_ip(target):
+        emit('scan_error', {'error': 'Invalid IP address'})
+        return
+
+    def run_fingerprint(ip, sid):
+        try:
+            emit_log(sid, f'Starting fingerprint scan for {ip}', 'info')
+            socketio.emit('scan_progress', {
+                'status': 'running',
+                'message': f'Fingerprinting {ip}...',
+                'current': 1,
+                'total': 1,
+                'ip': ip
+            }, room=sid)
+
+            # Get latest port data from DB
+            latest_scan = vuln_scan.get_latest_scan(ip)
+            if not latest_scan:
+                emit_log(sid, f'No scan data for {ip}. Run a port scan first.', 'error')
+                socketio.emit('scan_error', {'error': f'No scan data for {ip}. Run a port scan first.'}, room=sid)
+                return
+
+            engine = get_fingerprint_engine()
+            ports_for_fp = []
+            for row in latest_scan:
+                # row: (protocol, port, state, service, product, version)
+                if row[2] == 'open':
+                    ports_for_fp.append({
+                        'port': row[1],
+                        'protocol': row[0],
+                        'service': row[3],
+                        'product': row[4],
+                        'version': row[5],
+                        'extrainfo': '',
+                    })
+
+            if not ports_for_fp:
+                emit_log(sid, f'No open ports found for {ip}', 'warning')
+                socketio.emit('scan_complete', {
+                    'target': ip,
+                    'results': [{'ip': ip, 'scan_data': [], 'success': True}],
+                    'successful_count': 1,
+                    'failed_count': 0,
+                    'total': 1,
+                    'cancelled': False
+                }, room=sid)
+                return
+
+            emit_log(sid, f'Fingerprinting {len(ports_for_fp)} open port(s) on {ip}', 'info')
+
+            def fp_log(msg):
+                emit_log(sid, msg, 'debug')
+
+            fp_results = engine.fingerprint_all_ports(ip, ports_for_fp, log_callback=fp_log)
+            store_fingerprints(ip, fp_results)
+
+            identified = sum(1 for r in fp_results if r.best_match is not None)
+            total_ports = len(fp_results)
+            emit_log(sid, f'Fingerprinting complete: identified {identified}/{total_ports} services', 'success')
+
+            for r in fp_results:
+                if r.best_match:
+                    m = r.best_match
+                    ver = f' v{m.version}' if m.version else ''
+                    emit_log(sid, f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)', 'info')
+
+            socketio.emit('scan_complete', {
+                'target': ip,
+                'results': [{'ip': ip, 'scan_data': latest_scan, 'success': True}],
+                'successful_count': 1,
+                'failed_count': 0,
+                'total': 1,
+                'cancelled': False,
+                'fingerprint_results': [r.to_dict() for r in fp_results]
+            }, room=sid)
+
+        except Exception as e:
+            logger.error(f"Fingerprint scan error for {ip}: {e}")
+            emit_log(sid, f'Fingerprint scan error: {e}', 'error')
+            socketio.emit('scan_error', {'error': str(e)}, room=sid)
+        finally:
+            with scan_lock:
+                if sid in active_scans:
+                    del active_scans[sid]
+
+    with scan_lock:
+        active_scans[sid] = {'type': 'fingerprint', 'target': target, 'cancelled': False}
+
+    thread = threading.Thread(target=run_fingerprint, args=(target, sid))
+    thread.daemon = True
+    thread.start()
 
 
 @socketio.on('start_vuln_scan')

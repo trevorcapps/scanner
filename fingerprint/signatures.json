@@ -1,0 +1,1268 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Cerebus endpoint fingerprint signatures",
+    "last_updated": "2026-02-16"
+  },
+  "signatures": [
+    {
+      "id": "apache-httpd",
+      "name": "Apache HTTP Server",
+      "category": "web-server",
+      "vendor": "Apache",
+      "cpe_prefix": "cpe:2.3:a:apache:http_server",
+      "matches": {
+        "headers": {
+          "Server": "Apache"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "Apache/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "nginx",
+      "name": "nginx",
+      "category": "web-server",
+      "vendor": "Nginx",
+      "cpe_prefix": "cpe:2.3:a:f5:nginx",
+      "matches": {
+        "headers": {
+          "Server": "nginx"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "nginx/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "iis",
+      "name": "Microsoft IIS",
+      "category": "web-server",
+      "vendor": "Microsoft",
+      "cpe_prefix": "cpe:2.3:a:microsoft:internet_information_services",
+      "matches": {
+        "headers": {
+          "Server": "Microsoft-IIS"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "Microsoft-IIS/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 95
+    },
+    {
+      "id": "lighttpd",
+      "name": "lighttpd",
+      "category": "web-server",
+      "vendor": "lighttpd",
+      "cpe_prefix": "cpe:2.3:a:lighttpd:lighttpd",
+      "matches": {
+        "headers": {
+          "Server": "lighttpd"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "lighttpd/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "caddy",
+      "name": "Caddy",
+      "category": "web-server",
+      "vendor": "Caddy",
+      "matches": {
+        "headers": {
+          "Server": "Caddy"
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "litespeed",
+      "name": "LiteSpeed",
+      "category": "web-server",
+      "vendor": "LiteSpeed Technologies",
+      "cpe_prefix": "cpe:2.3:a:litespeedtech:litespeed_web_server",
+      "matches": {
+        "headers": {
+          "Server": "LiteSpeed"
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "tomcat",
+      "name": "Apache Tomcat",
+      "category": "app-server",
+      "vendor": "Apache",
+      "cpe_prefix": "cpe:2.3:a:apache:tomcat",
+      "matches": {
+        "headers": {
+          "Server": "Apache-Coyote"
+        },
+        "html_patterns": ["Apache Tomcat", "Tomcat Manager", "tomcat\\.css"],
+        "version_patterns": {
+          "headers": {
+            "Server": "Apache-Coyote/([\\d.]+)"
+          },
+          "html": ["Apache Tomcat/([\\d.]+)", "Tomcat Version ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "jetty",
+      "name": "Eclipse Jetty",
+      "category": "app-server",
+      "vendor": "Eclipse",
+      "cpe_prefix": "cpe:2.3:a:eclipse:jetty",
+      "matches": {
+        "headers": {
+          "Server": "Jetty"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "Jetty\\(([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "gunicorn",
+      "name": "Gunicorn",
+      "category": "app-server",
+      "vendor": "Gunicorn",
+      "matches": {
+        "headers": {
+          "Server": "gunicorn"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "gunicorn/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "express",
+      "name": "Express.js",
+      "category": "web-framework",
+      "vendor": "OpenJS Foundation",
+      "matches": {
+        "headers": {
+          "X-Powered-By": "Express"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "php",
+      "name": "PHP",
+      "category": "language",
+      "vendor": "PHP Group",
+      "cpe_prefix": "cpe:2.3:a:php:php",
+      "matches": {
+        "headers": {
+          "X-Powered-By": "PHP"
+        },
+        "version_patterns": {
+          "headers": {
+            "X-Powered-By": "PHP/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "asp-net",
+      "name": "ASP.NET",
+      "category": "web-framework",
+      "vendor": "Microsoft",
+      "cpe_prefix": "cpe:2.3:a:microsoft:asp.net",
+      "matches": {
+        "headers": {
+          "X-Powered-By": "ASP.NET",
+          "X-AspNet-Version": ".*"
+        },
+        "version_patterns": {
+          "headers": {
+            "X-AspNet-Version": "([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "wordpress",
+      "name": "WordPress",
+      "category": "cms",
+      "vendor": "WordPress",
+      "cpe_prefix": "cpe:2.3:a:wordpress:wordpress",
+      "matches": {
+        "html_patterns": [
+          "wp-content",
+          "wp-includes",
+          "wp-json",
+          "<meta name=\"generator\" content=\"WordPress"
+        ],
+        "headers": {
+          "Link": "wp-json"
+        },
+        "url_paths": ["/wp-login.php", "/wp-admin/"],
+        "version_patterns": {
+          "html": ["<meta name=\"generator\" content=\"WordPress ([\\d.]+)\""]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "drupal",
+      "name": "Drupal",
+      "category": "cms",
+      "vendor": "Drupal",
+      "cpe_prefix": "cpe:2.3:a:drupal:drupal",
+      "matches": {
+        "html_patterns": ["Drupal\\.settings", "drupal\\.js", "sites/default/files", "drupal-"],
+        "headers": {
+          "X-Generator": "Drupal",
+          "X-Drupal-Cache": ".*"
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "joomla",
+      "name": "Joomla",
+      "category": "cms",
+      "vendor": "Joomla",
+      "cpe_prefix": "cpe:2.3:a:joomla:joomla\\!",
+      "matches": {
+        "html_patterns": ["/media/jui/", "Joomla!", "/administrator/"],
+        "headers": {
+          "X-Content-Encoded-By": "Joomla"
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "grafana",
+      "name": "Grafana",
+      "category": "monitoring",
+      "vendor": "Grafana Labs",
+      "cpe_prefix": "cpe:2.3:a:grafana:grafana",
+      "matches": {
+        "html_patterns": ["grafana-app", "\"appTitle\":\"Grafana\"", "grafana\\.css"],
+        "url_paths": ["/api/health", "/login"],
+        "version_patterns": {
+          "html": ["Grafana v([\\d.]+)", "\"version\":\"([\\d.]+)\""]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "kibana",
+      "name": "Kibana",
+      "category": "monitoring",
+      "vendor": "Elastic",
+      "cpe_prefix": "cpe:2.3:a:elastic:kibana",
+      "matches": {
+        "html_patterns": ["kbn-injected-metadata", "kibana"],
+        "version_patterns": {
+          "html": ["\"version\":\"([\\d.]+)\""]
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "elasticsearch",
+      "name": "Elasticsearch",
+      "category": "database",
+      "vendor": "Elastic",
+      "cpe_prefix": "cpe:2.3:a:elastic:elasticsearch",
+      "matches": {
+        "html_patterns": ["\"cluster_name\"", "\"tagline\" : \"You Know, for Search\""],
+        "version_patterns": {
+          "html": ["\"number\" : \"([\\d.]+)\""]
+        }
+      },
+      "confidence_base": 95
+    },
+    {
+      "id": "jenkins",
+      "name": "Jenkins",
+      "category": "ci-cd",
+      "vendor": "Jenkins",
+      "cpe_prefix": "cpe:2.3:a:jenkins:jenkins",
+      "matches": {
+        "headers": {
+          "X-Jenkins": ".*",
+          "X-Hudson": ".*"
+        },
+        "html_patterns": ["Dashboard \\[Jenkins\\]", "jenkins\\.css", "/jenkins/"],
+        "version_patterns": {
+          "headers": {
+            "X-Jenkins": "([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 95
+    },
+    {
+      "id": "gitlab",
+      "name": "GitLab",
+      "category": "devops",
+      "vendor": "GitLab",
+      "cpe_prefix": "cpe:2.3:a:gitlab:gitlab",
+      "matches": {
+        "html_patterns": ["gon\\.gitlab", "GitLab", "gitlab-logo"],
+        "headers": {
+          "X-GitLab-Custom-Error": ".*"
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "sonarqube",
+      "name": "SonarQube",
+      "category": "code-analysis",
+      "vendor": "SonarSource",
+      "cpe_prefix": "cpe:2.3:a:sonarsource:sonarqube",
+      "matches": {
+        "html_patterns": ["SonarQube", "sonar\\.css"],
+        "version_patterns": {
+          "html": ["SonarQube ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "paloalto-pan-os",
+      "name": "Palo Alto PAN-OS",
+      "category": "firewall",
+      "vendor": "Palo Alto Networks",
+      "cpe_prefix": "cpe:2.3:o:paloaltonetworks:pan-os",
+      "matches": {
+        "html_patterns": ["Palo Alto Networks", "/php/login\\.php", "pan-os"],
+        "tls_org_patterns": ["Palo Alto"],
+        "favicon_hashes": [-1067007053]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "fortinet-fortigate",
+      "name": "Fortinet FortiGate",
+      "category": "firewall",
+      "vendor": "Fortinet",
+      "cpe_prefix": "cpe:2.3:o:fortinet:fortios",
+      "matches": {
+        "html_patterns": ["FortiGate", "fortinet", "fgt_lang"],
+        "headers": {
+          "Server": "xxxxxxxx-xxxxx"
+        },
+        "tls_org_patterns": ["Fortinet"],
+        "favicon_hashes": [945408572]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "cisco-asa",
+      "name": "Cisco ASA",
+      "category": "firewall",
+      "vendor": "Cisco",
+      "cpe_prefix": "cpe:2.3:o:cisco:adaptive_security_appliance_software",
+      "matches": {
+        "html_patterns": ["webvpn", "Cisco Adaptive Security", "ASDM"],
+        "tls_org_patterns": ["Cisco"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "sophos-xg",
+      "name": "Sophos XG Firewall",
+      "category": "firewall",
+      "vendor": "Sophos",
+      "cpe_prefix": "cpe:2.3:a:sophos:xg_firewall",
+      "matches": {
+        "html_patterns": ["Sophos", "cyberoam", "SFOS"],
+        "tls_org_patterns": ["Sophos"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "vmware-vcenter",
+      "name": "VMware vCenter",
+      "category": "virtualization",
+      "vendor": "VMware",
+      "cpe_prefix": "cpe:2.3:a:vmware:vcenter_server",
+      "matches": {
+        "html_patterns": ["vSphere Client", "VMware vCenter", "vmware-vsphere"],
+        "url_paths": ["/ui/"],
+        "tls_org_patterns": ["VMware"],
+        "version_patterns": {
+          "html": ["VMware vCenter Server ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "vmware-esxi",
+      "name": "VMware ESXi",
+      "category": "virtualization",
+      "vendor": "VMware",
+      "cpe_prefix": "cpe:2.3:o:vmware:esxi",
+      "matches": {
+        "html_patterns": ["VMware ESXi", "esxui", "ID_EESX_Welcome"],
+        "tls_org_patterns": ["VMware"],
+        "version_patterns": {
+          "html": ["ESXi ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "proxmox",
+      "name": "Proxmox VE",
+      "category": "virtualization",
+      "vendor": "Proxmox",
+      "cpe_prefix": "cpe:2.3:a:proxmox:virtual_environment",
+      "matches": {
+        "html_patterns": ["Proxmox", "pvemanager", "PVE\\."],
+        "tls_org_patterns": ["Proxmox"],
+        "version_patterns": {
+          "html": ["pvemanager/([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "dell-idrac",
+      "name": "Dell iDRAC",
+      "category": "management",
+      "vendor": "Dell",
+      "cpe_prefix": "cpe:2.3:a:dell:idrac",
+      "matches": {
+        "html_patterns": ["iDRAC", "Dell Integrated", "restgui"],
+        "tls_org_patterns": ["Dell"],
+        "version_patterns": {
+          "html": ["iDRAC[\\s-]*([\\d]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "hpe-ilo",
+      "name": "HPE iLO",
+      "category": "management",
+      "vendor": "HPE",
+      "cpe_prefix": "cpe:2.3:a:hp:integrated_lights-out",
+      "matches": {
+        "html_patterns": ["Integrated Lights-Out", "iLO [\\d]", "HP Integrated"],
+        "tls_org_patterns": ["Hewlett-Packard", "HPE"],
+        "version_patterns": {
+          "html": ["iLO ([\\d]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "cisco-switch",
+      "name": "Cisco Switch/Router",
+      "category": "network",
+      "vendor": "Cisco",
+      "matches": {
+        "html_patterns": ["Cisco Systems", "cisco-logo", "Level [0-9]+ Access"],
+        "tls_org_patterns": ["Cisco"],
+        "banner_patterns": ["Cisco IOS", "cisco"]
+      },
+      "confidence_base": 75
+    },
+    {
+      "id": "ubiquiti-unifi",
+      "name": "Ubiquiti UniFi",
+      "category": "network",
+      "vendor": "Ubiquiti",
+      "matches": {
+        "html_patterns": ["UniFi", "ubiquiti", "ubnt"],
+        "tls_org_patterns": ["Ubiquiti"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "mikrotik",
+      "name": "MikroTik RouterOS",
+      "category": "network",
+      "vendor": "MikroTik",
+      "cpe_prefix": "cpe:2.3:o:mikrotik:routeros",
+      "matches": {
+        "html_patterns": ["RouterOS", "mikrotik", "webfig"],
+        "banner_patterns": ["MikroTik", "RouterOS"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "synology-dsm",
+      "name": "Synology DSM",
+      "category": "nas",
+      "vendor": "Synology",
+      "cpe_prefix": "cpe:2.3:a:synology:diskstation_manager",
+      "matches": {
+        "html_patterns": ["Synology", "SYNO\\.SDS", "DiskStation"],
+        "tls_org_patterns": ["Synology"],
+        "version_patterns": {
+          "html": ["DiskStation Manager ([\\d.]+)", "DSM ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "qnap",
+      "name": "QNAP QTS",
+      "category": "nas",
+      "vendor": "QNAP",
+      "cpe_prefix": "cpe:2.3:o:qnap:qts",
+      "matches": {
+        "html_patterns": ["QNAP", "QTS", "qnap\\.css"],
+        "tls_org_patterns": ["QNAP"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "netscaler",
+      "name": "Citrix NetScaler/ADC",
+      "category": "load-balancer",
+      "vendor": "Citrix",
+      "cpe_prefix": "cpe:2.3:a:citrix:netscaler",
+      "matches": {
+        "html_patterns": ["NetScaler", "Citrix Gateway", "ns_\\."],
+        "headers": {
+          "Set-Cookie": "NSC_"
+        },
+        "tls_org_patterns": ["Citrix"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "f5-bigip",
+      "name": "F5 BIG-IP",
+      "category": "load-balancer",
+      "vendor": "F5",
+      "cpe_prefix": "cpe:2.3:a:f5:big-ip",
+      "matches": {
+        "html_patterns": ["BIG-IP", "F5 Networks", "tmui"],
+        "headers": {
+          "Server": "BigIP",
+          "Set-Cookie": "BIGipServer"
+        },
+        "tls_org_patterns": ["F5"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "haproxy",
+      "name": "HAProxy",
+      "category": "load-balancer",
+      "vendor": "HAProxy Technologies",
+      "cpe_prefix": "cpe:2.3:a:haproxy:haproxy",
+      "matches": {
+        "html_patterns": ["HAProxy", "Statistics Report for HAProxy"],
+        "headers": {
+          "Server": "HAProxy"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "rabbitmq",
+      "name": "RabbitMQ",
+      "category": "message-queue",
+      "vendor": "VMware",
+      "cpe_prefix": "cpe:2.3:a:pivotal_software:rabbitmq",
+      "matches": {
+        "html_patterns": ["RabbitMQ Management", "rabbitmq"],
+        "version_patterns": {
+          "html": ["RabbitMQ ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "couchdb",
+      "name": "Apache CouchDB",
+      "category": "database",
+      "vendor": "Apache",
+      "cpe_prefix": "cpe:2.3:a:apache:couchdb",
+      "matches": {
+        "html_patterns": ["CouchDB", "\"couchdb\":\"Welcome\""],
+        "version_patterns": {
+          "html": ["\"version\":\"([\\d.]+)\""]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "mongodb",
+      "name": "MongoDB",
+      "category": "database",
+      "vendor": "MongoDB",
+      "cpe_prefix": "cpe:2.3:a:mongodb:mongodb",
+      "matches": {
+        "banner_patterns": ["MongoDB", "mongod"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "redis",
+      "name": "Redis",
+      "category": "database",
+      "vendor": "Redis",
+      "cpe_prefix": "cpe:2.3:a:redis:redis",
+      "matches": {
+        "banner_patterns": ["redis_version", "Redis"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "mysql",
+      "name": "MySQL",
+      "category": "database",
+      "vendor": "Oracle",
+      "cpe_prefix": "cpe:2.3:a:oracle:mysql",
+      "matches": {
+        "banner_patterns": ["mysql", "MariaDB"]
+      },
+      "confidence_base": 75
+    },
+    {
+      "id": "postgresql",
+      "name": "PostgreSQL",
+      "category": "database",
+      "vendor": "PostgreSQL",
+      "cpe_prefix": "cpe:2.3:a:postgresql:postgresql",
+      "matches": {
+        "banner_patterns": ["PostgreSQL", "postgres"]
+      },
+      "confidence_base": 75
+    },
+    {
+      "id": "mssql",
+      "name": "Microsoft SQL Server",
+      "category": "database",
+      "vendor": "Microsoft",
+      "cpe_prefix": "cpe:2.3:a:microsoft:sql_server",
+      "matches": {
+        "banner_patterns": ["SQL Server", "MSSQL", "Microsoft SQL"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "exchange",
+      "name": "Microsoft Exchange",
+      "category": "email",
+      "vendor": "Microsoft",
+      "cpe_prefix": "cpe:2.3:a:microsoft:exchange_server",
+      "matches": {
+        "html_patterns": ["Outlook Web App", "OWA", "/owa/", "Exchange"],
+        "headers": {
+          "X-OWA-Version": ".*",
+          "X-FEServer": ".*"
+        },
+        "url_paths": ["/owa/", "/ecp/"],
+        "version_patterns": {
+          "headers": {
+            "X-OWA-Version": "([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "roundcube",
+      "name": "Roundcube",
+      "category": "email",
+      "vendor": "Roundcube",
+      "cpe_prefix": "cpe:2.3:a:roundcube:webmail",
+      "matches": {
+        "html_patterns": ["roundcube", "rcmain"],
+        "version_patterns": {
+          "html": ["Roundcube Webmail ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "zabbix",
+      "name": "Zabbix",
+      "category": "monitoring",
+      "vendor": "Zabbix",
+      "cpe_prefix": "cpe:2.3:a:zabbix:zabbix",
+      "matches": {
+        "html_patterns": ["Zabbix", "zabbix\\.php"],
+        "version_patterns": {
+          "html": ["Zabbix ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "nagios",
+      "name": "Nagios",
+      "category": "monitoring",
+      "vendor": "Nagios",
+      "cpe_prefix": "cpe:2.3:a:nagios:nagios",
+      "matches": {
+        "html_patterns": ["Nagios", "nagios\\.css"],
+        "version_patterns": {
+          "html": ["Nagios[\\s®]* ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "prometheus",
+      "name": "Prometheus",
+      "category": "monitoring",
+      "vendor": "Prometheus",
+      "matches": {
+        "html_patterns": ["Prometheus Time Series", "prometheus"],
+        "url_paths": ["/api/v1/status/config"],
+        "version_patterns": {
+          "html": ["Prometheus ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "openssh",
+      "name": "OpenSSH",
+      "category": "remote-access",
+      "vendor": "OpenBSD",
+      "cpe_prefix": "cpe:2.3:a:openbsd:openssh",
+      "matches": {
+        "banner_patterns": ["OpenSSH"],
+        "version_patterns": {
+          "banner": ["OpenSSH[_\\s]([\\d.p]+)"]
+        }
+      },
+      "confidence_base": 95
+    },
+    {
+      "id": "rdp",
+      "name": "Microsoft RDP",
+      "category": "remote-access",
+      "vendor": "Microsoft",
+      "matches": {
+        "banner_patterns": ["Microsoft Terminal", "Remote Desktop"],
+        "nmap_services": ["ms-wbt-server"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "openvpn",
+      "name": "OpenVPN",
+      "category": "vpn",
+      "vendor": "OpenVPN",
+      "cpe_prefix": "cpe:2.3:a:openvpn:openvpn",
+      "matches": {
+        "html_patterns": ["OpenVPN", "openvpn"],
+        "banner_patterns": ["OpenVPN"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "wireguard",
+      "name": "WireGuard",
+      "category": "vpn",
+      "vendor": "WireGuard",
+      "matches": {
+        "banner_patterns": ["WireGuard"]
+      },
+      "confidence_base": 75
+    },
+    {
+      "id": "spring-boot",
+      "name": "Spring Boot",
+      "category": "web-framework",
+      "vendor": "VMware",
+      "matches": {
+        "html_patterns": ["Whitelabel Error Page", "\"timestamp\"", "spring"],
+        "headers": {
+          "X-Application-Context": ".*"
+        },
+        "url_paths": ["/actuator/health", "/actuator/info"]
+      },
+      "confidence_base": 75
+    },
+    {
+      "id": "django",
+      "name": "Django",
+      "category": "web-framework",
+      "vendor": "Django",
+      "matches": {
+        "html_patterns": ["csrfmiddlewaretoken", "The install worked successfully", "__django__"],
+        "headers": {
+          "Set-Cookie": "csrftoken"
+        }
+      },
+      "confidence_base": 70
+    },
+    {
+      "id": "flask",
+      "name": "Flask",
+      "category": "web-framework",
+      "vendor": "Pallets",
+      "matches": {
+        "headers": {
+          "Server": "Werkzeug"
+        },
+        "version_patterns": {
+          "headers": {
+            "Server": "Werkzeug/([\\d.]+)"
+          }
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "laravel",
+      "name": "Laravel",
+      "category": "web-framework",
+      "vendor": "Laravel",
+      "matches": {
+        "headers": {
+          "Set-Cookie": "laravel_session"
+        },
+        "html_patterns": ["laravel"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "nextjs",
+      "name": "Next.js",
+      "category": "web-framework",
+      "vendor": "Vercel",
+      "matches": {
+        "headers": {
+          "X-Powered-By": "Next.js",
+          "x-nextjs-cache": ".*"
+        },
+        "html_patterns": ["_next/static", "__NEXT_DATA__"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "react",
+      "name": "React",
+      "category": "js-framework",
+      "vendor": "Meta",
+      "matches": {
+        "html_patterns": ["react-root", "__REACT", "data-reactroot", "react\\.production"]
+      },
+      "confidence_base": 60
+    },
+    {
+      "id": "angular",
+      "name": "Angular",
+      "category": "js-framework",
+      "vendor": "Google",
+      "matches": {
+        "html_patterns": ["ng-version", "ng-app", "angular\\.min\\.js", "ng-controller"]
+      },
+      "confidence_base": 65
+    },
+    {
+      "id": "vue",
+      "name": "Vue.js",
+      "category": "js-framework",
+      "vendor": "Evan You",
+      "matches": {
+        "html_patterns": ["v-app", "vue\\.min\\.js", "v-cloak", "__vue__", "data-v-"]
+      },
+      "confidence_base": 60
+    },
+    {
+      "id": "servicenow",
+      "name": "ServiceNow",
+      "category": "itsm",
+      "vendor": "ServiceNow",
+      "matches": {
+        "html_patterns": ["ServiceNow", "service-now\\.com", "glide\\.js", "sn_"],
+        "headers": {
+          "X-Is-Logged-In": ".*"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "sap",
+      "name": "SAP",
+      "category": "erp",
+      "vendor": "SAP",
+      "matches": {
+        "html_patterns": ["SAP NetWeaver", "sap-ui-core", "sap\\.ui"],
+        "headers": {
+          "Server": "SAP"
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "jira",
+      "name": "Jira",
+      "category": "project-management",
+      "vendor": "Atlassian",
+      "cpe_prefix": "cpe:2.3:a:atlassian:jira",
+      "matches": {
+        "html_patterns": ["JIRA", "jira-", "atlassian-jira"],
+        "headers": {
+          "X-AREQUESTID": ".*"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "confluence",
+      "name": "Confluence",
+      "category": "wiki",
+      "vendor": "Atlassian",
+      "cpe_prefix": "cpe:2.3:a:atlassian:confluence",
+      "matches": {
+        "html_patterns": ["Confluence", "confluence-", "ajs-"],
+        "headers": {
+          "X-Confluence-Request-Time": ".*"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "hashicorp-vault",
+      "name": "HashiCorp Vault",
+      "category": "secrets",
+      "vendor": "HashiCorp",
+      "cpe_prefix": "cpe:2.3:a:hashicorp:vault",
+      "matches": {
+        "html_patterns": ["Vault", "vault-logo"],
+        "url_paths": ["/v1/sys/health"],
+        "version_patterns": {
+          "html": ["Vault v([\\d.]+)"]
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "keycloak",
+      "name": "Keycloak",
+      "category": "identity",
+      "vendor": "Red Hat",
+      "cpe_prefix": "cpe:2.3:a:redhat:keycloak",
+      "matches": {
+        "html_patterns": ["Keycloak", "kc-logo"],
+        "url_paths": ["/auth/realms/"],
+        "version_patterns": {
+          "html": ["Keycloak ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "minio",
+      "name": "MinIO",
+      "category": "storage",
+      "vendor": "MinIO",
+      "matches": {
+        "html_patterns": ["MinIO", "minio-loader"],
+        "headers": {
+          "Server": "MinIO"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "portainer",
+      "name": "Portainer",
+      "category": "container-management",
+      "vendor": "Portainer.io",
+      "matches": {
+        "html_patterns": ["Portainer", "portainer\\.css", "portainer-app"]
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "rancher",
+      "name": "Rancher",
+      "category": "container-management",
+      "vendor": "SUSE",
+      "matches": {
+        "html_patterns": ["Rancher", "rancher\\.css"],
+        "tls_org_patterns": ["Rancher"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "argocd",
+      "name": "Argo CD",
+      "category": "ci-cd",
+      "vendor": "Argo Project",
+      "matches": {
+        "html_patterns": ["Argo CD", "argocd"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "nexus",
+      "name": "Sonatype Nexus",
+      "category": "artifact-repo",
+      "vendor": "Sonatype",
+      "cpe_prefix": "cpe:2.3:a:sonatype:nexus",
+      "matches": {
+        "html_patterns": ["Nexus Repository Manager", "nexus-ui"],
+        "version_patterns": {
+          "html": ["Nexus Repository Manager ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "harbor",
+      "name": "Harbor Registry",
+      "category": "container-registry",
+      "vendor": "VMware",
+      "matches": {
+        "html_patterns": ["Harbor", "harbor-app"],
+        "version_patterns": {
+          "html": ["Harbor ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "splunk",
+      "name": "Splunk",
+      "category": "siem",
+      "vendor": "Splunk",
+      "cpe_prefix": "cpe:2.3:a:splunk:splunk",
+      "matches": {
+        "html_patterns": ["Splunk", "splunkweb", "splunk\\.css"],
+        "version_patterns": {
+          "html": ["Splunk ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "wazuh",
+      "name": "Wazuh",
+      "category": "siem",
+      "vendor": "Wazuh",
+      "matches": {
+        "html_patterns": ["Wazuh", "wazuh-app"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "pfsense",
+      "name": "pfSense",
+      "category": "firewall",
+      "vendor": "Netgate",
+      "cpe_prefix": "cpe:2.3:a:netgate:pfsense",
+      "matches": {
+        "html_patterns": ["pfSense", "pfsense-logo", "/csrf/csrf-magic\\.js"],
+        "version_patterns": {
+          "html": ["pfSense ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "opnsense",
+      "name": "OPNsense",
+      "category": "firewall",
+      "vendor": "Deciso",
+      "matches": {
+        "html_patterns": ["OPNsense", "opnsense_"],
+        "version_patterns": {
+          "html": ["OPNsense ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "printer-hp",
+      "name": "HP Printer",
+      "category": "printer",
+      "vendor": "HP",
+      "matches": {
+        "html_patterns": ["HP Color LaserJet", "HP LaserJet", "Hewlett-Packard", "hp/device/"],
+        "tls_org_patterns": ["Hewlett-Packard", "HP Inc"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "printer-xerox",
+      "name": "Xerox Printer",
+      "category": "printer",
+      "vendor": "Xerox",
+      "matches": {
+        "html_patterns": ["Xerox", "xerox\\.css"],
+        "tls_org_patterns": ["Xerox"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "printer-ricoh",
+      "name": "Ricoh Printer",
+      "category": "printer",
+      "vendor": "Ricoh",
+      "matches": {
+        "html_patterns": ["RICOH", "ricoh\\.css"],
+        "tls_org_patterns": ["Ricoh"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "unifi-protect",
+      "name": "UniFi Protect",
+      "category": "camera",
+      "vendor": "Ubiquiti",
+      "matches": {
+        "html_patterns": ["UniFi Protect", "protect\\.ui\\."],
+        "tls_org_patterns": ["Ubiquiti"]
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "hikvision",
+      "name": "Hikvision",
+      "category": "camera",
+      "vendor": "Hikvision",
+      "cpe_prefix": "cpe:2.3:o:hikvision",
+      "matches": {
+        "html_patterns": ["HIKVISION", "hikvision", "webComponents"],
+        "headers": {
+          "Server": "DNVRS-Webs"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "dahua",
+      "name": "Dahua",
+      "category": "camera",
+      "vendor": "Dahua",
+      "cpe_prefix": "cpe:2.3:o:dahuasecurity",
+      "matches": {
+        "html_patterns": ["Dahua", "DSSPro"],
+        "headers": {
+          "Server": "DH-NVR"
+        }
+      },
+      "confidence_base": 80
+    },
+    {
+      "id": "phpmyadmin",
+      "name": "phpMyAdmin",
+      "category": "database-admin",
+      "vendor": "phpMyAdmin",
+      "cpe_prefix": "cpe:2.3:a:phpmyadmin:phpmyadmin",
+      "matches": {
+        "html_patterns": ["phpMyAdmin", "pma_navigation"],
+        "url_paths": ["/phpmyadmin/"],
+        "version_patterns": {
+          "html": ["phpMyAdmin ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "pgadmin",
+      "name": "pgAdmin",
+      "category": "database-admin",
+      "vendor": "pgAdmin",
+      "matches": {
+        "html_patterns": ["pgAdmin", "pgadmin"],
+        "version_patterns": {
+          "html": ["pgAdmin ([\\d]+)"]
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "category": "cdn",
+      "vendor": "Cloudflare",
+      "matches": {
+        "headers": {
+          "Server": "cloudflare",
+          "CF-RAY": ".*"
+        }
+      },
+      "confidence_base": 95
+    },
+    {
+      "id": "akamai",
+      "name": "Akamai",
+      "category": "cdn",
+      "vendor": "Akamai",
+      "matches": {
+        "headers": {
+          "Server": "AkamaiGHost",
+          "X-Akamai-Transformed": ".*"
+        }
+      },
+      "confidence_base": 90
+    },
+    {
+      "id": "traefik",
+      "name": "Traefik",
+      "category": "reverse-proxy",
+      "vendor": "Traefik Labs",
+      "matches": {
+        "html_patterns": ["Traefik"],
+        "headers": {
+          "Server": "Traefik"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "envoy",
+      "name": "Envoy Proxy",
+      "category": "reverse-proxy",
+      "vendor": "Envoy",
+      "matches": {
+        "headers": {
+          "Server": "envoy",
+          "x-envoy-upstream-service-time": ".*"
+        }
+      },
+      "confidence_base": 85
+    },
+    {
+      "id": "awx-tower",
+      "name": "AWX/Ansible Tower",
+      "category": "automation",
+      "vendor": "Red Hat",
+      "matches": {
+        "html_patterns": ["AWX", "Ansible Tower", "ansible-tower"],
+        "version_patterns": {
+          "html": ["AWX ([\\d.]+)", "Tower ([\\d.]+)"]
+        }
+      },
+      "confidence_base": 80
+    }
+  ]
+}

@@ -1,2 +1,7 @@
 .claude/
 __pycache__/
+*.pyc
+env/
+venv/
+vuln_scan.db
+tmp.json

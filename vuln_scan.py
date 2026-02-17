@@ -13,8 +13,20 @@ import tempfile
 import shutil
 from datetime import datetime
 
+from fingerprint.engine import FingerprintEngine, FingerprintResult
+
 # Database path - use absolute path relative to this script's location
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vuln_scan.db')
+
+# Singleton fingerprint engine (loaded once, reused)
+_fingerprint_engine = None
+
+def get_fingerprint_engine():
+    """Get or create the singleton FingerprintEngine."""
+    global _fingerprint_engine
+    if _fingerprint_engine is None:
+        _fingerprint_engine = FingerprintEngine()
+    return _fingerprint_engine
 
 # Configure logging
 logging.basicConfig(
@@ -390,11 +402,37 @@ def init_db():
                         last_seen TEXT,
                         scan_count INTEGER DEFAULT 1)''')
 
+    # Fingerprints table for storing endpoint identification data
+    cursor.execute('''CREATE TABLE IF NOT EXISTS fingerprints (
+                        id INTEGER PRIMARY KEY,
+                        ip TEXT,
+                        port INTEGER,
+                        protocol TEXT,
+                        signature_id TEXT,
+                        name TEXT,
+                        category TEXT,
+                        vendor TEXT,
+                        version TEXT,
+                        cpe TEXT,
+                        confidence INTEGER,
+                        evidence_json TEXT,
+                        tls_subject_cn TEXT,
+                        tls_subject_org TEXT,
+                        tls_issuer_org TEXT,
+                        tls_self_signed INTEGER,
+                        http_title TEXT,
+                        http_server TEXT,
+                        favicon_hash INTEGER,
+                        scan_date TEXT,
+                        UNIQUE(ip, port, protocol, signature_id))''')
+
     # Create indexes for better query performance
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_scans_ip ON scans(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_vulns_ip ON vulnerabilities(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_vulns_unique ON vulnerabilities(ip, port, protocol, vuln_id)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_assets_ip ON assets(ip)''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_fingerprints_ip ON fingerprints(ip)''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_fingerprints_port ON fingerprints(ip, port)''')
 
     conn.commit()
     conn.close()
@@ -552,6 +590,11 @@ def get_asset_details(ip):
 
         # Get vulnerabilities
         asset['vulnerabilities'] = get_vulnerabilities(ip)
+
+        # Get fingerprint data
+        fp_summary = get_fingerprint_summary(ip)
+        asset['fingerprints'] = fp_summary.get('technologies', [])
+        asset['fingerprints_by_port'] = fp_summary.get('by_port', {})
 
         return asset
     except sqlite3.Error as e:
@@ -1191,6 +1234,146 @@ def get_vulnerabilities(ip=None):
         return []
     finally:
         conn.close()
+
+
+def store_fingerprints(ip, fingerprint_results):
+    """Store fingerprint results in the database.
+
+    Args:
+        ip: Target IP address
+        fingerprint_results: List of FingerprintResult objects
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    scan_date = datetime.now().isoformat()
+
+    try:
+        stored_count = 0
+        for fp_result in fingerprint_results:
+            for match in fp_result.matches:
+                if match.confidence < 10:
+                    continue  # Skip very low confidence matches
+
+                tls_info = fp_result.tls_info or {}
+                http_info = fp_result.http_info or {}
+
+                cursor.execute('''INSERT OR REPLACE INTO fingerprints
+                    (ip, port, protocol, signature_id, name, category, vendor,
+                     version, cpe, confidence, evidence_json,
+                     tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                     http_title, http_server, favicon_hash, scan_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (ip, fp_result.port, fp_result.protocol,
+                     match.signature_id, match.name, match.category, match.vendor,
+                     match.version, match.cpe, match.confidence,
+                     json.dumps(match.evidence),
+                     tls_info.get('subject_cn'), tls_info.get('subject_org'),
+                     tls_info.get('issuer_org'),
+                     1 if tls_info.get('self_signed') else 0,
+                     http_info.get('title', ''), http_info.get('server', ''),
+                     fp_result.favicon_hash, scan_date))
+                stored_count += 1
+
+        conn.commit()
+        logger.info(f"Stored {stored_count} fingerprint matches for {ip}")
+    except sqlite3.Error as e:
+        logger.error(f"Database error storing fingerprints for {ip}: {e}")
+    finally:
+        conn.close()
+
+
+def get_fingerprints(ip, port=None):
+    """Retrieve fingerprint data for an IP, optionally filtered by port.
+
+    Returns list of dicts with fingerprint match data.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        if port is not None:
+            cursor.execute('''SELECT ip, port, protocol, signature_id, name, category, vendor,
+                              version, cpe, confidence, evidence_json,
+                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                              http_title, http_server, favicon_hash, scan_date
+                              FROM fingerprints
+                              WHERE ip = ? AND port = ?
+                              ORDER BY confidence DESC''', (ip, port))
+        else:
+            cursor.execute('''SELECT ip, port, protocol, signature_id, name, category, vendor,
+                              version, cpe, confidence, evidence_json,
+                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
+                              http_title, http_server, favicon_hash, scan_date
+                              FROM fingerprints
+                              WHERE ip = ?
+                              ORDER BY port, confidence DESC''', (ip,))
+
+        results = []
+        for row in cursor.fetchall():
+            evidence = []
+            try:
+                evidence = json.loads(row[10]) if row[10] else []
+            except json.JSONDecodeError:
+                pass
+
+            results.append({
+                'ip': row[0],
+                'port': row[1],
+                'protocol': row[2],
+                'signature_id': row[3],
+                'name': row[4],
+                'category': row[5],
+                'vendor': row[6],
+                'version': row[7],
+                'cpe': row[8],
+                'confidence': row[9],
+                'evidence': evidence,
+                'tls_subject_cn': row[11],
+                'tls_subject_org': row[12],
+                'tls_issuer_org': row[13],
+                'tls_self_signed': bool(row[14]),
+                'http_title': row[15],
+                'http_server': row[16],
+                'favicon_hash': row[17],
+                'scan_date': row[18],
+            })
+
+        return results
+    except sqlite3.Error as e:
+        logger.error(f"Database error getting fingerprints for {ip}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_fingerprint_summary(ip):
+    """Get a summary of identified technologies for an IP.
+
+    Returns dict with best match per port and overall tech stack.
+    """
+    fingerprints = get_fingerprints(ip)
+    if not fingerprints:
+        return {'technologies': [], 'by_port': {}}
+
+    # Group by port, take best match per port
+    by_port = {}
+    all_techs = {}
+    for fp in fingerprints:
+        port = fp['port']
+        if port not in by_port:
+            by_port[port] = fp  # Already sorted by confidence DESC
+        # Track unique technologies
+        sig_id = fp['signature_id']
+        if sig_id not in all_techs or fp['confidence'] > all_techs[sig_id]['confidence']:
+            all_techs[sig_id] = fp
+
+    # Sort technologies by confidence
+    technologies = sorted(all_techs.values(), key=lambda t: t['confidence'], reverse=True)
+
+    return {
+        'technologies': technologies,
+        'by_port': by_port,
+    }
 
 
 def get_vulnerability_summary():
