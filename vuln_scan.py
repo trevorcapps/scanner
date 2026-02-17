@@ -352,6 +352,16 @@ def scan(ip, options=None):
     else:
         args.append('--host-timeout 300')
 
+    # Add vulscan NSE script if enabled
+    if options and options.get('vulscan'):
+        vulscan_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vulscan', 'vulscan.nse')
+        if os.path.isfile(vulscan_path):
+            args.append(f'--script={vulscan_path}')
+            args.append('--script-args "vulscandb=cve.csv"')
+            logger.info("Vulscan NSE enabled for this scan")
+        else:
+            logger.warning("Vulscan requested but vulscan.nse not found")
+
     arguments = ' '.join(args)
 
     # Handle port specification separately (passed to scan method)

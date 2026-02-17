@@ -392,6 +392,19 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             logger.info(f"Stored {len(scan_data)} ports for {ip}")
             emit_log(sid, f'Found {len(scan_data)} open port(s) on {ip}', 'success')
 
+            # Parse vulscan results if enabled
+            if scan_options and scan_options.get('vulscan') and is_vulscan_available():
+                try:
+                    vulscan_results = parse_vulscan_output(scan_result)
+                    if vulscan_results:
+                        store_vulscan_results(ip, vulscan_results)
+                        emit_log(sid, f'Vulscan found {len(vulscan_results)} CVE matches for {ip}', 'success')
+                    else:
+                        emit_log(sid, f'Vulscan: no CVE matches for {ip}', 'debug')
+                except Exception as e:
+                    emit_log(sid, f'Vulscan parsing error: {e}', 'warning')
+                    logger.warning(f"Vulscan error for {ip}: {e}")
+
             # Run fingerprinting on discovered ports
             emit_log(sid, f'Starting endpoint fingerprinting on {ip}', 'info')
             try:
@@ -646,7 +659,8 @@ def handle_start_scan(data):
         'ports': data.get('ports', ''),
         'scan_speed': data.get('scan_speed', 'T3'),
         'host_timeout': data.get('host_timeout', 300),
-        'max_hosts': data.get('max_hosts', 256)
+        'max_hosts': data.get('max_hosts', 256),
+        'vulscan': data.get('vulscan', False)
     }
 
     # Track this scan

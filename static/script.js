@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
         scanSpeed: 'T3',
         hostTimeout: 300,
         maxHosts: 256,
+        vulscan: false,
         vulnTimeout: 600,
         severity: 'critical,high,medium,low',
         rateLimit: 150,
@@ -68,6 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
             scanSpeed: document.getElementById('setting-scan-speed').value,
             hostTimeout: parseInt(document.getElementById('setting-host-timeout').value) || 300,
             maxHosts: parseInt(document.getElementById('setting-max-hosts').value) || 256,
+            vulscan: document.getElementById('setting-vulscan').checked,
             vulnTimeout: parseInt(document.getElementById('setting-vuln-timeout').value) || 600,
             severity: document.getElementById('setting-severity').value,
             rateLimit: parseInt(document.getElementById('setting-rate-limit').value) || 150,
@@ -81,6 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('setting-scan-speed').value = settings.scanSpeed || 'T3';
         document.getElementById('setting-host-timeout').value = settings.hostTimeout || 300;
         document.getElementById('setting-max-hosts').value = settings.maxHosts || 256;
+        document.getElementById('setting-vulscan').checked = settings.vulscan || false;
         document.getElementById('setting-vuln-timeout').value = settings.vulnTimeout || 600;
         document.getElementById('setting-severity').value = settings.severity || 'critical,high,medium,low';
         document.getElementById('setting-rate-limit').value = settings.rateLimit || 150;
@@ -782,7 +785,8 @@ document.addEventListener('DOMContentLoaded', function() {
             ports: settings.ports,
             scan_speed: settings.scanSpeed,
             host_timeout: settings.hostTimeout,
-            max_hosts: settings.maxHosts
+            max_hosts: settings.maxHosts,
+            vulscan: settings.vulscan
         });
         progressContainer.style.display = 'block';
         progressBar.value = 10;

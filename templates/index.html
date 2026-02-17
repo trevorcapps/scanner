@@ -268,6 +268,13 @@
                         <input type="number" id="setting-max-hosts" min="1" max="1024" value="256">
                         <span class="setting-hint">Maximum hosts to scan in a CIDR range (1-1024)</span>
                     </div>
+
+                    <div class="setting-item">
+                        <label for="setting-vulscan">
+                            <input type="checkbox" id="setting-vulscan"> Enable Vulscan (NSE CVE Detection)
+                        </label>
+                        <span class="setting-hint">Adds vulscan NSE script to nmap scans — matches service versions against offline CVE databases. Slower but finds CVEs during port scans.</span>
+                    </div>
                 </div>
             </div>
 
