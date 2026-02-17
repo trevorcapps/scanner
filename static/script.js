@@ -1068,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (nvdFullSyncBtn) {
         nvdFullSyncBtn.addEventListener('click', function() {
-            if (confirm('Full re-sync will re-download ALL CVEs from NVD. This may take 30-60 minutes. Continue?')) {
+            if (confirm('Full sync will download ALL year feeds (2002-2026) from NVD. This takes ~5-10 minutes. Continue?')) {
                 socket.emit('start_nvd_sync', { full: true });
                 nvdSyncProgress.style.display = 'block';
                 nvdSyncBtn.disabled = true;

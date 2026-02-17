@@ -1,24 +1,29 @@
 """NVD Feed download, import, and local CPE matching module for Cerebus.
 
-Provides bulk CVE download from NVD API 2.0, local SQLite storage,
-and version-aware CPE matching for offline vulnerability lookups.
+Downloads bulk NVD JSON feed files (gzipped) for fast CVE import,
+with incremental updates via the 'modified' feed. Stores CVEs and
+CPE match data in local SQLite for offline vulnerability lookups.
 """
 
 import os
 import re
 import json
+import gzip
 import time
 import sqlite3
+import hashlib
 import logging
 import threading
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-NVD_CVE_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-RESULTS_PER_PAGE = 2000
+# NVD bulk JSON feed base URL
+NVD_FEED_BASE = "https://nvd.nist.gov/feeds/json/cve/2.0"
+FEED_YEARS = list(range(2002, 2027))  # 2002-2026
 
 # Import DB_PATH from vuln_scan (lazy to avoid circular imports)
 _db_path = None
@@ -65,7 +70,6 @@ def init_nvd_tables(db_path=None):
                       ON nvd_cpe_matches(cve_id)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_nvd_cpe_uri
                       ON nvd_cpe_matches(cpe23uri)''')
-    # Index for vendor:product lookups (first 5 CPE fields)
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_nvd_cpe_product
                       ON nvd_cpe_matches(cpe23uri COLLATE NOCASE)''')
 
@@ -76,7 +80,7 @@ def init_nvd_tables(db_path=None):
 
 def _extract_cve_fields(cve_item):
     """Extract fields from a single NVD API 2.0 CVE item."""
-    cve = cve_item.get('cve', {})
+    cve = cve_item.get('cve', cve_item)  # Handle both {'cve': {...}} and direct cve object
     cve_id = cve.get('id', '')
 
     # Description (English)
@@ -143,21 +147,162 @@ def _extract_cpe_from_node(node, cve_id, results):
             'version_end_type': 'including' if match.get('versionEndIncluding') else ('excluding' if match.get('versionEndExcluding') else None),
         })
 
-    # Handle nested children nodes (AND/OR logic in NVD)
     for child in node.get('children', []):
         _extract_cpe_from_node(child, cve_id, results)
 
 
+def _fetch_meta(feed_name):
+    """Fetch .meta file for a feed and return dict with sha256, lastModifiedDate, size."""
+    url = f"{NVD_FEED_BASE}/{feed_name}.meta"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            text = resp.read().decode('utf-8')
+        meta = {}
+        for line in text.strip().split('\n'):
+            if ':' in line:
+                key, _, val = line.partition(':')
+                meta[key.strip()] = val.strip()
+        return meta
+    except Exception as e:
+        logger.warning(f"Failed to fetch meta for {feed_name}: {e}")
+        return None
+
+
+def _get_stored_hash(cursor, feed_name):
+    """Get stored sha256 hash for a feed from settings table."""
+    try:
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (f'nvd_feed_hash_{feed_name}',))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _store_hash(cursor, feed_name, sha256):
+    """Store sha256 hash for a feed in settings table."""
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                   (f'nvd_feed_hash_{feed_name}', sha256))
+
+
+def _download_and_parse_feed(feed_name, emit_fn, conn, cursor, label=""):
+    """Download a gzipped JSON feed, decompress, parse, and import CVEs.
+    
+    Returns number of CVEs imported, or -1 on error.
+    """
+    url = f"{NVD_FEED_BASE}/{feed_name}.json.gz"
+    emit_fn({'status': 'running', 'message': f'Downloading {label or feed_name}...'})
+
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Cerebus-Scanner/1.0'})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            compressed = resp.read()
+    except Exception as e:
+        emit_fn({'status': 'running', 'message': f'Download failed for {feed_name}: {e}'})
+        logger.error(f"Download failed for {feed_name}: {e}")
+        return -1
+
+    # Compute sha256 of compressed file for verification
+    file_hash = hashlib.sha256(compressed).hexdigest().upper()
+
+    # Decompress
+    try:
+        raw = gzip.decompress(compressed)
+    except Exception as e:
+        emit_fn({'status': 'running', 'message': f'Decompression failed for {feed_name}: {e}'})
+        logger.error(f"Decompression failed for {feed_name}: {e}")
+        return -1
+
+    # Free compressed data
+    del compressed
+
+    # Parse JSON
+    try:
+        data = json.loads(raw)
+    except Exception as e:
+        emit_fn({'status': 'running', 'message': f'JSON parse failed for {feed_name}: {e}'})
+        logger.error(f"JSON parse failed for {feed_name}: {e}")
+        return -1
+
+    del raw
+
+    vulns = data.get('vulnerabilities', [])
+    total = len(vulns)
+    emit_fn({'status': 'running', 'message': f'Importing {total} CVEs from {label or feed_name}...'})
+
+    imported = 0
+    batch_cves = []
+    batch_cpes = []
+    batch_cve_ids = []
+
+    for item in vulns:
+        fields = _extract_cve_fields(item)
+        if not fields['cve_id']:
+            continue
+
+        batch_cves.append((
+            fields['cve_id'], fields['description'], fields['published_date'],
+            fields['last_modified'], fields['cvss_v3_score'], fields['cvss_v3_severity'],
+            fields['cvss_v2_score'], fields['cvss_v2_severity']
+        ))
+        batch_cve_ids.append(fields['cve_id'])
+
+        for cpe in fields['cpe_matches']:
+            batch_cpes.append((
+                cpe['cve_id'], cpe['cpe23uri'], cpe['vulnerable'],
+                cpe['version_start'], cpe['version_start_type'],
+                cpe['version_end'], cpe['version_end_type']
+            ))
+
+        imported += 1
+
+        # Batch insert every 2000 CVEs
+        if len(batch_cves) >= 2000:
+            _flush_batch(cursor, batch_cves, batch_cpes, batch_cve_ids)
+            batch_cves.clear()
+            batch_cpes.clear()
+            batch_cve_ids.clear()
+            conn.commit()
+
+    # Flush remaining
+    if batch_cves:
+        _flush_batch(cursor, batch_cves, batch_cpes, batch_cve_ids)
+        conn.commit()
+
+    # Store the hash
+    _store_hash(cursor, feed_name, file_hash)
+    conn.commit()
+
+    return imported
+
+
+def _flush_batch(cursor, batch_cves, batch_cpes, batch_cve_ids):
+    """Batch insert CVEs and CPE matches."""
+    cursor.executemany('''INSERT OR REPLACE INTO nvd_cves
+        (cve_id, description, published_date, last_modified,
+         cvss_v3_score, cvss_v3_severity, cvss_v2_score, cvss_v2_severity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', batch_cves)
+
+    # Delete old CPE matches for these CVEs
+    if batch_cve_ids:
+        placeholders = ','.join(['?'] * len(batch_cve_ids))
+        cursor.execute(f'DELETE FROM nvd_cpe_matches WHERE cve_id IN ({placeholders})', batch_cve_ids)
+
+    if batch_cpes:
+        cursor.executemany('''INSERT INTO nvd_cpe_matches
+            (cve_id, cpe23uri, vulnerable, version_start, version_start_type,
+             version_end, version_end_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''', batch_cpes)
+
+
 def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None):
-    """Download CVEs from NVD API and store in local database.
+    """Download CVEs from NVD bulk feeds and store in local database.
 
     Args:
         socketio: Flask-SocketIO instance for progress events (optional)
-        api_key: NVD API key for faster rate limits (optional)
-        full_sync: If True, re-download everything; otherwise incremental
+        api_key: NVD API key (unused for bulk feeds, kept for API compat)
+        full_sync: If True, download all year feeds; otherwise just 'modified' feed
         db_path: Override database path
-
-    This runs in a background thread. Emits 'nvd_sync_progress' events.
     """
     path = db_path or _get_db_path()
     init_nvd_tables(path)
@@ -170,100 +315,73 @@ def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
+    # Enable WAL mode for better concurrent performance
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+
     try:
-        # Determine start date for incremental sync
-        last_sync = None
-        if not full_sync:
-            cursor.execute("SELECT value FROM settings WHERE key = 'nvd_last_sync'")
-            row = cursor.fetchone()
-            if row and row[0]:
-                last_sync = row[0]
+        start_time = time.time()
+        total_imported = 0
 
-        # Build initial URL parameters
-        params = [f'resultsPerPage={RESULTS_PER_PAGE}']
-        if last_sync and not full_sync:
-            params.append(f'lastModStartDate={last_sync}')
-            params.append(f'lastModEndDate={datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")}')
-            emit({'status': 'running', 'message': f'Incremental sync from {last_sync}', 'percent': 0})
+        if full_sync:
+            # Full sync: download all year feeds (2002-2026)
+            feeds = [(f'nvdcve-2.0-{year}', str(year)) for year in FEED_YEARS]
+            total_feeds = len(feeds)
+
+            emit({'status': 'running', 'message': f'Full sync: {total_feeds} year feeds to process', 'percent': 0})
+
+            for idx, (feed_name, label) in enumerate(feeds):
+                percent = int((idx / total_feeds) * 100)
+
+                # Check meta to see if feed changed (skip if hash matches)
+                meta = _fetch_meta(feed_name)
+                if meta:
+                    stored_hash = _get_stored_hash(cursor, feed_name)
+                    meta_hash = meta.get('sha256', '')
+                    if stored_hash and stored_hash == meta_hash:
+                        emit({'status': 'running',
+                              'message': f'Year {label}: unchanged, skipping',
+                              'percent': percent,
+                              'year': label})
+                        continue
+
+                emit({'status': 'running',
+                      'message': f'Processing year {label} ({idx+1}/{total_feeds})...',
+                      'percent': percent,
+                      'year': label})
+
+                count = _download_and_parse_feed(feed_name, emit, conn, cursor, label=f'Year {label}')
+                if count >= 0:
+                    total_imported += count
+                    emit({'status': 'running',
+                          'message': f'Year {label}: {count} CVEs imported',
+                          'percent': int(((idx + 1) / total_feeds) * 100),
+                          'imported': total_imported,
+                          'year': label})
+
         else:
-            emit({'status': 'running', 'message': 'Full NVD sync starting...', 'percent': 0})
+            # Incremental sync: download only the 'modified' feed (last 8 days)
+            feed_name = 'nvdcve-2.0-modified'
+            emit({'status': 'running', 'message': 'Downloading modified feed (last 8 days of changes)...', 'percent': 10})
 
-        headers = {'User-Agent': 'Cerebus-Scanner/1.0'}
-        if api_key:
-            headers['apiKey'] = api_key
+            # Check meta
+            meta = _fetch_meta(feed_name)
+            if meta:
+                stored_hash = _get_stored_hash(cursor, feed_name)
+                meta_hash = meta.get('sha256', '')
+                if stored_hash and stored_hash == meta_hash:
+                    # Get total count
+                    cursor.execute("SELECT COUNT(*) FROM nvd_cves")
+                    total_in_db = cursor.fetchone()[0]
+                    emit({'status': 'complete',
+                          'message': f'No changes since last sync. {total_in_db:,} CVEs in database.',
+                          'percent': 100, 'total_in_db': total_in_db})
+                    conn.close()
+                    return
 
-        delay = 0.6 if api_key else 6.0
-        start_index = 0
-        total_results = None
-        imported = 0
-        batch_size = 500  # Commit every N CVEs
-
-        while True:
-            url = f"{NVD_CVE_API}?{'&'.join(params)}&startIndex={start_index}"
-
-            try:
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    data = json.loads(resp.read().decode('utf-8'))
-            except Exception as e:
-                emit({'status': 'error', 'message': f'API error at index {start_index}: {e}'})
-                logger.error(f"NVD API error: {e}")
-                time.sleep(delay * 2)
-                continue
-
-            if total_results is None:
-                total_results = data.get('totalResults', 0)
-                emit({'status': 'running', 'message': f'Total CVEs to process: {total_results}', 'percent': 0, 'total': total_results})
-
-            vulns = data.get('vulnerabilities', [])
-            if not vulns:
-                break
-
-            for item in vulns:
-                fields = _extract_cve_fields(item)
-
-                # Store CVE (without full JSON to save space — store only if needed)
-                cursor.execute('''INSERT OR REPLACE INTO nvd_cves
-                    (cve_id, description, published_date, last_modified,
-                     cvss_v3_score, cvss_v3_severity, cvss_v2_score, cvss_v2_severity, source_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)''',
-                    (fields['cve_id'], fields['description'], fields['published_date'],
-                     fields['last_modified'], fields['cvss_v3_score'], fields['cvss_v3_severity'],
-                     fields['cvss_v2_score'], fields['cvss_v2_severity']))
-
-                # Delete old CPE matches for this CVE then insert new ones
-                cursor.execute('DELETE FROM nvd_cpe_matches WHERE cve_id = ?', (fields['cve_id'],))
-                for cpe in fields['cpe_matches']:
-                    cursor.execute('''INSERT INTO nvd_cpe_matches
-                        (cve_id, cpe23uri, vulnerable, version_start, version_start_type,
-                         version_end, version_end_type)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                        (cpe['cve_id'], cpe['cpe23uri'], cpe['vulnerable'],
-                         cpe['version_start'], cpe['version_start_type'],
-                         cpe['version_end'], cpe['version_end_type']))
-
-                imported += 1
-
-                if imported % batch_size == 0:
-                    conn.commit()
-                    percent = min(99, int(imported / max(total_results, 1) * 100))
-                    emit({
-                        'status': 'running',
-                        'message': f'Imported {imported}/{total_results} CVEs...',
-                        'percent': percent,
-                        'imported': imported,
-                        'total': total_results
-                    })
-
-            start_index += len(vulns)
-
-            if start_index >= total_results:
-                break
-
-            time.sleep(delay)
-
-        # Final commit
-        conn.commit()
+            count = _download_and_parse_feed(feed_name, emit, conn, cursor, label='Modified feed')
+            if count >= 0:
+                total_imported = count
 
         # Update last sync timestamp
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
@@ -274,11 +392,15 @@ def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None
         cursor.execute("SELECT COUNT(*) FROM nvd_cves")
         total_in_db = cursor.fetchone()[0]
 
+        elapsed = time.time() - start_time
+        minutes = int(elapsed // 60)
+        seconds = int(elapsed % 60)
+
         emit({
             'status': 'complete',
-            'message': f'Sync complete: {imported} CVEs processed, {total_in_db} total in database',
+            'message': f'Sync complete: {total_imported:,} CVEs processed in {minutes}m {seconds}s. {total_in_db:,} total in database.',
             'percent': 100,
-            'imported': imported,
+            'imported': total_imported,
             'total_in_db': total_in_db
         })
 
@@ -295,7 +417,6 @@ def get_nvd_sync_status(db_path=None):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     try:
-        # Check if tables exist
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cves'")
         if not cursor.fetchone():
             return {'total_cves': 0, 'last_sync': None}
@@ -318,19 +439,13 @@ def get_nvd_sync_status(db_path=None):
 # ============== Local CPE Matching ==============
 
 def _parse_version(version_str):
-    """Parse a version string into comparable tuple of integers.
-    
-    Handles versions like '2.4.41', '7.0.0-beta1', '10.3.2.1', etc.
-    Non-numeric suffixes are stripped.
-    """
+    """Parse a version string into comparable tuple of integers."""
     if not version_str or version_str == '*' or version_str == '-':
         return None
 
-    # Strip common suffixes
     version_str = re.split(r'[-+~_]', version_str)[0]
     parts = []
     for p in version_str.split('.'):
-        # Extract leading digits
         m = re.match(r'^(\d+)', p)
         if m:
             parts.append(int(m.group(1)))
@@ -348,7 +463,6 @@ def _version_compare(v1, v2):
             return -1
         if a > b:
             return 1
-    # If equal so far, shorter version is "less" (e.g., 2.4 < 2.4.1)
     if len(v1) < len(v2):
         return -1
     if len(v1) > len(v2):
@@ -360,7 +474,7 @@ def _version_in_range(version, start, start_type, end, end_type):
     """Check if a version falls within the specified range."""
     v = _parse_version(version)
     if v is None:
-        return True  # Can't determine — assume match
+        return True
 
     if start:
         vs = _parse_version(start)
@@ -384,18 +498,13 @@ def _version_in_range(version, start, start_type, end, end_type):
 
 
 def _cpe_matches(cpe_pattern, cpe_target):
-    """Check if a CPE target matches a CPE pattern (with wildcards).
-    
-    Both are cpe:2.3 formatted strings.
-    Only compares part, vendor, product fields. Version is checked separately.
-    """
+    """Check if a CPE target matches a CPE pattern (with wildcards)."""
     pattern_parts = cpe_pattern.split(':')
     target_parts = cpe_target.split(':')
 
     if len(pattern_parts) < 5 or len(target_parts) < 5:
         return False
 
-    # Compare part (a/h/o), vendor, product
     for i in range(2, 5):
         pp = pattern_parts[i] if i < len(pattern_parts) else '*'
         tp = target_parts[i] if i < len(target_parts) else '*'
@@ -420,13 +529,12 @@ def match_cpes_local(cpe_list, db_path=None):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
 
-    # Check if NVD tables have data
     try:
         cursor.execute("SELECT COUNT(*) FROM nvd_cves")
         if cursor.fetchone()[0] == 0:
             logger.info("Local NVD database is empty, skipping local matching")
             conn.close()
-            return None  # Signal to caller to use API fallback
+            return None
     except sqlite3.OperationalError:
         conn.close()
         return None
@@ -447,8 +555,6 @@ def match_cpes_local(cpe_list, db_path=None):
             if vendor == '*' or product == '*':
                 continue
 
-            # Search for CPE matches in the database
-            # Use LIKE for vendor:product prefix matching
             search_pattern = f"cpe:2.3:%:{vendor}:{product}:%"
             cursor.execute('''
                 SELECT cm.cve_id, cm.cpe23uri, cm.vulnerable,
@@ -469,31 +575,25 @@ def match_cpes_local(cpe_list, db_path=None):
                 v_end = row[5]
                 v_end_type = row[6]
 
-                # Skip if already seen this CVE for this CPE
                 key = (cve_id, cpe_string)
                 if key in seen_cves:
                     continue
 
-                # Check if the CPE pattern matches
                 if not _cpe_matches(cpe_uri, cpe_string):
                     continue
 
-                # Check version range
-                # If the DB entry has version ranges, use them
                 if v_start or v_end:
                     if not _version_in_range(version, v_start, v_start_type, v_end, v_end_type):
                         continue
                 else:
-                    # No range specified — check if the CPE pattern has a specific version
                     pattern_parts = cpe_uri.split(':')
                     if len(pattern_parts) > 5 and pattern_parts[5] not in ('*', '-', ''):
-                        # Exact version match required
                         if version != '*' and pattern_parts[5] != version:
                             continue
 
                 seen_cves.add(key)
 
-                cvss_score = row[8] or row[10]  # Prefer v3
+                cvss_score = row[8] or row[10]
                 severity = 'unknown'
                 if cvss_score is not None:
                     if cvss_score >= 9.0:
