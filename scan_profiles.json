@@ -1,0 +1,129 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Nuclei scan profiles for Cerebus — bundled template tag presets",
+    "last_updated": "2026-02-17"
+  },
+  "profiles": [
+    {
+      "id": "kitchen-sink",
+      "name": "Kitchen Sink",
+      "icon": "🍳",
+      "description": "Everything. All checks, all severities. Slow but thorough.",
+      "tags": "",
+      "severity": "critical,high,medium,low,info",
+      "rate_limit": 100,
+      "notes": "No tag filter = all templates. May take a long time on large scans."
+    },
+    {
+      "id": "quick",
+      "name": "Quick Scan",
+      "icon": "⚡",
+      "description": "Fast top-200 checks. Critical and high severity only.",
+      "tags": "top-200,top-100",
+      "severity": "critical,high",
+      "rate_limit": 200,
+      "notes": "Best for rapid triage. Covers the most common/impactful vulns."
+    },
+    {
+      "id": "linux",
+      "name": "Linux",
+      "icon": "🐧",
+      "description": "Linux-specific checks: SSH hardening, privilege escalation, misconfigs, common Linux services.",
+      "tags": "linux,ssh,audit,privesc,misconfig",
+      "severity": "critical,high,medium,low",
+      "rate_limit": 150,
+      "notes": "Covers SSH config, Linux CVEs, service misconfigurations, local privesc vectors."
+    },
+    {
+      "id": "windows",
+      "name": "Windows / Microsoft",
+      "icon": "🪟",
+      "description": "Windows and Microsoft stack: AD, Exchange, IIS, RDP, SMB, Azure.",
+      "tags": "microsoft,windows,windows-audit,exchange,iis,smb,rdp,azure",
+      "severity": "critical,high,medium,low",
+      "rate_limit": 150,
+      "notes": "Active Directory, Exchange, IIS, RDP, SMB shares, Azure misconfigs."
+    },
+    {
+      "id": "network",
+      "name": "Network Gear",
+      "icon": "🌐",
+      "description": "Routers, switches, firewalls, load balancers, network appliances.",
+      "tags": "network,router,firewall,cisco,fortinet,dlink,iot,tcp,default-login",
+      "severity": "critical,high,medium,low",
+      "rate_limit": 100,
+      "notes": "Cisco, Fortinet, D-Link, MikroTik, Ubiquiti, pfSense, generic network devices."
+    },
+    {
+      "id": "web-apps",
+      "name": "Web Applications",
+      "icon": "🕸️",
+      "description": "Web app vulns: XSS, SQLi, LFI, SSRF, SSTI, file upload, auth bypass.",
+      "tags": "xss,sqli,lfi,ssrf,ssti,file-upload,auth-bypass,rce,injection,traversal,redirect",
+      "severity": "critical,high,medium",
+      "rate_limit": 150,
+      "notes": "OWASP Top 10 style checks. Good for web servers and applications."
+    },
+    {
+      "id": "cms",
+      "name": "CMS",
+      "icon": "📝",
+      "description": "Content management systems: WordPress, Joomla, Drupal, and their plugins.",
+      "tags": "wordpress,wp-plugin,wp-theme,wp,wpscan,joomla,drupal,cms",
+      "severity": "critical,high,medium,low",
+      "rate_limit": 150,
+      "notes": "Heavy on WordPress (1500+ plugin/theme checks). Also covers Joomla and Drupal."
+    },
+    {
+      "id": "cves-critical",
+      "name": "Critical CVEs",
+      "icon": "🔴",
+      "description": "Known exploited vulnerabilities and critical CVEs only.",
+      "tags": "cve,kev,vkev",
+      "severity": "critical,high",
+      "rate_limit": 150,
+      "notes": "CVEs from CISA KEV catalog + critical/high severity. The 'patch these now' list."
+    },
+    {
+      "id": "default-creds",
+      "name": "Default Credentials",
+      "icon": "🔑",
+      "description": "Check for default logins, exposed panels, and weak authentication.",
+      "tags": "default-login,login,panel,unauth,exposure",
+      "severity": "critical,high,medium,low,info",
+      "rate_limit": 100,
+      "notes": "Finds admin panels with default creds, unauthenticated access, exposed services."
+    },
+    {
+      "id": "devops",
+      "name": "DevOps / Cloud",
+      "icon": "☁️",
+      "description": "CI/CD, containers, cloud services, Kubernetes, DevSecOps checks.",
+      "tags": "devops,devsecops,kubernetes,k8s,cloud,docker,aws,gcp,azure,jenkins,gitlab",
+      "severity": "critical,high,medium",
+      "rate_limit": 150,
+      "notes": "Jenkins, GitLab, K8s, Docker, cloud provider misconfigs, CI/CD pipeline security."
+    },
+    {
+      "id": "recon",
+      "name": "Recon / Discovery",
+      "icon": "🔍",
+      "description": "Technology detection, service discovery, information disclosure.",
+      "tags": "tech,detect,detection,discovery,exposure,disclosure,info-leak,debug,listing",
+      "severity": "info,low,medium",
+      "rate_limit": 200,
+      "notes": "Non-intrusive. Identifies technologies, exposed files, debug endpoints, directory listings."
+    },
+    {
+      "id": "malware-c2",
+      "name": "Malware / C2",
+      "icon": "☠️",
+      "description": "Detect malware indicators, C2 frameworks, and compromised infrastructure.",
+      "tags": "malware,c2,cti",
+      "severity": "critical,high,medium,low,info",
+      "rate_limit": 100,
+      "notes": "Cobalt Strike, Metasploit, known C2 JARM hashes, webshells, backdoors."
+    }
+  ]
+}

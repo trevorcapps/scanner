@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import sqlite3
 import logging
 import threading
@@ -18,6 +19,18 @@ from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_
                        store_fingerprints, store_fpx_results, get_fingerprint_engine,
                        fpx_check_installed)
 from fingerprint.fpx import scan_host as fpx_scan_host
+
+# Load scan profiles
+SCAN_PROFILES = {}
+_profiles_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scan_profiles.json')
+try:
+    with open(_profiles_path, 'r') as _f:
+        _profiles_data = json.load(_f)
+        for p in _profiles_data.get('profiles', []):
+            SCAN_PROFILES[p['id']] = p
+    logger.info(f"Loaded {len(SCAN_PROFILES)} scan profiles")
+except Exception as _e:
+    logger.warning(f"Could not load scan profiles: {_e}")
 
 # Configure logging
 logging.basicConfig(
@@ -149,6 +162,12 @@ def get_asset(ip):
     except Exception as e:
         logger.error(f"Error retrieving asset {ip}: {e}")
         return {'error': str(e)}, 500
+
+
+@app.route('/api/scan-profiles')
+def get_scan_profiles():
+    """Get available scan profiles."""
+    return {'profiles': list(SCAN_PROFILES.values())}
 
 
 @app.route('/api/fingerprints/<ip>')
@@ -785,7 +804,11 @@ def handle_start_vuln_scan(data):
         emit('vuln_scan_error', {'error': 'Invalid IP address or CIDR format (e.g., 192.168.1.1 or 10.0.0.0/24)'})
         return
 
-    # Extract Nuclei vuln scan options from data
+    # Check if a scan profile was selected
+    profile_id = data.get('profile', '')
+    profile = SCAN_PROFILES.get(profile_id) if profile_id else None
+
+    # Extract Nuclei vuln scan options — profile overrides manual settings
     scan_options = {
         'vuln_timeout': data.get('vuln_timeout', 600),
         'severity': data.get('severity', 'critical,high,medium,low'),
@@ -793,6 +816,15 @@ def handle_start_vuln_scan(data):
         'templates': data.get('templates', ''),
         'max_hosts': data.get('max_hosts', 256)
     }
+
+    if profile:
+        if profile.get('tags'):
+            scan_options['templates'] = profile['tags']
+        if profile.get('severity'):
+            scan_options['severity'] = profile['severity']
+        if profile.get('rate_limit'):
+            scan_options['rate_limit'] = profile['rate_limit']
+        logger.info(f"Using scan profile '{profile['name']}': tags={scan_options['templates']}, severity={scan_options['severity']}")
 
     # Track this scan
     with scan_lock:

@@ -712,6 +712,53 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // ==================== Scan Profiles ====================
+    var selectedProfile = '';
+    var profilesLoaded = false;
+
+    function loadProfiles() {
+        if (profilesLoaded) return;
+        fetch('/api/scan-profiles')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                var container = document.getElementById('profile-selector');
+                if (!container || !data.profiles) return;
+
+                var html = '<div class="profile-chips">';
+                html += '<button type="button" class="profile-chip active" data-profile="">';
+                html += '<span class="profile-icon">⚙️</span>';
+                html += '<span class="profile-name">Custom</span>';
+                html += '</button>';
+
+                data.profiles.forEach(function(p) {
+                    html += '<button type="button" class="profile-chip" data-profile="' + p.id + '" title="' + escapeHtml(p.description) + '">';
+                    html += '<span class="profile-icon">' + (p.icon || '📋') + '</span>';
+                    html += '<span class="profile-name">' + escapeHtml(p.name) + '</span>';
+                    html += '</button>';
+                });
+                html += '</div>';
+
+                container.innerHTML = html;
+                profilesLoaded = true;
+
+                // Bind click handlers
+                container.querySelectorAll('.profile-chip').forEach(function(chip) {
+                    chip.addEventListener('click', function() {
+                        container.querySelectorAll('.profile-chip').forEach(function(c) { c.classList.remove('active'); });
+                        this.classList.add('active');
+                        selectedProfile = this.getAttribute('data-profile');
+                    });
+                });
+            })
+            .catch(function(err) {
+                var container = document.getElementById('profile-selector');
+                if (container) container.innerHTML = '<span class="text-muted">Could not load profiles</span>';
+            });
+    }
+
+    // Load profiles on page load
+    loadProfiles();
+
     function startVulnScan() {
         var ip = document.getElementById('ip').value.trim();
 
@@ -726,21 +773,32 @@ document.addEventListener('DOMContentLoaded', function() {
         stopScanBtn.style.display = 'inline-block';
 
         var settings = getScanSettings();
-        socket.emit('start_vuln_scan', {
+        var scanData = {
             ip: ip,
             vuln_timeout: settings.vulnTimeout,
             severity: settings.severity,
             rate_limit: settings.rateLimit,
             templates: settings.templates,
             max_hosts: settings.maxHosts
-        });
+        };
+
+        if (selectedProfile) {
+            scanData.profile = selectedProfile;
+        }
+
+        socket.emit('start_vuln_scan', scanData);
         progressContainer.style.display = 'block';
         progressBar.value = 10;
-        progressMessage.textContent = 'Vulnerability scan in progress (this may take several minutes)...';
-        scanOutput.innerHTML = '<p>Running Nuclei vulnerability scan on ' + ip + '...</p>' +
+
+        var profileLabel = selectedProfile ? (' [' + selectedProfile + ']') : '';
+        progressMessage.textContent = 'Vulnerability scan in progress' + profileLabel + ' (this may take several minutes)...';
+        scanOutput.innerHTML = '<p>Running Nuclei vulnerability scan on ' + ip + profileLabel + '...</p>' +
             '<p class="info">Note: Vulnerability scans use Nuclei templates and may take several minutes.</p>';
 
-        addLog('Starting Nuclei vulnerability scan for ' + ip, 'info');
+        addLog('Starting Nuclei vulnerability scan for ' + ip + profileLabel, 'info');
+        if (selectedProfile) {
+            addLog('Using scan profile: ' + selectedProfile, 'info');
+        }
         addLog('Severity: ' + settings.severity + ', Rate limit: ' + settings.rateLimit + ' req/sec, Timeout: ' + settings.vulnTimeout + 's', 'debug');
     }
 
