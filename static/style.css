@@ -187,10 +187,10 @@ a:hover {
 }
 
 .header-logo {
-    height: 32px;
+    height: 42px;
     width: auto;
     vertical-align: middle;
-    margin-right: 8px;
+    margin-right: 10px;
     display: inline-block;
 }
 
