@@ -151,9 +151,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==================== Log Window Management ====================
     var logContent = document.getElementById('log-content');
     var logClearBtn = document.getElementById('log-clear');
-    var logToggleBtn = document.getElementById('log-toggle');
-    var logWindow = document.getElementById('log-window');
+    var logContainer = document.getElementById('log-container');
+    var pageLayout = document.getElementById('page-layout');
     var maxLogEntries = 500;
+
+    // Show split-view (log panel) when on scan tab
+    function updateSplitView(tabId) {
+        if (tabId === 'scan-tab') {
+            pageLayout.classList.add('split-view');
+        } else {
+            pageLayout.classList.remove('split-view');
+        }
+    }
+
+    // Initialize split-view for the default active tab
+    updateSplitView('scan-tab');
 
     function getTimestamp() {
         var now = new Date();
@@ -195,15 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function toggleLogWindow() {
-        if (logWindow) {
-            logWindow.classList.toggle('collapsed');
-            if (logToggleBtn) {
-                logToggleBtn.textContent = logWindow.classList.contains('collapsed') ? '+' : '_';
-            }
-        }
-    }
-
     // Initialize log window
     if (logContent) {
         clearLogs();
@@ -211,10 +214,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (logClearBtn) {
         logClearBtn.addEventListener('click', clearLogs);
-    }
-
-    if (logToggleBtn) {
-        logToggleBtn.addEventListener('click', toggleLogWindow);
     }
 
     // Listen for log events from backend
@@ -640,6 +639,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             this.classList.add('active');
             document.getElementById(tabId).classList.add('active');
+
+            // Toggle log panel visibility (only on scan tab)
+            updateSplitView(tabId);
 
             if (tabId === 'assets-tab') {
                 loadAssets();

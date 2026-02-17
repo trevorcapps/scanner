@@ -189,9 +189,53 @@ body {
     font-family: 'Courier New', 'Fira Code', monospace;
 }
 
-.container {
-    max-width: 1400px;
+/* ============================================
+   Page Layout — side-by-side on Scan tab
+   ============================================ */
+
+.page-layout {
+    max-width: 1600px;
     margin: 0 auto;
+    padding: 20px;
+}
+
+.page-layout.split-view {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.page-layout.split-view .container {
+    flex: 1;
+    min-width: 0;
+}
+
+.page-layout.split-view .log-container {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+}
+
+/* Hide log container when not on scan tab */
+.log-container {
+    display: none;
+}
+
+.page-layout.split-view .log-container {
+    display: flex;
+}
+
+@media (max-width: 1000px) {
+    .page-layout.split-view {
+        flex-direction: column;
+    }
+    .page-layout.split-view .log-container {
+        width: 100%;
+    }
+}
+
+.container {
+    max-width: 100%;
     background-color: var(--bg-secondary);
     padding: 0;
     box-shadow: 0 0 20px var(--shadow-color);
@@ -2090,9 +2134,20 @@ tr.vuln-info {
 }
 
 /* Hacker theme special effects */
-.theme-hacker .container {
+.theme-hacker .container,
+.theme-hacker .log-container {
     border-color: var(--accent-primary);
     box-shadow: 0 0 20px var(--shadow-color), inset 0 0 60px rgba(0, 255, 0, 0.03);
+}
+
+.theme-hacker .log-container-header {
+    background: linear-gradient(135deg, #001100, #002200);
+    border-bottom: 1px solid var(--accent-primary);
+}
+
+.theme-hacker .log-container-title {
+    color: var(--accent-primary);
+    text-shadow: 0 0 5px var(--accent-primary);
 }
 
 .theme-hacker .asset-ip,
@@ -2690,66 +2745,32 @@ tr.vuln-info {
    ============================================ */
 
 /* ============================================
-   Scan Tab - Two Panel Layout
+   Log Container — separate box beside main app
    ============================================ */
 
-.scan-controls {
-    padding: 0 0 10px 0;
-}
-
-.scan-panels {
-    display: flex;
-    gap: 16px;
-    min-height: 350px;
-}
-
-.scan-panel-left {
-    flex: 1;
-    min-width: 0;
-    overflow-y: auto;
-    max-height: 600px;
-}
-
-.scan-panel-right {
-    flex: 0 0 420px;
-    min-width: 0;
-    display: flex;
+.log-container {
     flex-direction: column;
-}
-
-/* Responsive: stack panels on narrow screens */
-@media (max-width: 900px) {
-    .scan-panels {
-        flex-direction: column;
-    }
-    .scan-panel-right {
-        flex: none;
-        width: 100%;
-    }
-}
-
-#log-window {
-    border: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+    box-shadow: 0 0 20px var(--shadow-color);
     border-radius: 8px;
-    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+    max-height: 85vh;
 }
 
-#log-header {
+.log-container-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 15px;
-    background-color: var(--table-header-bg);
+    padding: 14px 18px;
+    background: linear-gradient(135deg, var(--bg-tertiary), var(--table-header-bg));
     border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
-#log-title {
-    font-weight: 600;
-    font-size: 14px;
+.log-container-title {
+    font-weight: 700;
+    font-size: 15px;
     color: var(--text-primary);
 }
 
@@ -2765,7 +2786,6 @@ tr.vuln-info {
 
 #log-content {
     flex: 1;
-    min-height: 200px;
     overflow-y: auto;
     padding: 12px 15px;
     font-family: 'Courier New', 'Fira Code', monospace;
@@ -2774,17 +2794,7 @@ tr.vuln-info {
     background-color: var(--bg-primary);
 }
 
-#log-content.collapsed {
-    display: none;
-}
-
-#log-window.collapsed #log-content {
-    display: none;
-}
-
-#log-window.collapsed {
-    margin-top: 25px;
-}
+/* (collapsed styles removed — log panel is now a separate container) */
 
 .log-entry {
     margin-bottom: 4px;
