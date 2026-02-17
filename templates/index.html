@@ -122,12 +122,24 @@
                     <option value="low">Low</option>
                     <option value="info">Info</option>
                 </select>
+                <select id="vuln-source-filter">
+                    <option value="">All Sources</option>
+                    <option value="nuclei">🔬 Nuclei</option>
+                    <option value="nvd-local">📦 NVD Local</option>
+                    <option value="nmap-vulscan">🔍 Nmap Vulscan</option>
+                    <option value="auth-scan">🔑 Auth Scan</option>
+                    <option value="exploit-db">💥 Exploit DB</option>
+                </select>
+                <label class="vuln-exploit-toggle" title="Show only CVEs with known exploits">
+                    <input type="checkbox" id="vuln-exploit-filter"> ⚠️ Exploits Only
+                </label>
+                <input type="text" id="vuln-search" placeholder="Search CVE, description, CPE..." class="vuln-search-input">
             </div>
 
             <div id="vulns-summary">
                 <div class="summary-card total">
                     <span class="summary-count" id="total-vulns">0</span>
-                    <span class="summary-label">Total</span>
+                    <span class="summary-label">Unique CVEs</span>
                 </div>
                 <div class="summary-card critical">
                     <span class="summary-count" id="critical-count">0</span>
@@ -144,6 +156,10 @@
                 <div class="summary-card low">
                     <span class="summary-count" id="low-count">0</span>
                     <span class="summary-label">Low</span>
+                </div>
+                <div class="summary-card exploit-summary">
+                    <span class="summary-count" id="exploit-count">0</span>
+                    <span class="summary-label">With Exploits</span>
                 </div>
             </div>
 

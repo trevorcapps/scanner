@@ -263,14 +263,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (vuln.cvss_score !== null && vuln.cvss_score !== undefined) {
             cvssClass = vuln.cvss_score >= 9.0 ? 'critical' : (vuln.cvss_score >= 7.0 ? 'high' : (vuln.cvss_score >= 4.0 ? 'medium' : 'low'));
         }
+        var cveId = vuln.cve_id || vuln.vuln_id || '';
 
         var html = '<div class="modal-header">';
         html += '<div>';
-        html += '<h2 class="modal-cve-id">' + vuln.vuln_id + '</h2>';
+        if (cveId.toUpperCase().indexOf('CVE-') === 0) {
+            html += '<h2 class="modal-cve-id"><a href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(cveId) + '" target="_blank" rel="noopener">' + escapeHtml(cveId) + ' ↗</a></h2>';
+        } else {
+            html += '<h2 class="modal-cve-id">' + escapeHtml(cveId) + '</h2>';
+        }
         html += '<div class="modal-badges">';
         html += '<span class="severity-badge ' + vuln.severity + '">' + vuln.severity.toUpperCase() + '</span>';
         if (vuln.cvss_score !== null && vuln.cvss_score !== undefined) {
             html += '<span class="cvss-badge ' + cvssClass + '">CVSS ' + vuln.cvss_score.toFixed(1) + '</span>';
+        }
+        if (vuln.has_exploit) {
+            html += '<span class="exploit-warning">⚠️ Public Exploit</span>';
         }
         if (vuln.cwe_id) {
             html += '<span class="cwe-badge">' + vuln.cwe_id + '</span>';
@@ -279,21 +287,60 @@ document.addEventListener('DOMContentLoaded', function() {
         html += '</div>';
         html += '</div>';
 
-        // Target section
+        // Detection Sources section
         html += '<div class="modal-section">';
-        html += '<div class="modal-section-title">Target</div>';
-        html += '<span class="modal-target">' + vuln.ip + ':' + vuln.port + '/' + vuln.protocol + '</span>';
-        html += '</div>';
+        html += '<div class="modal-section-title">Detection Sources</div>';
+        html += '<div class="modal-sources-grid">';
+        (vuln.detection_sources || []).forEach(function(src) {
+            var label = sourceLabels[src] || src;
+            var cls = src.replace(/[^a-z-]/g, '');
+            html += '<div class="modal-source-item">';
+            html += '<span class="source-badge ' + cls + '">' + label + '</span>';
+            html += '<div class="modal-source-detail">';
+            if (src === 'nuclei' && vuln.template_id) {
+                html += 'Template: ' + escapeHtml(vuln.template_id);
+                if (vuln.nuclei_scan_date) html += '<br>Scanned: ' + formatDate(vuln.nuclei_scan_date);
+            } else if (src === 'auth-scan' && vuln.affected_cpe) {
+                html += 'Package: ' + escapeHtml(vuln.affected_cpe);
+            } else if (src === 'nvd-local' && vuln.affected_cpe) {
+                html += 'CPE: ' + escapeHtml(vuln.affected_cpe);
+            } else if (src === 'exploit-db') {
+                html += 'Public exploit available';
+            } else if (src === 'nmap-vulscan') {
+                html += 'Service version matching';
+            }
+            html += '</div></div>';
+        });
+        html += '</div></div>';
+
+        // Affected Assets section
+        if (vuln.affected_assets && vuln.affected_assets.length > 0) {
+            html += '<div class="modal-section">';
+            html += '<div class="modal-section-title">Affected Assets (' + vuln.affected_assets.length + ')</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+            vuln.affected_assets.forEach(function(a) {
+                var label = a.port > 0 ? (a.ip + ':' + a.port + '/' + a.protocol) : a.ip;
+                html += '<span class="modal-target">' + escapeHtml(label) + '</span>';
+            });
+            html += '</div></div>';
+        }
 
         // CVSS Details section
-        if (vuln.cvss_score !== null || vuln.cvss_vector) {
+        if (vuln.cvss_score !== null || vuln.cvss_vector || vuln.cvss_v2_score) {
             html += '<div class="modal-section">';
             html += '<div class="modal-section-title">CVSS Details</div>';
             html += '<div class="modal-cvss-details">';
-            if (vuln.cvss_score !== null && vuln.cvss_score !== undefined) {
+            if (vuln.cvss_v3_score !== null && vuln.cvss_v3_score !== undefined) {
                 html += '<div class="modal-cvss-item">';
-                html += '<div class="modal-cvss-label">Base Score</div>';
-                html += '<div class="modal-cvss-value ' + cvssClass + '">' + vuln.cvss_score.toFixed(1) + '</div>';
+                html += '<div class="modal-cvss-label">CVSS v3 Score</div>';
+                html += '<div class="modal-cvss-value ' + cvssClass + '">' + vuln.cvss_v3_score.toFixed(1) + '</div>';
+                html += '</div>';
+            }
+            if (vuln.cvss_v2_score !== null && vuln.cvss_v2_score !== undefined) {
+                var v2Class = vuln.cvss_v2_score >= 9.0 ? 'critical' : (vuln.cvss_v2_score >= 7.0 ? 'high' : (vuln.cvss_v2_score >= 4.0 ? 'medium' : 'low'));
+                html += '<div class="modal-cvss-item">';
+                html += '<div class="modal-cvss-label">CVSS v2 Score</div>';
+                html += '<div class="modal-cvss-value ' + v2Class + '">' + vuln.cvss_v2_score.toFixed(1) + '</div>';
                 html += '</div>';
             }
             html += '<div class="modal-cvss-item">';
@@ -302,21 +349,56 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '</div>';
             html += '</div>';
             if (vuln.cvss_vector) {
-                html += '<div class="modal-vector" style="margin-top: 10px;">' + vuln.cvss_vector + '</div>';
+                html += '<div class="modal-vector" style="margin-top: 10px;">' + escapeHtml(vuln.cvss_vector) + '</div>';
             }
+            html += '</div>';
+        }
+
+        // Affected Software / CPE
+        if (vuln.affected_cpe) {
+            html += '<div class="modal-section">';
+            html += '<div class="modal-section-title">Affected Software</div>';
+            var cpes = vuln.affected_cpe.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+            cpes.forEach(function(cpe) {
+                html += '<div class="cpe-badge" style="display:block;margin-bottom:4px;white-space:normal;max-width:none">' + escapeHtml(cpe) + '</div>';
+            });
             html += '</div>';
         }
 
         // Description section
         html += '<div class="modal-section">';
         html += '<div class="modal-section-title">Description</div>';
-        html += '<div class="modal-description">' + escapeHtml(vuln.description) + '</div>';
+        html += '<div class="modal-description">' + escapeHtml(vuln.description || 'No description available.') + '</div>';
         html += '</div>';
+
+        // Exploit section
+        if (vuln.has_exploit) {
+            html += '<div class="modal-section">';
+            html += '<div class="modal-section-title">Exploit Information</div>';
+            html += '<div class="modal-exploit-section">';
+            html += '<span class="exploit-warning">⚠️ Public Exploit Available</span>';
+            html += '<div class="modal-exploit-links">';
+            if (vuln.exploit_ids) {
+                var ids = vuln.exploit_ids.split(',');
+                ids.forEach(function(eid) {
+                    eid = eid.trim();
+                    if (eid) {
+                        html += '<a href="https://www.exploit-db.com/exploits/' + encodeURIComponent(eid) + '" target="_blank" rel="noopener">ExploitDB #' + escapeHtml(eid) + '</a>';
+                    }
+                });
+            }
+            if (vuln.exploit_url) {
+                html += '<a href="' + escapeHtml(vuln.exploit_url) + '" target="_blank" rel="noopener">' + escapeHtml(vuln.exploit_url) + '</a>';
+            }
+            // Always add search link
+            html += '<a href="https://www.exploit-db.com/search?cve=' + encodeURIComponent(cveId) + '" target="_blank" rel="noopener">Search ExploitDB for ' + escapeHtml(cveId) + '</a>';
+            html += '</div></div></div>';
+        }
 
         // References section
         if (vuln.references && vuln.references.length > 0) {
             html += '<div class="modal-section">';
-            html += '<div class="modal-section-title">References</div>';
+            html += '<div class="modal-section-title">References (' + vuln.references.length + ')</div>';
             html += '<ul class="modal-refs-list">';
             vuln.references.forEach(function(ref) {
                 if (ref.url) {
@@ -340,6 +422,12 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '<div class="modal-date-item">';
             html += '<span class="modal-date-label">Published</span>';
             html += '<span class="modal-date-value">' + formatDate(vuln.published_date) + '</span>';
+            html += '</div>';
+        }
+        if (vuln.last_modified) {
+            html += '<div class="modal-date-item">';
+            html += '<span class="modal-date-label">Last Modified</span>';
+            html += '<span class="modal-date-value">' + formatDate(vuln.last_modified) + '</span>';
             html += '</div>';
         }
         html += '<div class="modal-date-item">';
@@ -1672,18 +1760,68 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Vulnerabilities loading
     var currentIpFilter = null;  // Track current IP filter for vulnerabilities
+    var vulnSourceFilter = document.getElementById('vuln-source-filter');
+    var vulnExploitFilter = document.getElementById('vuln-exploit-filter');
+    var vulnSearchInput = document.getElementById('vuln-search');
+    var vulnSearchTimeout = null;
+
+    // Source badge helper
+    var sourceLabels = {
+        'nuclei': '🔬 Nuclei',
+        'nvd-local': '📦 NVD',
+        'nmap-vulscan': '🔍 Nmap',
+        'auth-scan': '🔑 Auth',
+        'exploit-db': '💥 Exploit'
+    };
+
+    function renderSourceBadges(sources) {
+        var html = '<div class="source-badges">';
+        (sources || []).forEach(function(src) {
+            var label = sourceLabels[src] || src;
+            var cls = src.replace(/[^a-z-]/g, '');
+            html += '<span class="source-badge ' + cls + '">' + label + '</span>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function renderAssetBadges(assets) {
+        if (!assets || assets.length === 0) return '';
+        var html = '<div class="vuln-assets">';
+        var shown = assets.slice(0, 5);
+        shown.forEach(function(a) {
+            var label = a.port > 0 ? (a.ip + ':' + a.port) : a.ip;
+            html += '<span class="vuln-asset-badge">' + escapeHtml(label) + '</span>';
+        });
+        if (assets.length > 5) {
+            html += '<span class="vuln-asset-badge">+' + (assets.length - 5) + ' more</span>';
+        }
+        html += '</div>';
+        return html;
+    }
 
     function loadVulnerabilities(ipFilter) {
         vulnsList.innerHTML = '<p class="loading">Loading vulnerabilities...</p>';
 
-        // Build URL with optional IP filter
-        var url = '/api/vulnerabilities';
+        // Build URL with filters
+        var params = [];
         if (ipFilter) {
-            url += '?ip=' + encodeURIComponent(ipFilter);
+            params.push('ip=' + encodeURIComponent(ipFilter));
             currentIpFilter = ipFilter;
         } else {
             currentIpFilter = null;
         }
+
+        var sourceVal = vulnSourceFilter ? vulnSourceFilter.value : '';
+        if (sourceVal) params.push('source=' + encodeURIComponent(sourceVal));
+
+        var exploitVal = vulnExploitFilter ? vulnExploitFilter.checked : false;
+        if (exploitVal) params.push('has_exploit=true');
+
+        var searchVal = vulnSearchInput ? vulnSearchInput.value.trim() : '';
+        if (searchVal) params.push('search=' + encodeURIComponent(searchVal));
+
+        var url = '/api/vulnerabilities' + (params.length ? '?' + params.join('&') : '');
 
         fetch(url)
             .then(function(response) { return response.json(); })
@@ -1695,11 +1833,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Update summary
                 var summary = data.summary;
-                document.getElementById('total-vulns').textContent = summary.total;
+                document.getElementById('total-vulns').textContent = summary.unique_cves || 0;
                 document.getElementById('critical-count').textContent = summary.by_severity.critical || 0;
                 document.getElementById('high-count').textContent = summary.by_severity.high || 0;
                 document.getElementById('medium-count').textContent = summary.by_severity.medium || 0;
                 document.getElementById('low-count').textContent = summary.by_severity.low || 0;
+                var exploitCountEl = document.getElementById('exploit-count');
+                if (exploitCountEl) exploitCountEl.textContent = summary.with_exploits || 0;
 
                 var vulnerabilities = data.vulnerabilities;
 
@@ -1717,8 +1857,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         '<p class="empty-state">No vulnerabilities found' +
                         (currentIpFilter ? ' for ' + currentIpFilter : '') +
                         '. Run a vulnerability scan from the Scan tab.</p>';
-
-                    // Add clear filter listener
                     var clearBtn = document.getElementById('clear-ip-filter');
                     if (clearBtn) {
                         clearBtn.addEventListener('click', function() {
@@ -1735,6 +1873,20 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
+    // Filter event listeners
+    if (vulnSourceFilter) {
+        vulnSourceFilter.addEventListener('change', function() { loadVulnerabilities(currentIpFilter); });
+    }
+    if (vulnExploitFilter) {
+        vulnExploitFilter.addEventListener('change', function() { loadVulnerabilities(currentIpFilter); });
+    }
+    if (vulnSearchInput) {
+        vulnSearchInput.addEventListener('input', function() {
+            clearTimeout(vulnSearchTimeout);
+            vulnSearchTimeout = setTimeout(function() { loadVulnerabilities(currentIpFilter); }, 400);
+        });
+    }
+
     function renderVulnerabilities(vulnerabilities, filterIndicator) {
         var filterValue = vulnFilter ? vulnFilter.value : '';
 
@@ -1745,19 +1897,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
-        // Store filtered vulnerabilities for modal access
         storedVulnerabilities = filtered;
 
         if (filtered.length === 0) {
             vulnsList.innerHTML = (filterIndicator || '') +
                 '<p class="empty-state">No vulnerabilities match the selected filter.</p>';
-
-            // Add clear filter listener
             var clearBtn = document.getElementById('clear-ip-filter');
             if (clearBtn) {
-                clearBtn.addEventListener('click', function() {
-                    loadVulnerabilities(null);
-                });
+                clearBtn.addEventListener('click', function() { loadVulnerabilities(null); });
             }
             return;
         }
@@ -1765,14 +1912,19 @@ document.addEventListener('DOMContentLoaded', function() {
         var html = (filterIndicator || '');
 
         if (vulnsViewMode === 'list') {
-            // List view
             html += '<table class="vulns-table">';
-            html += '<thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Target</th><th>CWE</th><th>Description</th></tr></thead>';
+            html += '<thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>Exploit</th><th>Sources</th><th>Affected Assets</th><th>Software</th><th>Description</th><th>Published</th></tr></thead>';
             html += '<tbody>';
             filtered.forEach(function(vuln, index) {
                 html += '<tr class="severity-row-' + vuln.severity + ' clickable" data-vuln-index="' + index + '">';
-                html += '<td class="vuln-id-cell clickable"><code>' + vuln.vuln_id + '</code></td>';
+                // CVE ID
+                var cveLink = vuln.cve_id.toUpperCase().indexOf('CVE-') === 0
+                    ? '<a href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(vuln.cve_id) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + escapeHtml(vuln.cve_id) + '</a>'
+                    : escapeHtml(vuln.cve_id);
+                html += '<td class="vuln-id-cell clickable"><code>' + cveLink + '</code></td>';
+                // Severity
                 html += '<td><span class="severity-badge ' + vuln.severity + '">' + vuln.severity.toUpperCase() + '</span></td>';
+                // CVSS
                 html += '<td>';
                 if (vuln.cvss_score !== null && vuln.cvss_score !== undefined) {
                     var cvssClass = vuln.cvss_score >= 9.0 ? 'critical' : (vuln.cvss_score >= 7.0 ? 'high' : (vuln.cvss_score >= 4.0 ? 'medium' : 'low'));
@@ -1781,9 +1933,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     html += '<span class="text-muted">-</span>';
                 }
                 html += '</td>';
-                html += '<td class="target-cell">' + vuln.ip + ':' + vuln.port + '</td>';
-                html += '<td>' + (vuln.cwe_id || '<span class="text-muted">-</span>') + '</td>';
-                html += '<td class="desc-cell">' + escapeHtml(vuln.description.substring(0, 100)) + '...</td>';
+                // Exploit
+                html += '<td>';
+                if (vuln.has_exploit) {
+                    html += '<span class="exploit-warning">⚠️ Exploit</span>';
+                } else {
+                    html += '<span class="text-muted">-</span>';
+                }
+                html += '</td>';
+                // Sources
+                html += '<td>' + renderSourceBadges(vuln.detection_sources) + '</td>';
+                // Assets
+                html += '<td>';
+                if (vuln.affected_assets && vuln.affected_assets.length > 0) {
+                    var assetStrs = vuln.affected_assets.slice(0, 3).map(function(a) {
+                        return a.port > 0 ? (a.ip + ':' + a.port) : a.ip;
+                    });
+                    html += escapeHtml(assetStrs.join(', '));
+                    if (vuln.affected_assets.length > 3) html += ' +' + (vuln.affected_assets.length - 3);
+                }
+                html += '</td>';
+                // Software
+                html += '<td class="desc-cell">' + escapeHtml((vuln.affected_cpe || '-').substring(0, 40)) + '</td>';
+                // Description
+                html += '<td class="desc-cell">' + escapeHtml((vuln.description || '').substring(0, 80)) + '</td>';
+                // Published
+                html += '<td style="white-space:nowrap">' + (vuln.published_date ? formatDate(vuln.published_date).split(' ')[0] : '-') + '</td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -1793,45 +1968,51 @@ document.addEventListener('DOMContentLoaded', function() {
             filtered.forEach(function(vuln, index) {
                 html += '<div class="vuln-card clickable severity-' + vuln.severity + '" data-vuln-index="' + index + '">';
                 html += '<div class="vuln-header">';
-                html += '<span class="vuln-id">' + vuln.vuln_id + '</span>';
+                // CVE ID with link
+                if (vuln.cve_id.toUpperCase().indexOf('CVE-') === 0) {
+                    html += '<a href="https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(vuln.cve_id) + '" target="_blank" rel="noopener" class="vuln-id" onclick="event.stopPropagation()">' + escapeHtml(vuln.cve_id) + '</a>';
+                } else {
+                    html += '<span class="vuln-id">' + escapeHtml(vuln.cve_id) + '</span>';
+                }
                 html += '<div class="vuln-header-right">';
+                if (vuln.has_exploit) {
+                    html += '<span class="exploit-warning">⚠️ Exploit</span>';
+                }
                 if (vuln.cvss_score !== null && vuln.cvss_score !== undefined) {
                     var cvssClass = vuln.cvss_score >= 9.0 ? 'critical' : (vuln.cvss_score >= 7.0 ? 'high' : (vuln.cvss_score >= 4.0 ? 'medium' : 'low'));
-                    html += '<span class="cvss-badge ' + cvssClass + '">CVSS ' + vuln.cvss_score.toFixed(1) + '</span>';
+                    html += '<span class="cvss-badge ' + cvssClass + '">' + vuln.cvss_score.toFixed(1) + '</span>';
                 }
                 html += '<span class="severity-badge ' + vuln.severity + '">' + vuln.severity.toUpperCase() + '</span>';
-                html += '</div>';
-                html += '</div>';
-                html += '<div class="vuln-target">' + vuln.ip + ':' + vuln.port + '/' + vuln.protocol + '</div>';
+                html += '</div></div>';
+
+                // Detection source badges
+                html += renderSourceBadges(vuln.detection_sources);
+
+                // Affected assets
+                html += renderAssetBadges(vuln.affected_assets);
+
+                // CPE
+                if (vuln.affected_cpe) {
+                    html += '<div class="vuln-cpe"><span class="cpe-badge" title="' + escapeHtml(vuln.affected_cpe) + '">' + escapeHtml(vuln.affected_cpe.substring(0, 60)) + '</span></div>';
+                }
 
                 if (vuln.cwe_id) {
                     html += '<div class="vuln-cwe"><span class="cwe-badge">' + vuln.cwe_id + '</span></div>';
                 }
 
-                if (vuln.cvss_vector) {
-                    html += '<div class="vuln-vector"><code>' + vuln.cvss_vector + '</code></div>';
+                // Description (truncated)
+                var desc = vuln.description || '';
+                if (desc.length > 200) {
+                    html += '<div class="vuln-desc">' + escapeHtml(desc.substring(0, 200)) + '...</div>';
+                } else if (desc) {
+                    html += '<div class="vuln-desc">' + escapeHtml(desc) + '</div>';
                 }
 
-                html += '<div class="vuln-desc">' + escapeHtml(vuln.description) + '</div>';
-
-                if (vuln.references && vuln.references.length > 0) {
-                    html += '<div class="vuln-refs">';
-                    html += '<span class="refs-label">References:</span>';
-                    html += '<ul class="refs-list">';
-                    vuln.references.forEach(function(ref) {
-                        if (ref.url) {
-                            html += '<li><a href="' + escapeHtml(ref.url) + '" target="_blank" rel="noopener">' + escapeHtml(ref.source || ref.url) + '</a></li>';
-                        }
-                    });
-                    html += '</ul>';
-                    html += '</div>';
-                }
-
+                // Dates
                 html += '<div class="vuln-dates">';
                 if (vuln.published_date) {
                     html += '<span class="vuln-published">Published: ' + formatDate(vuln.published_date) + '</span>';
                 }
-                html += '<span class="vuln-found">Found: ' + formatDate(vuln.scan_date) + '</span>';
                 html += '</div>';
                 html += '</div>';
             });
@@ -1840,20 +2021,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         vulnsList.innerHTML = html;
 
-        // Add clear filter listener after rendering
         var clearBtn = document.getElementById('clear-ip-filter');
         if (clearBtn) {
-            clearBtn.addEventListener('click', function() {
-                loadVulnerabilities(null);
-            });
+            clearBtn.addEventListener('click', function() { loadVulnerabilities(null); });
         }
 
-        // Add click handlers for vulnerability cards/rows
+        // Click handlers for cards/rows
         document.querySelectorAll('.vuln-card.clickable, .vulns-table tbody tr.clickable').forEach(function(el) {
             el.addEventListener('click', function(e) {
-                // Don't open modal if clicking on a link
                 if (e.target.tagName === 'A') return;
-
                 var index = parseInt(this.getAttribute('data-vuln-index'));
                 if (!isNaN(index) && storedVulnerabilities[index]) {
                     showCveModal(storedVulnerabilities[index]);

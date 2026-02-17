@@ -156,17 +156,27 @@ def get_assets():
 
 @app.route('/api/vulnerabilities')
 def get_vulnerabilities():
-    """Get list of all vulnerabilities, optionally filtered by IP."""
+    """Get unified list of all vulnerabilities from all sources, deduplicated by CVE ID."""
     ip = request.args.get('ip')
+    source = request.args.get('source')  # nuclei, nvd-local, nmap-vulscan, auth-scan, exploit-db
+    has_exploit = request.args.get('has_exploit')
+    search = request.args.get('search')
 
     try:
         if ip and not validate_ip(ip):
             return {'error': 'Invalid IP address'}, 400
 
-        vulnerabilities = vuln_scan.get_vulnerabilities(ip)
-        summary = vuln_scan.get_vulnerability_summary()
+        # Convert has_exploit to boolean
+        exploit_filter = None
+        if has_exploit is not None:
+            exploit_filter = has_exploit.lower() in ('true', '1', 'yes')
 
-        logger.info(f"Retrieved {len(vulnerabilities)} vulnerabilities")
+        vulnerabilities = vuln_scan.get_unified_vulnerabilities(
+            ip=ip, source=source, has_exploit=exploit_filter, search=search
+        )
+        summary = vuln_scan.get_unified_vulnerability_summary(ip=ip)
+
+        logger.info(f"Retrieved {len(vulnerabilities)} unified vulnerabilities")
         return {
             'vulnerabilities': vulnerabilities,
             'summary': summary
