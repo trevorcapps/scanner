@@ -820,7 +820,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Credential type toggle
+    // Credential type toggle (Settings form)
     var credTypeSelect = document.getElementById('cred-type');
     if (credTypeSelect) {
         credTypeSelect.addEventListener('change', function() {
@@ -838,6 +838,207 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load profiles on page load
     loadProfiles();
+
+    // ==================== Credentials Management ====================
+    var credentialsList = [];
+
+    function loadCredentials() {
+        fetch('/api/credentials')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                credentialsList = data.credentials || [];
+                renderCredentialsList();
+                populateCredentialDropdown();
+            });
+    }
+
+    function renderCredentialsList() {
+        var container = document.getElementById('credentials-list');
+        if (!container) return;
+
+        if (credentialsList.length === 0) {
+            container.innerHTML = '<p class="empty-state">No credentials configured yet.</p>';
+            return;
+        }
+
+        var html = '<table class="credentials-table"><thead><tr><th>Name</th><th>Type</th><th>Username</th><th>Details</th><th>Actions</th></tr></thead><tbody>';
+        credentialsList.forEach(function(c) {
+            var detail = c.cred_type === 'ssh_key' ? ('Key: ' + escapeHtml(c.key_path || '')) : (c.password_set ? 'Password: ••••••••' : 'No password');
+            html += '<tr>';
+            html += '<td><strong>' + escapeHtml(c.name) + '</strong></td>';
+            html += '<td><span class="tech-category-badge">' + escapeHtml(c.cred_type) + '</span></td>';
+            html += '<td>' + escapeHtml(c.username) + '</td>';
+            html += '<td>' + detail + '</td>';
+            html += '<td>';
+            html += '<button class="btn-small btn-secondary cred-edit-btn" data-id="' + c.id + '">Edit</button> ';
+            html += '<button class="btn-small btn-stop cred-delete-btn" data-id="' + c.id + '" data-name="' + escapeHtml(c.name) + '">Delete</button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+        // Attach event listeners
+        container.querySelectorAll('.cred-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { editCredential(parseInt(this.getAttribute('data-id'))); });
+        });
+        container.querySelectorAll('.cred-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = parseInt(this.getAttribute('data-id'));
+                var name = this.getAttribute('data-name');
+                if (confirm('Delete credential "' + name + '"?')) {
+                    fetch('/api/credentials/' + id, { method: 'DELETE' })
+                        .then(function(r) { return r.json(); })
+                        .then(function() { loadCredentials(); });
+                }
+            });
+        });
+    }
+
+    function populateCredentialDropdown() {
+        var select = document.getElementById('scan-credential-select');
+        if (!select) return;
+        select.innerHTML = '';
+        credentialsList.forEach(function(c) {
+            var opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name + ' (' + c.cred_type + ' / ' + c.username + ')';
+            select.appendChild(opt);
+        });
+    }
+
+    function editCredential(id) {
+        var cred = credentialsList.find(function(c) { return c.id === id; });
+        if (!cred) return;
+
+        document.getElementById('cred-edit-id').value = id;
+        document.getElementById('cred-name').value = cred.name;
+        document.getElementById('cred-type').value = cred.cred_type;
+        document.getElementById('cred-username').value = cred.username;
+        document.getElementById('cred-key-path').value = cred.key_path || '';
+        document.getElementById('cred-password').value = '';
+        document.getElementById('cred-form-title').textContent = 'Edit Credential';
+        document.getElementById('cred-cancel-btn').style.display = '';
+
+        // Trigger type toggle
+        credTypeSelect.dispatchEvent(new Event('change'));
+    }
+
+    function resetCredForm() {
+        document.getElementById('cred-edit-id').value = '';
+        document.getElementById('cred-name').value = '';
+        document.getElementById('cred-type').value = 'ssh_key';
+        document.getElementById('cred-username').value = 'root';
+        document.getElementById('cred-key-path').value = '';
+        document.getElementById('cred-password').value = '';
+        document.getElementById('cred-form-title').textContent = 'Add Credential';
+        document.getElementById('cred-cancel-btn').style.display = 'none';
+        if (credTypeSelect) credTypeSelect.dispatchEvent(new Event('change'));
+    }
+
+    var credSaveBtn = document.getElementById('cred-save-btn');
+    if (credSaveBtn) {
+        credSaveBtn.addEventListener('click', function() {
+            var editId = document.getElementById('cred-edit-id').value;
+            var body = {
+                name: document.getElementById('cred-name').value.trim(),
+                cred_type: document.getElementById('cred-type').value,
+                username: document.getElementById('cred-username').value.trim(),
+                key_path: document.getElementById('cred-key-path').value.trim(),
+                password: document.getElementById('cred-password').value
+            };
+            if (editId) body.id = parseInt(editId);
+
+            fetch('/api/credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    resetCredForm();
+                    loadCredentials();
+                }
+            });
+        });
+    }
+
+    var credCancelBtn = document.getElementById('cred-cancel-btn');
+    if (credCancelBtn) {
+        credCancelBtn.addEventListener('click', resetCredForm);
+    }
+
+    // Password visibility toggles
+    document.querySelectorAll('.btn-toggle-vis').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var wrapper = this.parentElement;
+            var input = wrapper.querySelector('input');
+            if (input.type === 'password') {
+                input.type = 'text';
+                this.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                this.textContent = '👁';
+            }
+        });
+    });
+
+    // NVD API Key management
+    function loadNvdKey() {
+        fetch('/api/settings/nvd-key')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var input = document.getElementById('nvd-api-key');
+                if (input && data.has_key) {
+                    input.placeholder = data.masked || '••••••••';
+                }
+            });
+    }
+
+    var nvdKeySaveBtn = document.getElementById('nvd-key-save');
+    if (nvdKeySaveBtn) {
+        nvdKeySaveBtn.addEventListener('click', function() {
+            var key = document.getElementById('nvd-api-key').value.trim();
+            fetch('/api/settings/nvd-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: key })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var status = document.getElementById('nvd-key-status');
+                if (status) {
+                    status.textContent = data.success ? 'Saved!' : (data.error || 'Error');
+                    status.classList.add('visible');
+                    setTimeout(function() { status.classList.remove('visible'); }, 3000);
+                }
+                document.getElementById('nvd-api-key').value = '';
+                loadNvdKey();
+            });
+        });
+    }
+
+    // Link from scan tab to settings credentials
+    var gotoSettingsCreds = document.getElementById('goto-settings-creds');
+    if (gotoSettingsCreds) {
+        gotoSettingsCreds.addEventListener('click', function(e) {
+            e.preventDefault();
+            tabBtns.forEach(function(b) { b.classList.remove('active'); });
+            tabContents.forEach(function(c) { c.classList.remove('active'); });
+            document.querySelector('[data-tab="settings-tab"]').classList.add('active');
+            document.getElementById('settings-tab').classList.add('active');
+            updateSplitView('settings-tab');
+            var section = document.getElementById('settings-credentials-section');
+            if (section) section.scrollIntoView({ behavior: 'smooth' });
+        });
+    }
+
+    // Load credentials and NVD key on page load
+    loadCredentials();
+    loadNvdKey();
 
     function startVulnScan() {
         var ip = document.getElementById('ip').value.trim();
@@ -890,44 +1091,86 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function startAuthScan(ip) {
+        var useAll = document.getElementById('scan-use-all-creds');
+        var select = document.getElementById('scan-credential-select');
+        var credIds = [];
+
+        if (useAll && useAll.checked) {
+            // Use all
+        } else if (select) {
+            for (var i = 0; i < select.options.length; i++) {
+                if (select.options[i].selected) {
+                    credIds.push(select.options[i].value);
+                }
+            }
+        }
+
+        if (!credIds.length && !(useAll && useAll.checked)) {
+            scanOutput.innerHTML = '<p class="error">Please select credentials or check "Use all available".</p>';
+            return;
+        }
+
         portScanBtn.disabled = true;
         vulnScanBtn.disabled = true;
         vulnScanBtn.textContent = 'Scanning...';
         stopScanBtn.style.display = 'inline-block';
 
-        var credType = document.getElementById('cred-type').value;
         var scanData = {
             ip: ip,
-            username: document.getElementById('cred-username').value || 'root',
-            cred_type: credType,
-            key_path: document.getElementById('cred-key-path').value,
-            password: document.getElementById('cred-password').value,
-            ssh_port: document.getElementById('cred-ssh-port').value || 22,
-            nvd_api_key: document.getElementById('cred-nvd-key').value
+            credential_ids: credIds,
+            use_all_credentials: useAll ? useAll.checked : false
         };
 
         socket.emit('start_auth_scan', scanData);
         progressContainer.style.display = 'block';
         progressBar.value = 10;
-        progressMessage.textContent = 'Authenticated SSH scan in progress...';
-        scanOutput.innerHTML = '<p>Running authenticated scan on ' + ip + '...</p>' +
-            '<p class="info">Connecting via SSH, detecting OS, gathering packages, querying NVD for CVEs.</p>';
-        addLog('Starting authenticated SSH scan for ' + ip, 'info');
+        progressMessage.textContent = 'Authenticated scan in progress (port scan → smart credential matching)...';
+        scanOutput.innerHTML = '<p>Running smart authenticated scan on ' + ip + '...</p>' +
+            '<p class="info">Port scan runs first, then credentials are matched to hosts with compatible open ports.</p>';
+        addLog('Starting smart authenticated scan for ' + ip, 'info');
     }
 
     // Auth scan complete handler
     socket.on('auth_scan_complete', function(data) {
         progressBar.value = 100;
 
-        var html = '<h3>Authenticated Scan Results for ' + data.ip + '</h3>';
-        if (data.os_info && data.os_info.pretty_name) {
-            html += '<p class="info">OS: ' + escapeHtml(data.os_info.pretty_name) + '</p>';
+        var html = '<h3>Authenticated Scan Results for ' + escapeHtml(data.target || data.ip || '') + '</h3>';
+
+        if (data.results && data.results.length > 0) {
+            var successful = data.results.filter(function(r) { return r.success; });
+            var failed = data.results.filter(function(r) { return !r.success; });
+
+            html += '<p class="info">' + data.successful_count + ' successful, ' + (data.total_count - data.successful_count) + ' failed attempts.</p>';
+
+            if (successful.length > 0) {
+                html += '<div class="vuln-results">';
+                successful.forEach(function(r) {
+                    html += '<div class="scan-result-group">';
+                    html += '<p class="success">✓ ' + escapeHtml(r.ip) + ':' + r.port + ' via "' + escapeHtml(r.credential) + '": ' + r.packages + ' packages, ' + r.cves + ' CVEs</p>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            if (failed.length > 0) {
+                html += '<details><summary>' + failed.length + ' failed attempt(s)</summary>';
+                failed.forEach(function(r) {
+                    html += '<p class="error">✗ ' + escapeHtml(r.ip) + ':' + r.port + ' via "' + escapeHtml(r.credential) + '": ' + escapeHtml(r.error || 'unknown error') + '</p>';
+                });
+                html += '</details>';
+            }
+        } else if (data.os_info) {
+            // Legacy single-host format
+            if (data.os_info.pretty_name) {
+                html += '<p class="info">OS: ' + escapeHtml(data.os_info.pretty_name) + '</p>';
+            }
+            html += '<p class="success">Found ' + (data.package_count || 0) + ' installed packages, ' + (data.cve_count || 0) + ' CVE matches.</p>';
         }
-        html += '<p class="success">Found ' + data.package_count + ' installed packages, ' + data.cve_count + ' CVE matches.</p>';
+
         html += '<p>View full details in the <strong>Asset Details</strong> modal.</p>';
         scanOutput.innerHTML = html;
 
-        addLog('Auth scan complete: ' + data.package_count + ' packages, ' + data.cve_count + ' CVEs', 'success');
+        addLog('Auth scan complete: ' + (data.successful_count || 0) + ' successful', 'success');
         resetScanButtons();
         setTimeout(function() { progressContainer.style.display = 'none'; }, 1000);
     });

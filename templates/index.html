@@ -46,41 +46,15 @@
                     </div>
                 </div>
                 <div class="form-group" id="auth-credentials-group" style="display:none;">
-                    <label>SSH Credentials:</label>
-                    <div class="credentials-form">
-                        <div class="cred-row">
-                            <div class="cred-field">
-                                <label for="cred-username">Username</label>
-                                <input type="text" id="cred-username" placeholder="root" value="root">
-                            </div>
-                            <div class="cred-field">
-                                <label for="cred-type">Auth Type</label>
-                                <select id="cred-type">
-                                    <option value="ssh_key">SSH Key</option>
-                                    <option value="ssh_password">Password</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="cred-row">
-                            <div class="cred-field" id="cred-key-field">
-                                <label for="cred-key-path">Key Path</label>
-                                <input type="text" id="cred-key-path" placeholder="/home/user/.ssh/id_rsa">
-                            </div>
-                            <div class="cred-field" id="cred-password-field" style="display:none;">
-                                <label for="cred-password">Password</label>
-                                <input type="password" id="cred-password" placeholder="••••••••">
-                            </div>
-                            <div class="cred-field">
-                                <label for="cred-ssh-port">SSH Port</label>
-                                <input type="number" id="cred-ssh-port" value="22" min="1" max="65535">
-                            </div>
-                        </div>
-                        <div class="cred-row">
-                            <div class="cred-field">
-                                <label for="cred-nvd-key">NVD API Key (optional)</label>
-                                <input type="text" id="cred-nvd-key" placeholder="Faster CVE lookups with API key">
-                            </div>
-                        </div>
+                    <label>Select Credentials:</label>
+                    <div class="credential-select-wrapper">
+                        <select id="scan-credential-select" multiple class="credential-multi-select">
+                            <!-- Populated dynamically -->
+                        </select>
+                        <label class="cred-use-all-label">
+                            <input type="checkbox" id="scan-use-all-creds"> Use all available
+                        </label>
+                        <span class="setting-hint">Configure credentials in <a href="#" id="goto-settings-creds">Settings</a>. Port scan runs first — credentials are matched to hosts with compatible open ports.</span>
                     </div>
                 </div>
             </form>
@@ -322,6 +296,71 @@
                     <button id="save-settings" class="btn-primary">Save Settings</button>
                     <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
                     <span id="settings-status" class="settings-status"></span>
+                </div>
+            </div>
+
+            <div class="settings-section" id="settings-credentials-section">
+                <h3>Credentials</h3>
+                <p class="settings-description">Manage SSH credentials for authenticated scanning</p>
+
+                <div id="credentials-list" class="credentials-list">
+                    <p class="loading">Loading credentials...</p>
+                </div>
+
+                <div class="cred-add-form" id="cred-add-form">
+                    <h4 id="cred-form-title">Add Credential</h4>
+                    <input type="hidden" id="cred-edit-id" value="">
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="cred-name">Name</label>
+                            <input type="text" id="cred-name" placeholder="e.g., Linux SSH Key">
+                        </div>
+                        <div class="setting-item">
+                            <label for="cred-type">Auth Type</label>
+                            <select id="cred-type">
+                                <option value="ssh_key">SSH Key</option>
+                                <option value="ssh_password">SSH Password</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="cred-username">Username</label>
+                            <input type="text" id="cred-username" placeholder="root" value="root">
+                        </div>
+                        <div class="setting-item" id="cred-key-field">
+                            <label for="cred-key-path">Key Path</label>
+                            <input type="text" id="cred-key-path" placeholder="/home/user/.ssh/id_rsa">
+                        </div>
+                        <div class="setting-item" id="cred-password-field" style="display:none;">
+                            <label for="cred-password">Password</label>
+                            <div class="password-toggle-wrapper">
+                                <input type="password" id="cred-password" placeholder="••••••••">
+                                <button type="button" class="btn-toggle-vis" id="cred-password-toggle" title="Show/hide">👁</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-actions" style="margin-top: 10px;">
+                        <button id="cred-save-btn" class="btn-primary">Save Credential</button>
+                        <button id="cred-cancel-btn" class="btn-secondary" style="display:none;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>NVD API Key</h3>
+                <p class="settings-description">Optional API key for faster NVD CVE lookups during authenticated scans</p>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label for="nvd-api-key">API Key</label>
+                        <div class="password-toggle-wrapper">
+                            <input type="password" id="nvd-api-key" placeholder="Enter NVD API key">
+                            <button type="button" class="btn-toggle-vis" id="nvd-key-toggle" title="Show/hide">👁</button>
+                        </div>
+                        <span class="setting-hint">Get a free key at <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank">nvd.nist.gov</a></span>
+                    </div>
+                </div>
+                <div class="settings-actions" style="margin-top: 10px;">
+                    <button id="nvd-key-save" class="btn-primary">Save NVD Key</button>
+                    <span id="nvd-key-status" class="settings-status"></span>
                 </div>
             </div>
 

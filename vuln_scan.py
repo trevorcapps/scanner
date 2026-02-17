@@ -462,6 +462,22 @@ def init_db():
                         scan_date TEXT,
                         UNIQUE(ip, cve_id))''')
 
+    # Credentials table for stored credential sets
+    cursor.execute('''CREATE TABLE IF NOT EXISTS credentials (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT UNIQUE NOT NULL,
+                        cred_type TEXT NOT NULL,
+                        username TEXT NOT NULL,
+                        key_path TEXT,
+                        password TEXT,
+                        created_at TEXT,
+                        updated_at TEXT)''')
+
+    # Settings table for persistent key-value config
+    cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT)''')
+
     # Create indexes for better query performance
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_scans_ip ON scans(ip)''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_vulns_ip ON vulnerabilities(ip)''')
@@ -1616,3 +1632,109 @@ def get_cve_matches(ip):
                 for r in cursor.fetchall()]
     finally:
         conn.close()
+
+
+# ============== Credentials & Settings Management ==============
+
+def get_all_credentials():
+    """Get all stored credentials (passwords masked)."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT id, name, cred_type, username, key_path, password, created_at, updated_at
+                          FROM credentials ORDER BY name''')
+        results = []
+        for r in cursor.fetchall():
+            results.append({
+                'id': r[0], 'name': r[1], 'cred_type': r[2], 'username': r[3],
+                'key_path': r[4] or '', 'password': r[5] or '',
+                'created_at': r[6], 'updated_at': r[7]
+            })
+        return results
+    finally:
+        conn.close()
+
+
+def get_credential(cred_id):
+    """Get a single credential by ID (full, unmasked)."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT id, name, cred_type, username, key_path, password
+                          FROM credentials WHERE id = ?''', (cred_id,))
+        r = cursor.fetchone()
+        if r:
+            return {
+                'id': r[0], 'name': r[1], 'cred_type': r[2], 'username': r[3],
+                'key_path': r[4] or '', 'password': r[5] or ''
+            }
+        return None
+    finally:
+        conn.close()
+
+
+def save_credential(name, cred_type, username, key_path='', password='', cred_id=None):
+    """Create or update a credential set."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    try:
+        if cred_id:
+            cursor.execute('''UPDATE credentials SET name=?, cred_type=?, username=?,
+                              key_path=?, password=?, updated_at=? WHERE id=?''',
+                           (name, cred_type, username, key_path, password, now, cred_id))
+        else:
+            cursor.execute('''INSERT INTO credentials (name, cred_type, username, key_path, password, created_at, updated_at)
+                              VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                           (name, cred_type, username, key_path, password, now, now))
+        conn.commit()
+        return cursor.lastrowid if not cred_id else cred_id
+    except sqlite3.IntegrityError:
+        raise ValueError(f"Credential name '{name}' already exists")
+    finally:
+        conn.close()
+
+
+def delete_credential(cred_id):
+    """Delete a credential by ID."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM credentials WHERE id = ?', (cred_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_setting(key, default=None):
+    """Get a setting value."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
+        row = cursor.fetchone()
+        return row[0] if row else default
+    finally:
+        conn.close()
+
+
+def set_setting(key, value):
+    """Set a setting value."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, value))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_open_ports_for_ip(ip):
+    """Get the list of open ports from the latest scan for an IP."""
+    latest = get_latest_scan(ip)
+    ports = []
+    for row in latest:
+        if row[2] == 'open':
+            ports.append({'port': row[1], 'protocol': row[0], 'service': row[3]})
+    return ports

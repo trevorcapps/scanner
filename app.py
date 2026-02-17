@@ -18,7 +18,9 @@ from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_
                        get_asset_details, get_fingerprints, get_fingerprint_summary,
                        store_fingerprints, store_fpx_results, get_fingerprint_engine,
                        fpx_check_installed, store_auth_scan_results,
-                       get_asset_os_details, get_installed_software, get_cve_matches)
+                       get_asset_os_details, get_installed_software, get_cve_matches,
+                       get_all_credentials, get_credential, save_credential,
+                       delete_credential, get_setting, set_setting, get_open_ports_for_ip)
 from fingerprint.fpx import scan_host as fpx_scan_host
 from auth_scan import run_authenticated_scan
 
@@ -861,9 +863,87 @@ def get_asset_auth_details(ip):
         return {'error': str(e)}, 500
 
 
+# ============== Credentials & Settings API ==============
+
+@app.route('/api/credentials', methods=['GET'])
+def api_get_credentials():
+    """Get all credentials (passwords masked in response)."""
+    creds = get_all_credentials()
+    # Mask passwords in response
+    for c in creds:
+        if c['password']:
+            c['password_set'] = True
+            c['password'] = ''
+        else:
+            c['password_set'] = False
+    return {'credentials': creds}
+
+
+@app.route('/api/credentials', methods=['POST'])
+def api_save_credential():
+    """Create or update a credential."""
+    data = request.get_json()
+    if not data:
+        return {'error': 'JSON body required'}, 400
+
+    name = data.get('name', '').strip()
+    cred_type = data.get('cred_type', 'ssh_key')
+    username = data.get('username', 'root').strip()
+    key_path = data.get('key_path', '').strip()
+    password = data.get('password', '').strip()
+    cred_id = data.get('id')
+
+    if not name:
+        return {'error': 'Credential name is required'}, 400
+    if not username:
+        return {'error': 'Username is required'}, 400
+    if cred_type == 'ssh_key' and not key_path:
+        return {'error': 'Key path is required for SSH key auth'}, 400
+    if cred_type == 'ssh_password' and not password:
+        # If editing and no new password provided, keep existing
+        if cred_id:
+            existing = get_credential(cred_id)
+            if existing:
+                password = existing['password']
+        if not password:
+            return {'error': 'Password is required for password auth'}, 400
+
+    try:
+        result_id = save_credential(name, cred_type, username, key_path, password, cred_id)
+        return {'id': result_id, 'success': True}
+    except ValueError as e:
+        return {'error': str(e)}, 400
+
+
+@app.route('/api/credentials/<int:cred_id>', methods=['DELETE'])
+def api_delete_credential(cred_id):
+    """Delete a credential."""
+    if delete_credential(cred_id):
+        return {'success': True}
+    return {'error': 'Credential not found'}, 404
+
+
+@app.route('/api/settings/nvd-key', methods=['GET'])
+def api_get_nvd_key():
+    """Get NVD API key (masked)."""
+    key = get_setting('nvd_api_key', '')
+    return {'has_key': bool(key), 'masked': ('••••' + key[-4:]) if key and len(key) > 4 else ('••••' if key else '')}
+
+
+@app.route('/api/settings/nvd-key', methods=['POST'])
+def api_set_nvd_key():
+    """Set NVD API key."""
+    data = request.get_json()
+    if not data:
+        return {'error': 'JSON body required'}, 400
+    key = data.get('key', '').strip()
+    set_setting('nvd_api_key', key)
+    return {'success': True}
+
+
 @socketio.on('start_auth_scan')
 def handle_start_auth_scan(data):
-    """Handle authenticated SSH scan request."""
+    """Handle authenticated scan request with smart credential selection."""
     target = data.get('ip', '').strip()
     sid = request.sid
 
@@ -871,57 +951,147 @@ def handle_start_auth_scan(data):
         emit('scan_error', {'error': 'IP address is required'})
         return
 
-    if not validate_ip(target):
-        emit('scan_error', {'error': 'Invalid IP address'})
+    if not validate_target(target):
+        emit('scan_error', {'error': 'Invalid IP address or CIDR'})
         return
 
-    # Extract credentials
-    cred_type = data.get('cred_type', 'ssh_key')
-    username = data.get('username', 'root')
-    password = data.get('password', '')
-    key_path = data.get('key_path', '')
-    ssh_port = int(data.get('ssh_port', 22))
-    nvd_api_key = data.get('nvd_api_key', '') or None
+    # Get selected credential IDs (list of IDs or 'all')
+    credential_ids = data.get('credential_ids', [])
+    use_all = data.get('use_all_credentials', False)
 
-    if cred_type == 'ssh_password' and not password:
-        emit('scan_error', {'error': 'Password is required for password authentication'})
-        return
-    if cred_type == 'ssh_key' and not key_path:
-        emit('scan_error', {'error': 'Key path is required for key authentication'})
+    # Resolve credentials
+    if use_all:
+        creds = get_all_credentials()
+    else:
+        creds = []
+        for cid in credential_ids:
+            c = get_credential(int(cid))
+            if c:
+                creds.append(c)
+
+    if not creds:
+        emit('scan_error', {'error': 'No credentials selected. Configure credentials in Settings.'})
         return
 
-    def run_scan(ip, sid):
+    # Get NVD API key from settings
+    nvd_api_key = get_setting('nvd_api_key', '') or None
+
+    def run_smart_auth_scan(target, sid, creds):
         try:
-            socketio.emit('scan_progress', {
-                'status': 'running',
-                'message': f'Authenticated scan on {ip}...',
-                'current': 1, 'total': 1, 'ip': ip
-            }, room=sid)
+            # Resolve IPs
+            if is_cidr(target):
+                ips = expand_cidr(target, max_hosts=256)
+            else:
+                ips = [target]
 
-            def log_cb(msg, level='info'):
-                emit_log(sid, msg, level)
+            total_ips = len(ips)
+            all_results = []
 
-            result = run_authenticated_scan(
-                host=ip, port=ssh_port, username=username,
-                password=password if cred_type == 'ssh_password' else None,
-                key_path=key_path if cred_type == 'ssh_key' else None,
-                nvd_api_key=nvd_api_key, log_callback=log_cb
-            )
+            for ip_idx, ip in enumerate(ips, 1):
+                if is_scan_cancelled(sid):
+                    emit_log(sid, 'Auth scan cancelled', 'warning')
+                    break
 
-            # Store results
-            store_auth_scan_results(ip, result['os_info'], result['packages'], result['cves'])
-            emit_log(sid, f'Stored results: {len(result["packages"])} packages, {len(result["cves"])} CVEs', 'success')
+                socketio.emit('scan_progress', {
+                    'status': 'running',
+                    'message': f'Auth scan {ip} ({ip_idx}/{total_ips})...',
+                    'current': ip_idx, 'total': total_ips, 'ip': ip
+                }, room=sid)
 
+                # Step 1: Check if port scan data exists; if not, run one first
+                open_ports = get_open_ports_for_ip(ip)
+                if not open_ports:
+                    emit_log(sid, f'No port scan data for {ip} — running port scan first...', 'info')
+                    result = scan_single_ip(ip, sid, current=ip_idx, total=total_ips)
+                    if not result['success']:
+                        emit_log(sid, f'Port scan failed for {ip}, skipping auth scan', 'error')
+                        continue
+                    open_ports = get_open_ports_for_ip(ip)
+
+                if not open_ports:
+                    emit_log(sid, f'No open ports on {ip}, skipping', 'info')
+                    continue
+
+                # Step 2: Determine which ports are SSH-capable
+                ssh_ports = [p['port'] for p in open_ports
+                             if p['port'] in (22, 2222, 2200) or p['service'] in ('ssh', 'openssh')]
+
+                # Get OS hints from nmap/assets for smart decisions
+                asset_details = vuln_scan.get_asset_details(ip)
+                os_hint = ''
+                if asset_details:
+                    os_hint = (asset_details.get('os_name') or '').lower() + ' ' + \
+                              (asset_details.get('os_family') or '').lower()
+
+                is_likely_windows = any(w in os_hint for w in ['windows', 'microsoft'])
+
+                # Step 3: Smart credential matching
+                for cred in creds:
+                    cred_type = cred['cred_type']
+
+                    if cred_type in ('ssh_key', 'ssh_password'):
+                        if not ssh_ports:
+                            emit_log(sid, f'Skipping SSH cred "{cred["name"]}" for {ip}: no SSH port open', 'debug')
+                            continue
+                        if is_likely_windows and 22 not in [p['port'] for p in open_ports]:
+                            emit_log(sid, f'Skipping SSH cred "{cred["name"]}" for {ip}: Windows host, SSH not detected', 'debug')
+                            continue
+
+                        # Try each SSH port
+                        for ssh_port in ssh_ports:
+                            emit_log(sid, f'Trying "{cred["name"]}" ({cred_type}) on {ip}:{ssh_port}', 'info')
+                            try:
+                                def log_cb(msg, level='info'):
+                                    emit_log(sid, msg, level)
+
+                                result = run_authenticated_scan(
+                                    host=ip, port=ssh_port, username=cred['username'],
+                                    password=cred['password'] if cred_type == 'ssh_password' else None,
+                                    key_path=cred['key_path'] if cred_type == 'ssh_key' else None,
+                                    nvd_api_key=nvd_api_key, log_callback=log_cb
+                                )
+
+                                # Store results
+                                store_auth_scan_results(ip, result['os_info'], result['packages'], result['cves'])
+
+                                # Also update the assets table with auth OS info
+                                if result['os_info'].get('pretty_name') or result['os_info'].get('distro'):
+                                    os_update = {
+                                        'os_name': result['os_info'].get('pretty_name') or result['os_info'].get('distro'),
+                                        'os_family': result['os_info'].get('os_family'),
+                                    }
+                                    store_asset_info(ip, os_info=os_update)
+
+                                emit_log(sid, f'✓ Auth scan success on {ip}:{ssh_port} with "{cred["name"]}": '
+                                         f'{len(result["packages"])} packages, {len(result["cves"])} CVEs', 'success')
+
+                                all_results.append({
+                                    'ip': ip, 'credential': cred['name'], 'port': ssh_port,
+                                    'packages': len(result['packages']), 'cves': len(result['cves']),
+                                    'success': True
+                                })
+                                break  # Success — don't try other SSH ports with same cred
+
+                            except Exception as e:
+                                emit_log(sid, f'✗ Failed "{cred["name"]}" on {ip}:{ssh_port}: {e}', 'warning')
+                                all_results.append({
+                                    'ip': ip, 'credential': cred['name'], 'port': ssh_port,
+                                    'error': str(e), 'success': False
+                                })
+
+                    # Future: WinRM/WMI credential types would check ports 5985/5986 here
+
+            successful = [r for r in all_results if r['success']]
             socketio.emit('auth_scan_complete', {
-                'ip': ip,
-                'os_info': result['os_info'],
-                'package_count': len(result['packages']),
-                'cve_count': len(result['cves']),
-                'success': True
+                'target': target,
+                'results': all_results,
+                'successful_count': len(successful),
+                'total_count': len(all_results),
+                'success': len(successful) > 0
             }, room=sid)
 
         except Exception as e:
-            logger.error(f"Auth scan error for {ip}: {e}")
+            logger.error(f"Auth scan error: {e}")
             emit_log(sid, f'Auth scan error: {e}', 'error')
             socketio.emit('scan_error', {'error': str(e)}, room=sid)
         finally:
@@ -929,13 +1099,12 @@ def handle_start_auth_scan(data):
                 if sid in active_scans:
                     del active_scans[sid]
 
-    # Mask credentials in log
-    emit_log(sid, f'Starting authenticated scan: {target}:{ssh_port} as {username} ({cred_type})', 'info')
+    emit_log(sid, f'Starting smart authenticated scan on {target} with {len(creds)} credential(s)', 'info')
 
     with scan_lock:
         active_scans[sid] = {'type': 'auth_scan', 'target': target, 'cancelled': False}
 
-    thread = threading.Thread(target=run_scan, args=(target, sid))
+    thread = threading.Thread(target=run_smart_auth_scan, args=(target, sid, creds))
     thread.daemon = True
     thread.start()
 
