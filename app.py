@@ -20,6 +20,13 @@ from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_
                        fpx_check_installed)
 from fingerprint.fpx import scan_host as fpx_scan_host
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Load scan profiles
 SCAN_PROFILES = {}
 _profiles_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scan_profiles.json')
@@ -31,13 +38,6 @@ try:
     logger.info(f"Loaded {len(SCAN_PROFILES)} scan profiles")
 except Exception as _e:
     logger.warning(f"Could not load scan profiles: {_e}")
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
