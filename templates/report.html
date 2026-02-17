@@ -39,25 +39,40 @@
                 <p>No open ports found.</p>
             {% endif %}
 
-            <h2>Vulnerabilities:</h2>
+            <h2>Vulnerabilities ({{ vulnerabilities|length }}):</h2>
             {% if vulnerabilities %}
                 <table>
                     <tr>
                         <th>Severity</th>
                         <th>CVE ID</th>
-                        <th>Vulnerability</th>
-                        <th>Port</th>
-                        <th>CVSS Score</th>
+                        <th>CVSS</th>
+                        <th>Exploit</th>
+                        <th>Sources</th>
+                        <th>Affected Assets</th>
+                        <th>Affected Software</th>
                         <th>Description</th>
                     </tr>
                     {% for vuln in vulnerabilities %}
                         <tr class="vuln-{{ vuln.severity|lower }}">
                             <td><span class="severity-badge {{ vuln.severity|lower }}">{{ vuln.severity|upper }}</span></td>
-                            <td>{{ vuln.vuln_id }}</td>
-                            <td>{{ vuln.vuln_name }}</td>
-                            <td>{{ vuln.port }}/{{ vuln.protocol }}</td>
-                            <td>{{ vuln.cvss_score if vuln.cvss_score else 'N/A' }}</td>
-                            <td>{{ vuln.description[:100] }}{% if vuln.description|length > 100 %}...{% endif %}</td>
+                            <td><a href="https://nvd.nist.gov/vuln/detail/{{ vuln.cve_id }}" target="_blank">{{ vuln.cve_id }}</a></td>
+                            <td>
+                                {% if vuln.cvss_v3_score %}{{ '%.1f'|format(vuln.cvss_v3_score) }}{% elif vuln.cvss_v2_score %}{{ '%.1f'|format(vuln.cvss_v2_score) }} (v2){% else %}N/A{% endif %}
+                            </td>
+                            <td>{% if vuln.has_exploit %}⚠️ <a href="{{ vuln.exploit_url }}" target="_blank">EDB</a>{% else %}-{% endif %}</td>
+                            <td>
+                                {% for src in vuln.detection_sources %}
+                                    <span class="source-badge source-{{ src }}">{{ src }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% for asset in vuln.affected_assets[:3] %}
+                                    {{ asset.ip }}:{{ asset.port }}{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                                {% if vuln.affected_assets|length > 3 %}+{{ vuln.affected_assets|length - 3 }} more{% endif %}
+                            </td>
+                            <td>{{ vuln.affected_cpe[:50] if vuln.affected_cpe else '-' }}</td>
+                            <td>{{ vuln.description[:120] }}{% if vuln.description|length > 120 %}...{% endif %}</td>
                         </tr>
                     {% endfor %}
                 </table>

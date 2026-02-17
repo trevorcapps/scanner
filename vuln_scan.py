@@ -857,8 +857,8 @@ def generate_report_from_existing(ip):
         # Get the previous scan for comparison
         previous_scan, previous_date = get_previous_scan(ip, latest_date)
 
-        # Get vulnerabilities for this IP
-        vulnerabilities = get_vulnerabilities(ip)
+        # Get vulnerabilities for this IP (unified: Nuclei + CVE matches + NVD enrichment)
+        vulnerabilities = get_unified_vulnerabilities(ip=ip)
 
         # Handle first scan case
         if not previous_scan:
