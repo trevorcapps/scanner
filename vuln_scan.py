@@ -1,4 +1,5 @@
 import os
+import re
 import nmap
 import sqlite3
 import socket
@@ -154,9 +155,57 @@ def validate_cidr(cidr):
         return False
 
 
+def validate_hostname(hostname):
+    """Validate that the input is a plausible domain name or FQDN.
+
+    Allows letters, numbers, hyphens, dots.  Must match standard hostname rules.
+    """
+    if not hostname or not isinstance(hostname, str):
+        return False
+    if len(hostname) > 253:
+        return False
+    # Strip trailing dot (FQDN notation)
+    h = hostname.rstrip('.')
+    if not h:
+        return False
+    pattern = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
+    return bool(pattern.match(h))
+
+
+def resolve_target(target):
+    """Resolve a hostname to an IP address.
+
+    Prefers IPv4 addresses.  Returns the resolved IP string.
+    Raises ScanError if resolution fails.
+    """
+    try:
+        results = socket.getaddrinfo(target, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        # Prefer IPv4
+        ipv4 = [r for r in results if r[0] == socket.AF_INET]
+        if ipv4:
+            ip = ipv4[0][4][0]
+        elif results:
+            ip = results[0][4][0]
+        else:
+            raise ScanError(f"Could not resolve hostname: {target}")
+        logger.info(f"Resolved hostname {target} -> {ip}")
+        return ip
+    except socket.gaierror as e:
+        raise ScanError(f"Could not resolve hostname: {target} ({e})")
+    except Exception as e:
+        raise ScanError(f"Could not resolve hostname: {target} ({e})")
+
+
+def is_hostname(target):
+    """Check if target looks like a hostname (not an IP or CIDR)."""
+    if validate_ip(target) or is_cidr(target):
+        return False
+    return validate_hostname(target)
+
+
 def validate_target(target):
-    """Validate that the input is a valid IP address or CIDR notation."""
-    return validate_ip(target) or validate_cidr(target)
+    """Validate that the input is a valid IP address, CIDR notation, or hostname."""
+    return validate_ip(target) or validate_cidr(target) or validate_hostname(target)
 
 
 def expand_cidr(cidr, max_hosts=256):
@@ -318,17 +367,17 @@ class ScanError(Exception):
 
 # Function to scan a given IP address
 def scan(ip, options=None):
-    """Execute Nmap scan on the given IP address.
+    """Execute Nmap scan on the given target (IP address or hostname).
 
     Args:
-        ip: Target IP address
+        ip: Target IP address or hostname
         options: Dict with optional scan settings:
             - ports: Port range string (e.g., '1-1000', '22,80,443', '-' for all)
             - scan_speed: Timing template (T2, T3, T4, T5)
             - host_timeout: Timeout in seconds per host
     """
-    if not validate_ip(ip):
-        raise ScanError(f"Invalid IP address: {ip}")
+    if not validate_ip(ip) and not validate_hostname(ip):
+        raise ScanError(f"Invalid target: {ip}")
 
     # Create a new PortScanner instance per scan (thread-safe)
     nm = nmap.PortScanner()
@@ -378,11 +427,17 @@ def scan(ip, options=None):
         else:
             nm.scan(ip, arguments=arguments)
 
-        if ip not in nm.all_hosts():
+        # nmap may index results by resolved IP when scanning a hostname
+        all_hosts = nm.all_hosts()
+        if ip in all_hosts:
+            scan_key = ip
+        elif all_hosts:
+            scan_key = all_hosts[0]
+        else:
             raise ScanError(f"Host {ip} is unreachable or returned no results")
 
-        logger.info(f"Scan completed for IP: {ip}")
-        return nm[ip]
+        logger.info(f"Scan completed for target: {ip}")
+        return nm[scan_key]
     except nmap.PortScannerError as e:
         logger.error(f"Nmap error scanning {ip}: {e}")
         raise ScanError(f"Nmap error: {e}")
@@ -830,8 +885,11 @@ def compare_scans(old_scan, new_scan):
 
 def generate_report_from_existing(ip):
     """Generate a report from existing scan data without performing a new scan."""
+    if not validate_ip(ip) and not validate_hostname(ip):
+        raise ScanError(f"Invalid target: {ip}")
+    # If hostname, resolve to IP for DB lookup
     if not validate_ip(ip):
-        raise ScanError(f"Invalid IP address: {ip}")
+        ip = resolve_target(ip)
 
     # Get the latest scan data from the database
     conn = sqlite3.connect(DB_PATH)
@@ -887,9 +945,12 @@ def generate_report_from_existing(ip):
 
 # Function to generate a report of vulnerabilities
 def generate_report(ip):
-    """Generate a vulnerability report for the given IP."""
+    """Generate a vulnerability report for the given target."""
+    if not validate_ip(ip) and not validate_hostname(ip):
+        raise ScanError(f"Invalid target: {ip}")
+    # If hostname, resolve to IP for DB storage
     if not validate_ip(ip):
-        raise ScanError(f"Invalid IP address: {ip}")
+        ip = resolve_target(ip)
 
     latest_scan = get_latest_scan(ip)
 
@@ -946,8 +1007,8 @@ def vuln_scan(ip, options=None, log_callback=None):
             - rate_limit: Requests per second (default 150)
         log_callback: Optional callback function to receive log messages
     """
-    if not validate_ip(ip):
-        raise ScanError(f"Invalid IP address: {ip}")
+    if not validate_ip(ip) and not validate_hostname(ip):
+        raise ScanError(f"Invalid target: {ip}")
 
     if not check_nuclei_installed():
         raise ScanError("Nuclei is not installed. Please install it from https://github.com/projectdiscovery/nuclei")

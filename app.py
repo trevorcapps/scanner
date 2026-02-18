@@ -13,7 +13,8 @@ matplotlib.use('Agg')  # Use non-interactive backend for thread safety
 import matplotlib.pyplot as plt
 
 import vuln_scan
-from vuln_scan import (ScanError, validate_ip, validate_target, is_cidr, expand_cidr,
+from vuln_scan import (ScanError, validate_ip, validate_target, validate_hostname,
+                       is_cidr, is_hostname, expand_cidr, resolve_target,
                        DB_PATH, dns_lookup, get_os_info_from_scan, extract_host_info_from_scan,
                        store_asset_info, update_device_type,
                        get_asset_details, get_fingerprints, get_fingerprint_summary,
@@ -154,6 +155,19 @@ def get_assets():
         conn.close()
 
 
+def resolve_ip_param(value):
+    """Resolve a hostname parameter to an IP address. Returns IP string.
+    Raises ValueError if invalid."""
+    if not value:
+        raise ValueError("Target is required")
+    value = value.strip()
+    if validate_ip(value):
+        return value
+    if validate_hostname(value):
+        return resolve_target(value)
+    raise ValueError("Invalid target (IP, CIDR, or hostname)")
+
+
 @app.route('/api/vulnerabilities')
 def get_vulnerabilities():
     """Get unified list of all vulnerabilities from all sources, deduplicated by CVE ID."""
@@ -163,8 +177,11 @@ def get_vulnerabilities():
     search = request.args.get('search')
 
     try:
-        if ip and not validate_ip(ip):
-            return {'error': 'Invalid IP address'}, 400
+        if ip:
+            try:
+                ip = resolve_ip_param(ip)
+            except (ValueError, ScanError) as e:
+                return {'error': str(e)}, 400
 
         # Convert has_exploit to boolean
         exploit_filter = None
@@ -190,8 +207,10 @@ def get_vulnerabilities():
 def get_asset(ip):
     """Get detailed information for a specific asset."""
     try:
-        if not validate_ip(ip):
-            return {'error': 'Invalid IP address'}, 400
+        try:
+            ip = resolve_ip_param(ip)
+        except (ValueError, ScanError) as e:
+            return {'error': str(e)}, 400
 
         asset = get_asset_details(ip)
         if not asset:
@@ -214,8 +233,10 @@ def get_scan_profiles():
 def get_fingerprints_api(ip):
     """Get fingerprint data for a specific IP."""
     try:
-        if not validate_ip(ip):
-            return {'error': 'Invalid IP address'}, 400
+        try:
+            ip = resolve_ip_param(ip)
+        except (ValueError, ScanError) as e:
+            return {'error': str(e)}, 400
 
         port = request.args.get('port', type=int)
         fingerprints = get_fingerprints(ip, port=port)
@@ -235,9 +256,11 @@ def get_fingerprints_api(ip):
 def generate_asset_report(ip):
     """Generate a report for an existing asset without performing a new scan."""
     try:
-        if not validate_ip(ip):
-            logger.warning(f"Invalid IP address for report: {ip}")
-            return render_template('report.html', ip=ip, error="Invalid IP address format.")
+        try:
+            ip = resolve_ip_param(ip)
+        except (ValueError, ScanError) as e:
+            logger.warning(f"Invalid target for report: {ip}")
+            return render_template('report.html', ip=ip, error=str(e))
 
         # Get existing scan results, changes, and vulnerabilities (without performing a new scan)
         scan_results, changes, vulnerabilities = vuln_scan.generate_report_from_existing(ip)
@@ -262,9 +285,9 @@ def scan():
     if not ip:
         return render_template('report.html', ip=ip, error="IP address is required.")
 
-    if not validate_ip(ip):
-        logger.warning(f"Invalid IP address submitted: {ip}")
-        return render_template('report.html', ip=ip, error="Invalid IP address format.")
+    if not validate_target(ip):
+        logger.warning(f"Invalid target submitted: {ip}")
+        return render_template('report.html', ip=ip, error="Invalid target (IP, CIDR, or hostname).")
 
     try:
         scan_results, changes = vuln_scan.generate_report(ip)
@@ -349,18 +372,32 @@ def emit_log(sid, message, level='info'):
 
 
 def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
-    """Execute scan on a single IP and emit results."""
+    """Execute scan on a single target (IP or hostname) and emit results."""
+    # Determine if target is a hostname; resolve for storage but scan by original
+    scan_target_str = ip  # What we pass to nmap
+    store_ip = ip         # What we use as DB key
+    original_hostname = None
+
+    if is_hostname(ip):
+        original_hostname = ip
+        try:
+            store_ip = resolve_target(ip)
+            emit_log(sid, f'Resolved {ip} -> {store_ip}', 'info')
+        except ScanError as e:
+            emit_log(sid, str(e), 'error')
+            return {'ip': ip, 'error': str(e), 'success': False}
+
     try:
         socketio.emit('scan_progress', {
             'status': 'running',
             'message': f'Scanning {ip}...',
             'current': current,
             'total': total,
-            'ip': ip
+            'ip': store_ip
         }, room=sid)
 
-        emit_log(sid, f'Initiating nmap scan on {ip}', 'debug')
-        scan_result = vuln_scan.scan(ip, options=scan_options)
+        emit_log(sid, f'Initiating nmap scan on {scan_target_str}', 'debug')
+        scan_result = vuln_scan.scan(scan_target_str, options=scan_options)
         scan_data = vuln_scan.parse_scan(scan_result)
 
         # Extract OS info from scan result
@@ -380,10 +417,10 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             emit_log(sid, f'Hostname (nmap): {nmap_hostname}', 'info')
 
         # Perform reverse DNS lookup (supplements nmap hostname)
-        emit_log(sid, f'Performing DNS lookup for {ip}', 'debug')
-        dns_info = dns_lookup(ip)
+        emit_log(sid, f'Performing DNS lookup for {store_ip}', 'debug')
+        dns_info = dns_lookup(store_ip)
         if dns_info.get('hostname'):
-            emit_log(sid, f'DNS: {ip} -> {dns_info["hostname"]}', 'info')
+            emit_log(sid, f'DNS: {store_ip} -> {dns_info["hostname"]}', 'info')
 
         # Merge: prefer nmap hostname if dns didn't find one
         if nmap_hostname and not dns_info.get('hostname'):
@@ -392,31 +429,35 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
         if nmap_hostname and not dns_info.get('reverse_dns'):
             dns_info['reverse_dns'] = nmap_hostname
 
+        # If we scanned by hostname, make sure it's stored
+        if original_hostname and not dns_info.get('hostname'):
+            dns_info['hostname'] = original_hostname
+
         # Store asset info
-        store_asset_info(ip, dns_info=dns_info, os_info=os_info,
+        store_asset_info(store_ip, dns_info=dns_info, os_info=os_info,
                         mac_address=mac_address, mac_vendor=mac_vendor)
 
         # Store port scan results in database
         if scan_data:
-            vuln_scan.store_scan(ip, scan_data)
-            logger.info(f"Stored {len(scan_data)} ports for {ip}")
-            emit_log(sid, f'Found {len(scan_data)} open port(s) on {ip}', 'success')
+            vuln_scan.store_scan(store_ip, scan_data)
+            logger.info(f"Stored {len(scan_data)} ports for {store_ip}")
+            emit_log(sid, f'Found {len(scan_data)} open port(s) on {scan_target_str}', 'success')
 
             # Parse vulscan results if enabled
             if scan_options and scan_options.get('vulscan') and is_vulscan_available():
                 try:
                     vulscan_results = parse_vulscan_output(scan_result)
                     if vulscan_results:
-                        store_vulscan_results(ip, vulscan_results)
-                        emit_log(sid, f'Vulscan found {len(vulscan_results)} CVE matches for {ip}', 'success')
+                        store_vulscan_results(store_ip, vulscan_results)
+                        emit_log(sid, f'Vulscan found {len(vulscan_results)} CVE matches for {store_ip}', 'success')
                     else:
-                        emit_log(sid, f'Vulscan: no CVE matches for {ip}', 'debug')
+                        emit_log(sid, f'Vulscan: no CVE matches for {store_ip}', 'debug')
                 except Exception as e:
                     emit_log(sid, f'Vulscan parsing error: {e}', 'warning')
-                    logger.warning(f"Vulscan error for {ip}: {e}")
+                    logger.warning(f"Vulscan error for {store_ip}: {e}")
 
             # Run fingerprinting on discovered ports
-            emit_log(sid, f'Starting endpoint fingerprinting on {ip}', 'info')
+            emit_log(sid, f'Starting endpoint fingerprinting on {store_ip}', 'info')
             try:
                 engine = get_fingerprint_engine()
                 ports_for_fp = []
@@ -436,13 +477,13 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                     def fp_log(msg):
                         emit_log(sid, msg, 'debug')
 
-                    fp_results = engine.fingerprint_all_ports(ip, ports_for_fp, log_callback=fp_log)
-                    store_fingerprints(ip, fp_results)
+                    fp_results = engine.fingerprint_all_ports(store_ip, ports_for_fp, log_callback=fp_log)
+                    store_fingerprints(store_ip, fp_results)
 
                     # Count identified services
                     identified = sum(1 for r in fp_results if r.best_match is not None)
                     total = len(fp_results)
-                    emit_log(sid, f'Fingerprinting complete: identified {identified}/{total} services on {ip}', 'success')
+                    emit_log(sid, f'Fingerprinting complete: identified {identified}/{total} services on {store_ip}', 'success')
 
                     # Log top matches
                     for r in fp_results:
@@ -452,45 +493,45 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                             emit_log(sid, f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)', 'info')
 
             except Exception as e:
-                logger.error(f"Fingerprinting error for {ip}: {e}")
+                logger.error(f"Fingerprinting error for {store_ip}: {e}")
                 emit_log(sid, f'Fingerprinting error: {e}', 'warning')
 
             # Run fingerprintx protocol-level identification
             try:
                 if fpx_check_installed():
-                    emit_log(sid, f'Running protocol fingerprinting (fingerprintx) on {ip}', 'info')
+                    emit_log(sid, f'Running protocol fingerprinting (fingerprintx) on {store_ip}', 'info')
 
                     def fpx_log(msg):
                         emit_log(sid, msg, 'debug')
 
-                    fpx_results = fpx_scan_host(ip, ports_for_fp, timeout_ms=3000,
+                    fpx_results = fpx_scan_host(store_ip, ports_for_fp, timeout_ms=3000,
                                                 log_callback=fpx_log)
                     if fpx_results:
-                        store_fpx_results(ip, fpx_results)
-                        emit_log(sid, f'fingerprintx identified {len(fpx_results)} service(s) on {ip}', 'success')
+                        store_fpx_results(store_ip, fpx_results)
+                        emit_log(sid, f'fingerprintx identified {len(fpx_results)} service(s) on {store_ip}', 'success')
                         for r in fpx_results:
                             ver = f' v{r.version}' if r.version else ''
                             emit_log(sid, f'  Port {r.port}: {r.service}{ver} (protocol handshake)', 'info')
                     else:
-                        emit_log(sid, f'fingerprintx: no additional services identified on {ip}', 'debug')
+                        emit_log(sid, f'fingerprintx: no additional services identified on {store_ip}', 'debug')
                 else:
                     emit_log(sid, 'fingerprintx not installed — skipping protocol fingerprinting', 'debug')
             except Exception as e:
-                logger.error(f"fingerprintx error for {ip}: {e}")
+                logger.error(f"fingerprintx error for {store_ip}: {e}")
                 emit_log(sid, f'fingerprintx error: {e}', 'warning')
 
             # Wappalyzer web technology detection
             try:
                 wap = get_wappalyzer()
                 if wap:
-                    emit_log(sid, f'Running Wappalyzer technology detection on {ip}', 'debug')
+                    emit_log(sid, f'Running Wappalyzer technology detection on {store_ip}', 'debug')
                     wap_stored = 0
                     for port_info in ports_for_fp:
                         port_num = port_info['port']
                         service = port_info.get('service', '')
                         if service in ('http', 'https', 'http-proxy') or port_num in (80, 443, 8080, 8443):
                             scheme = 'https' if port_num == 443 or service == 'https' else 'http'
-                            url = f"{scheme}://{ip}:{port_num}"
+                            url = f"{scheme}://{scan_target_str}:{port_num}"
                             try:
                                 import urllib.request
                                 req = urllib.request.Request(url, headers={'User-Agent': 'Artemis-Scanner/1.0'})
@@ -513,7 +554,7 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
                                              http_title, http_server, favicon_hash, scan_date)
                                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                            (ip, port_num, 'tcp', sig_id, wr['name'], cat, '',
+                                            (store_ip, port_num, 'tcp', sig_id, wr['name'], cat, '',
                                              wr.get('version'), None, wr.get('confidence', 100),
                                              json.dumps(['wappalyzer']),
                                              None, None, None, 0, '', '', None,
@@ -525,16 +566,16 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                             except Exception as e:
                                 logger.debug(f"Wappalyzer HTTP fetch error for {ip}:{port_num}: {e}")
                     if wap_stored:
-                        emit_log(sid, f'Wappalyzer: detected {wap_stored} web technologies on {ip}', 'success')
+                        emit_log(sid, f'Wappalyzer: detected {wap_stored} web technologies on {store_ip}', 'success')
             except Exception as e:
-                logger.debug(f"Wappalyzer error for {ip}: {e}")
+                logger.debug(f"Wappalyzer error for {store_ip}: {e}")
 
             # JARM TLS fingerprinting
             try:
-                emit_log(sid, f'Running JARM TLS fingerprinting on {ip}', 'debug')
+                emit_log(sid, f'Running JARM TLS fingerprinting on {store_ip}', 'debug')
                 def jarm_log(msg):
                     emit_log(sid, msg, 'debug')
-                jarm_results = jarm_scan(ip, ports_for_fp, timeout=10, log_callback=jarm_log)
+                jarm_results = jarm_scan(store_ip, ports_for_fp, timeout=10, log_callback=jarm_log)
                 if jarm_results:
                     import sqlite3 as _sq3
                     conn = _sq3.connect(DB_PATH)
@@ -548,37 +589,37 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
                              http_title, http_server, favicon_hash, scan_date)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                            (ip, jr['port'], 'tcp', sig_id, name, 'tls-fingerprint', '',
+                            (store_ip, jr['port'], 'tcp', sig_id, name, 'tls-fingerprint', '',
                              None, None, 70 if jr.get('identified_as') else 50,
                              json.dumps([f"jarm:{jr['jarm_hash']}"]),
                              None, None, None, 0, '', '', None,
                              datetime.now().isoformat()))
                     conn.commit()
                     conn.close()
-                    emit_log(sid, f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {ip}', 'success')
+                    emit_log(sid, f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {store_ip}', 'success')
             except Exception as e:
-                logger.debug(f"JARM error for {ip}: {e}")
+                logger.debug(f"JARM error for {store_ip}: {e}")
 
             # Classify device type using all available signals
             try:
-                device_type = update_device_type(ip)
+                device_type = update_device_type(store_ip)
                 if device_type and device_type != 'unknown':
                     icon = get_device_icon(device_type)
                     emit_log(sid, f'Device type: {icon} {device_type}', 'info')
             except Exception as e:
-                logger.debug(f"Device type classification error for {ip}: {e}")
+                logger.debug(f"Device type classification error for {store_ip}: {e}")
         else:
-            emit_log(sid, f'No open ports found on {ip}', 'info')
+            emit_log(sid, f'No open ports found on {scan_target_str}', 'info')
 
-        return {'ip': ip, 'scan_data': scan_data, 'success': True}
+        return {'ip': store_ip, 'scan_data': scan_data, 'success': True}
     except ScanError as e:
-        logger.error(f"Scan error for {ip}: {e}")
-        emit_log(sid, f'Scan error for {ip}: {e}', 'error')
-        return {'ip': ip, 'error': str(e), 'success': False}
+        logger.error(f"Scan error for {scan_target_str}: {e}")
+        emit_log(sid, f'Scan error for {scan_target_str}: {e}', 'error')
+        return {'ip': store_ip, 'error': str(e), 'success': False}
     except Exception as e:
-        logger.error(f"Unexpected error scanning {ip}: {e}")
-        emit_log(sid, f'Unexpected error scanning {ip}: {e}', 'error')
-        return {'ip': ip, 'error': 'Scan failed unexpectedly', 'success': False}
+        logger.error(f"Unexpected error scanning {scan_target_str}: {e}")
+        emit_log(sid, f'Unexpected error scanning {scan_target_str}: {e}', 'error')
+        return {'ip': store_ip, 'error': 'Scan failed unexpectedly', 'success': False}
 
 
 def is_scan_cancelled(sid):
@@ -588,10 +629,10 @@ def is_scan_cancelled(sid):
 
 
 def scan_target(target, sid, scan_options=None):
-    """Execute scan on a target (single IP or CIDR range)."""
+    """Execute scan on a target (single IP, CIDR range, or hostname)."""
     try:
         if not validate_target(target):
-            socketio.emit('scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
+            socketio.emit('scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'}, room=sid)
             return
 
         # Get max hosts from options
@@ -599,7 +640,7 @@ def scan_target(target, sid, scan_options=None):
         if scan_options and 'max_hosts' in scan_options:
             max_hosts = min(max(1, scan_options['max_hosts']), 1024)
 
-        # Determine if this is a CIDR range or single IP
+        # Determine if this is a CIDR range, hostname, or single IP
         if is_cidr(target):
             ips = expand_cidr(target, max_hosts=max_hosts)
             if not ips:
@@ -608,8 +649,8 @@ def scan_target(target, sid, scan_options=None):
             logger.info(f"CIDR scan started for {target} ({len(ips)} hosts, max {max_hosts})")
             emit_log(sid, f'Expanded CIDR {target} to {len(ips)} hosts', 'info')
         else:
-            ips = [target]
-            logger.info(f"Single IP scan started for {target}")
+            ips = [target]  # Could be IP or hostname — scan_single_ip handles resolution
+            logger.info(f"Scan started for {target}")
 
         total = len(ips)
         results = []
@@ -661,7 +702,7 @@ def handle_start_scan(data):
         return
 
     if not validate_target(target):
-        emit('scan_error', {'error': 'Invalid IP address or CIDR format (e.g., 192.168.1.1 or 10.0.0.0/24)'})
+        emit('scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'})
         return
 
     # Extract scan options from data
@@ -697,58 +738,76 @@ def handle_stop_scan():
 
 
 def vuln_scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
-    """Execute vulnerability scan on a single IP using Nuclei."""
+    """Execute vulnerability scan on a single target using Nuclei."""
+    scan_target_str = ip
+    store_ip = ip
+    original_hostname = None
+
+    if is_hostname(ip):
+        original_hostname = ip
+        try:
+            store_ip = resolve_target(ip)
+            emit_log(sid, f'Resolved {ip} -> {store_ip}', 'info')
+        except ScanError as e:
+            emit_log(sid, str(e), 'error')
+            return {'ip': ip, 'error': str(e), 'success': False}
+
     try:
         socketio.emit('vuln_scan_progress', {
             'status': 'running',
-            'message': f'Scanning {ip} for vulnerabilities...',
+            'message': f'Scanning {scan_target_str} for vulnerabilities...',
             'current': current,
             'total': total,
-            'ip': ip
+            'ip': store_ip
         }, room=sid)
 
-        emit_log(sid, f'Running Nuclei vulnerability scan on {ip}', 'info')
+        emit_log(sid, f'Running Nuclei vulnerability scan on {scan_target_str}', 'info')
 
         # Create a callback for nuclei progress logging
         def nuclei_log_callback(message):
             emit_log(sid, message, 'debug')
 
-        scan_result = vuln_scan.vuln_scan(ip, options=scan_options, log_callback=nuclei_log_callback)
+        # Pass original target to nuclei (hostname-aware scanning for SNI)
+        scan_result = vuln_scan.vuln_scan(scan_target_str, options=scan_options, log_callback=nuclei_log_callback)
         vulnerabilities = vuln_scan.parse_vuln_scan(scan_result)
-        emit_log(sid, f'Nuclei scan completed for {ip}, parsing results...', 'info')
+        emit_log(sid, f'Nuclei scan completed for {scan_target_str}, parsing results...', 'info')
 
         # Store results in database (this enriches with NVD data)
         if vulnerabilities:
             socketio.emit('vuln_scan_progress', {
                 'status': 'running',
-                'message': f'Enriching vulnerability data for {ip}...',
+                'message': f'Enriching vulnerability data for {store_ip}...',
                 'current': current,
                 'total': total,
-                'ip': ip
+                'ip': store_ip
             }, room=sid)
             emit_log(sid, f'Enriching {len(vulnerabilities)} finding(s) with NVD data', 'debug')
-            vuln_scan.store_vulnerabilities(ip, vulnerabilities)
-            logger.info(f"Stored {len(vulnerabilities)} vulnerabilities for {ip}")
-            emit_log(sid, f'Found {len(vulnerabilities)} vulnerability finding(s) on {ip}', 'warning')
+            vuln_scan.store_vulnerabilities(store_ip, vulnerabilities)
+            logger.info(f"Stored {len(vulnerabilities)} vulnerabilities for {store_ip}")
+            emit_log(sid, f'Found {len(vulnerabilities)} vulnerability finding(s) on {scan_target_str}', 'warning')
         else:
-            emit_log(sid, f'No vulnerabilities detected on {ip}', 'success')
+            emit_log(sid, f'No vulnerabilities detected on {scan_target_str}', 'success')
 
-        return {'ip': ip, 'vuln_count': len(vulnerabilities), 'success': True}
+        # Store hostname in asset if scanned by hostname
+        if original_hostname:
+            store_asset_info(store_ip, dns_info={'hostname': original_hostname})
+
+        return {'ip': store_ip, 'vuln_count': len(vulnerabilities), 'success': True}
     except ScanError as e:
-        logger.error(f"Vulnerability scan error for {ip}: {e}")
-        emit_log(sid, f'Vulnerability scan error for {ip}: {e}', 'error')
-        return {'ip': ip, 'error': str(e), 'success': False}
+        logger.error(f"Vulnerability scan error for {scan_target_str}: {e}")
+        emit_log(sid, f'Vulnerability scan error for {scan_target_str}: {e}', 'error')
+        return {'ip': store_ip, 'error': str(e), 'success': False}
     except Exception as e:
-        logger.error(f"Unexpected error in vuln scan for {ip}: {e}")
-        emit_log(sid, f'Unexpected error in vuln scan for {ip}: {e}', 'error')
-        return {'ip': ip, 'error': 'Vulnerability scan failed unexpectedly', 'success': False}
+        logger.error(f"Unexpected error in vuln scan for {scan_target_str}: {e}")
+        emit_log(sid, f'Unexpected error in vuln scan for {scan_target_str}: {e}', 'error')
+        return {'ip': store_ip, 'error': 'Vulnerability scan failed unexpectedly', 'success': False}
 
 
 def vuln_scan_target(target, sid, scan_options=None):
     """Execute vulnerability scan on a target (single IP or CIDR range)."""
     try:
         if not validate_target(target):
-            socketio.emit('vuln_scan_error', {'error': 'Invalid IP address or CIDR notation'}, room=sid)
+            socketio.emit('vuln_scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'}, room=sid)
             return
 
         # Get max hosts from options
@@ -826,9 +885,17 @@ def handle_start_fingerprint_scan(data):
         emit('scan_error', {'error': 'IP address is required'})
         return
 
-    if not validate_ip(target):
-        emit('scan_error', {'error': 'Invalid IP address'})
+    if not validate_target(target):
+        emit('scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'})
         return
+
+    # Resolve hostname to IP if needed
+    if is_hostname(target):
+        try:
+            target = resolve_target(target)
+        except ScanError as e:
+            emit('scan_error', {'error': str(e)})
+            return
 
     def run_fingerprint(ip, sid):
         try:
@@ -952,7 +1019,7 @@ def handle_start_vuln_scan(data):
         return
 
     if not validate_target(target):
-        emit('vuln_scan_error', {'error': 'Invalid IP address or CIDR format (e.g., 192.168.1.1 or 10.0.0.0/24)'})
+        emit('vuln_scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'})
         return
 
     # Check if a scan profile was selected
@@ -991,8 +1058,10 @@ def handle_start_vuln_scan(data):
 def get_asset_auth_details(ip):
     """Get authenticated scan details: OS info, installed software, CVE matches."""
     try:
-        if not validate_ip(ip):
-            return {'error': 'Invalid IP address'}, 400
+        if not validate_ip(ip) and not validate_hostname(ip):
+            return {'error': 'Invalid target (IP, CIDR, or hostname)'}, 400
+        if is_hostname(ip):
+            ip = resolve_target(ip)
 
         os_details = get_asset_os_details(ip)
         software = get_installed_software(ip)
@@ -1154,7 +1223,7 @@ def handle_start_auth_scan(data):
         return
 
     if not validate_target(target):
-        emit('scan_error', {'error': 'Invalid IP address or CIDR'})
+        emit('scan_error', {'error': 'Invalid target (IP, CIDR, or hostname)'})
         return
 
     # Get selected credential IDs (list of IDs or 'all')
@@ -1183,6 +1252,15 @@ def handle_start_auth_scan(data):
             # Resolve IPs
             if is_cidr(target):
                 ips = expand_cidr(target, max_hosts=256)
+            elif is_hostname(target):
+                try:
+                    resolved = resolve_target(target)
+                    emit_log(sid, f'Resolved {target} -> {resolved}', 'info')
+                    ips = [resolved]
+                except ScanError as e:
+                    emit_log(sid, str(e), 'error')
+                    socketio.emit('auth_scan_complete', {'error': str(e)}, room=sid)
+                    return
             else:
                 ips = [target]
 
