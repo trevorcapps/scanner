@@ -1389,6 +1389,61 @@ def handle_start_auth_scan(data):
     thread.start()
 
 
+@app.route('/api/sql', methods=['POST'])
+def api_sql_query():
+    """Execute a read-only SQL query against the scanner database."""
+    import time as _time
+    data = request.get_json()
+    if not data or not data.get('query'):
+        return {'error': 'Query is required'}, 400
+
+    query = data['query'].strip()
+    if not query:
+        return {'error': 'Query is required'}, 400
+
+    # Validate read-only: only allow SELECT and common read statements
+    normalized = re.sub(r'--.*$', '', query, flags=re.MULTILINE)  # strip comments
+    normalized = re.sub(r'/\*.*?\*/', '', normalized, flags=re.DOTALL)
+    normalized = normalized.strip().upper()
+
+    allowed_prefixes = ('SELECT', 'PRAGMA', 'EXPLAIN', 'WITH')
+    if not any(normalized.startswith(p) for p in allowed_prefixes):
+        return {'error': 'Only SELECT queries are allowed (read-only mode).'}, 400
+
+    # Block dangerous keywords even in subqueries
+    dangerous = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'REPLACE',
+                 'ATTACH', 'DETACH', 'REINDEX', 'VACUUM']
+    # Check tokens (word boundaries)
+    for kw in dangerous:
+        if re.search(r'\b' + kw + r'\b', normalized):
+            return {'error': f'{kw} statements are not allowed (read-only mode).'}, 400
+
+    try:
+        start = _time.monotonic()
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(query)
+        rows_raw = cursor.fetchmany(1000)
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        rows = [list(row) for row in rows_raw]
+        elapsed = round((_time.monotonic() - start) * 1000, 1)
+        conn.close()
+
+        return {
+            'columns': columns,
+            'rows': rows,
+            'count': len(rows),
+            'time_ms': elapsed,
+            'truncated': len(rows_raw) == 1000
+        }
+    except sqlite3.Error as e:
+        return {'error': str(e)}, 400
+    except Exception as e:
+        logger.error(f"SQL query error: {e}")
+        return {'error': str(e)}, 500
+
+
 if __name__ == '__main__':
     debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
     socketio.run(app, debug=debug_mode)

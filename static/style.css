@@ -3141,3 +3141,198 @@ tr.vuln-info {
     flex-wrap: wrap;
     gap: 8px;
 }
+
+/* ============================================
+   SQL Tab
+   ============================================ */
+
+.sql-layout {
+    display: flex;
+    gap: 16px;
+}
+
+.sql-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.sql-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    overflow: hidden;
+}
+
+@media (max-width: 800px) {
+    .sql-layout {
+        flex-direction: column;
+    }
+    .sql-sidebar {
+        width: 100%;
+    }
+}
+
+.sql-editor-container {
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+/* CodeMirror theme overrides */
+.sql-editor-container .CodeMirror {
+    font-family: var(--font-family);
+    font-size: 13px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border: none;
+    height: 180px;
+}
+
+.sql-editor-container .CodeMirror-gutters {
+    background-color: var(--bg-tertiary);
+    border-right: 1px solid var(--border-color);
+}
+
+.sql-editor-container .CodeMirror-linenumber {
+    color: var(--text-muted);
+}
+
+.sql-editor-container .CodeMirror-cursor {
+    border-left-color: var(--text-primary);
+}
+
+.sql-editor-container .CodeMirror-selected {
+    background-color: rgba(0, 108, 172, 0.2);
+}
+
+.theme-dark .sql-editor-container .CodeMirror-selected {
+    background-color: rgba(255, 107, 1, 0.2);
+}
+
+/* SQL syntax highlighting colors */
+.sql-editor-container .cm-keyword { color: var(--accent-primary); font-weight: 600; }
+.sql-editor-container .cm-string { color: var(--accent-success); }
+.sql-editor-container .cm-number { color: var(--accent-warning); }
+.sql-editor-container .cm-comment { color: var(--text-muted); }
+.sql-editor-container .cm-builtin { color: #8e44ad; }
+
+.theme-dark .sql-editor-container .cm-keyword { color: #ff8c42; }
+.theme-dark .sql-editor-container .cm-builtin { color: #bb8fce; }
+
+.sql-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.sql-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.sql-error {
+    background-color: rgba(192, 57, 43, 0.08);
+    border: 1px solid var(--accent-danger);
+    color: var(--accent-danger);
+    padding: 10px 14px;
+    border-radius: 0.375rem;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-family: var(--font-family);
+    white-space: pre-wrap;
+}
+
+.sql-results-container {
+    min-height: 100px;
+}
+
+.sql-results-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+}
+
+.sql-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 0;
+}
+
+.sql-results-table th {
+    background-color: var(--table-header-bg);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+}
+
+.sql-results-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sql-results-table tr:hover td {
+    background-color: var(--bg-hover);
+}
+
+.sql-results-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* History sidebar */
+.sql-history-header {
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--table-header-bg);
+}
+
+.sql-history-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.sql-history-item {
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-family);
+}
+
+.sql-history-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--accent-primary);
+}
+
+.sql-history-item:last-child {
+    border-bottom: none;
+}

@@ -2108,4 +2108,199 @@ document.addEventListener('DOMContentLoaded', function() {
     if (refreshVulnsBtn) {
         refreshVulnsBtn.addEventListener('click', loadVulnerabilities);
     }
+
+    // ==================== SQL Tab ====================
+    var sqlEditor = null;
+    var sqlLastResult = null;
+    var sqlInitialized = false;
+
+    function initSqlTab() {
+        if (sqlInitialized) return;
+        var textarea = document.getElementById('sql-editor');
+        if (!textarea || typeof CodeMirror === 'undefined') return;
+
+        sqlEditor = CodeMirror.fromTextArea(textarea, {
+            mode: 'text/x-sql',
+            lineNumbers: true,
+            matchBrackets: true,
+            autofocus: false,
+            tabSize: 2,
+            indentWithTabs: false,
+            lineWrapping: true
+        });
+
+        // Apply theme-aware styling via CSS (CodeMirror default + our overrides)
+        sqlEditor.setSize('100%', '180px');
+
+        // Ctrl+Enter / Cmd+Enter shortcut
+        sqlEditor.setOption('extraKeys', {
+            'Ctrl-Enter': runSqlQuery,
+            'Cmd-Enter': runSqlQuery
+        });
+
+        sqlInitialized = true;
+        renderSqlHistory();
+    }
+
+    function runSqlQuery() {
+        if (!sqlEditor) return;
+        var query = sqlEditor.getValue().trim();
+        if (!query) return;
+
+        var statusEl = document.getElementById('sql-status');
+        var errorEl = document.getElementById('sql-error');
+        var resultsEl = document.getElementById('sql-results-container');
+        var csvBtn = document.getElementById('sql-export-csv');
+        var jsonBtn = document.getElementById('sql-export-json');
+
+        statusEl.textContent = 'Running...';
+        errorEl.style.display = 'none';
+        csvBtn.disabled = true;
+        jsonBtn.disabled = true;
+
+        fetch('/api/sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+            if (!res.ok || res.data.error) {
+                errorEl.textContent = res.data.error || 'Unknown error';
+                errorEl.style.display = 'block';
+                statusEl.textContent = 'Error';
+                resultsEl.innerHTML = '';
+                sqlLastResult = null;
+                return;
+            }
+
+            var d = res.data;
+            sqlLastResult = d;
+            addSqlHistory(query);
+
+            statusEl.textContent = d.count + ' row(s) in ' + d.time_ms + 'ms' + (d.truncated ? ' (truncated to 1000)' : '');
+            csvBtn.disabled = false;
+            jsonBtn.disabled = false;
+
+            if (d.columns.length === 0) {
+                resultsEl.innerHTML = '<p class="empty-state">Query returned no columns.</p>';
+                return;
+            }
+
+            var html = '<div class="sql-results-scroll"><table class="sql-results-table"><thead><tr>';
+            d.columns.forEach(function(col) {
+                html += '<th>' + escapeHtml(col) + '</th>';
+            });
+            html += '</tr></thead><tbody>';
+            d.rows.forEach(function(row) {
+                html += '<tr>';
+                row.forEach(function(val) {
+                    var display = val === null ? '<span class="text-muted">NULL</span>' : escapeHtml(String(val));
+                    html += '<td>' + display + '</td>';
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            resultsEl.innerHTML = html;
+        })
+        .catch(function(err) {
+            errorEl.textContent = 'Network error: ' + err.message;
+            errorEl.style.display = 'block';
+            statusEl.textContent = 'Error';
+        });
+    }
+
+    // SQL History
+    function getSqlHistory() {
+        try { return JSON.parse(localStorage.getItem('sqlHistory') || '[]'); } catch(e) { return []; }
+    }
+
+    function addSqlHistory(query) {
+        var history = getSqlHistory().filter(function(q) { return q !== query; });
+        history.unshift(query);
+        if (history.length > 10) history = history.slice(0, 10);
+        localStorage.setItem('sqlHistory', JSON.stringify(history));
+        renderSqlHistory();
+    }
+
+    function renderSqlHistory() {
+        var container = document.getElementById('sql-history-list');
+        if (!container) return;
+        var history = getSqlHistory();
+        if (history.length === 0) {
+            container.innerHTML = '<p class="text-muted" style="padding:8px;font-size:12px;">No queries yet.</p>';
+            return;
+        }
+        var html = '';
+        history.forEach(function(q, i) {
+            html += '<div class="sql-history-item" data-index="' + i + '" title="' + escapeHtml(q) + '">' + escapeHtml(q.substring(0, 80)) + (q.length > 80 ? '...' : '') + '</div>';
+        });
+        container.innerHTML = html;
+        container.querySelectorAll('.sql-history-item').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var idx = parseInt(this.getAttribute('data-index'));
+                var h = getSqlHistory();
+                if (h[idx] && sqlEditor) {
+                    sqlEditor.setValue(h[idx]);
+                }
+            });
+        });
+    }
+
+    // Export functions
+    function exportSqlCsv() {
+        if (!sqlLastResult || !sqlLastResult.columns.length) return;
+        var d = sqlLastResult;
+        var lines = [d.columns.map(function(c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',')];
+        d.rows.forEach(function(row) {
+            lines.push(row.map(function(v) {
+                if (v === null) return '';
+                return '"' + String(v).replace(/"/g, '""') + '"';
+            }).join(','));
+        });
+        downloadBlob(lines.join('\n'), 'query_results.csv', 'text/csv');
+    }
+
+    function exportSqlJson() {
+        if (!sqlLastResult || !sqlLastResult.columns.length) return;
+        var d = sqlLastResult;
+        var objs = d.rows.map(function(row) {
+            var o = {};
+            d.columns.forEach(function(col, i) { o[col] = row[i]; });
+            return o;
+        });
+        downloadBlob(JSON.stringify(objs, null, 2), 'query_results.json', 'application/json');
+    }
+
+    function downloadBlob(content, filename, mime) {
+        var blob = new Blob([content], { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Wire up buttons
+    var sqlRunBtn = document.getElementById('sql-run-btn');
+    if (sqlRunBtn) sqlRunBtn.addEventListener('click', runSqlQuery);
+
+    var sqlCsvBtn = document.getElementById('sql-export-csv');
+    if (sqlCsvBtn) sqlCsvBtn.addEventListener('click', exportSqlCsv);
+
+    var sqlJsonBtn = document.getElementById('sql-export-json');
+    if (sqlJsonBtn) sqlJsonBtn.addEventListener('click', exportSqlJson);
+
+    // Initialize SQL tab when it becomes active
+    var origTabClick = null;
+    tabBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (this.getAttribute('data-tab') === 'sql-tab') {
+                setTimeout(initSqlTab, 50);
+            }
+        });
+    });
 });

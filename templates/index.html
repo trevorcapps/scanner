@@ -4,7 +4,10 @@
     <title>Artemis</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 </head>
 <body class="theme-light">
     <div class="page-layout" id="page-layout">
@@ -19,6 +22,7 @@
             <button class="tab-btn" data-tab="assets-tab">Assets</button>
             <button class="tab-btn" data-tab="vulns-tab">Vulnerabilities</button>
             <button class="tab-btn" data-tab="settings-tab">Settings</button>
+            <button class="tab-btn" data-tab="sql-tab">SQL</button>
         </div>
 
         <!-- Scan Tab -->
@@ -433,6 +437,34 @@
                 <h3>About</h3>
                 <p class="settings-description">Vulnerability Scanning Platform v1.0</p>
                 <p class="settings-description">A web-based network vulnerability scanner powered by Nmap.</p>
+            </div>
+        </div>
+
+        <!-- SQL Tab -->
+        <div id="sql-tab" class="tab-content">
+            <h2>SQL Query</h2>
+            <div class="sql-layout">
+                <div class="sql-main">
+                    <div class="sql-editor-container">
+                        <textarea id="sql-editor">SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;</textarea>
+                    </div>
+                    <div class="sql-toolbar">
+                        <button id="sql-run-btn" class="btn-primary">▶ Run Query</button>
+                        <button id="sql-export-csv" class="btn-secondary" disabled>Export CSV</button>
+                        <button id="sql-export-json" class="btn-secondary" disabled>Export JSON</button>
+                        <span id="sql-status" class="sql-status"></span>
+                    </div>
+                    <div id="sql-error" class="sql-error" style="display:none;"></div>
+                    <div id="sql-results-container" class="sql-results-container">
+                        <p class="empty-state">Run a query to see results. Press Ctrl+Enter to execute.</p>
+                    </div>
+                </div>
+                <div class="sql-sidebar">
+                    <div class="sql-history-header">Query History</div>
+                    <div id="sql-history-list" class="sql-history-list">
+                        <p class="text-muted" style="padding:8px;font-size:12px;">No queries yet.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
