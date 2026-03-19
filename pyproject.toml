@@ -1,0 +1,52 @@
+[project]
+name = "artemis-scanner"
+version = "2.0.0"
+description = "Enterprise network vulnerability scanner and asset fingerprinting platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Trevor Capps", email = "trevor@chronos.host"},
+]
+
+dependencies = [
+    "flask>=3.0",
+    "flask-sqlalchemy>=3.1",
+    "flask-socketio>=5.3",
+    "python-nmap>=0.7",
+    "paramiko>=3.4",
+    "matplotlib>=3.8",
+    "mac-vendor-lookup>=0.1.12",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+celery = [
+    "celery[redis]>=5.3",
+]
+postgres = [
+    "psycopg2-binary>=2.9",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.3",
+]
+all = [
+    "artemis-scanner[celery,postgres,dev]",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+include = ["artemis*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,26 @@
+"""Installed software model."""
+
+from artemis.extensions import db
+
+
+class InstalledSoftware(db.Model):
+    __tablename__ = 'installed_software'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ip = db.Column(db.Text, index=True)
+    package_name = db.Column(db.Text)
+    package_version = db.Column(db.Text)
+    cpe = db.Column(db.Text)
+    scan_date = db.Column(db.Text)
+
+    __table_args__ = (
+        db.UniqueConstraint('ip', 'package_name', name='uq_sw_ip_pkg'),
+    )
+
+    def to_dict(self):
+        return {
+            'name': self.package_name,
+            'version': self.package_version,
+            'cpe': self.cpe,
+            'scan_date': self.scan_date,
+        }
