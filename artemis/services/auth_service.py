@@ -6,7 +6,6 @@ import secrets
 from datetime import datetime, timedelta
 from functools import wraps
 
-import jwt
 from flask import request, jsonify, current_app, g
 
 from artemis.extensions import db
@@ -24,6 +23,14 @@ def _now_iso():
 
 
 # ==================== JWT Token Management ====================
+
+import jwt
+if not hasattr(jwt, 'encode'):
+    raise ImportError(
+        "The 'jwt' package is installed but PyJWT is required. "
+        "Fix: pip uninstall jwt && pip install PyJWT"
+    )
+
 
 def create_access_token(user, expires_hours=24):
     """Create a JWT access token for a user."""
@@ -53,9 +60,7 @@ def decode_token(token):
     """Decode and validate a JWT token. Returns payload or None."""
     try:
         return jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.InvalidTokenError:
+    except Exception:
         return None
 
 
