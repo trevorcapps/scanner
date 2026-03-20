@@ -95,12 +95,8 @@ def _setup_auth_middleware(app):
 
     # Routes that don't require auth
     PUBLIC_PREFIXES = (
-        '/api/v1/auth/login',
-        '/api/v1/auth/setup',
-        '/api/v1/auth/refresh',
-        '/api/auth/login',
-        '/api/auth/setup',
-        '/api/auth/refresh',
+        '/api/v1/auth/',
+        '/api/auth/',
         '/api/v1/agents/register',
         '/api/v1/agents/report',
         '/api/agents/register',
@@ -132,6 +128,10 @@ def _setup_auth_middleware(app):
 
         user = _get_current_user()
         if not user:
+            # Debug: log why auth failed
+            token = request.cookies.get('artemis_token')
+            auth_header = request.headers.get('Authorization', '')
+            logger.debug(f"Auth failed for {path}: cookie={'yes' if token else 'no'}, header={'yes' if auth_header else 'no'}")
             return jsonify({'error': 'Authentication required'}), 401
 
 

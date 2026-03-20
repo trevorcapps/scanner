@@ -47,10 +47,10 @@ def login():
 
 @auth_bp.route('/auth/logout', methods=['POST'])
 def logout():
-    """Clear auth cookie."""
+    """Clear auth cookie. No auth required — you're logging out."""
     resp = make_response(jsonify({'status': 'logged_out'}))
     resp.delete_cookie('artemis_token')
-    return resp
+    return resp  # Public via /api/v1/auth/ prefix
 
 
 @auth_bp.route('/auth/refresh', methods=['POST'])
@@ -79,13 +79,16 @@ def refresh():
 
 
 @auth_bp.route('/auth/me', methods=['GET'])
-@login_required
 def me():
-    """Get current user info."""
-    user = getattr(g, 'current_user', None)
+    """Get current user info. No auth decorator — handles its own logic."""
+    from artemis.services.auth_service import _get_current_user
+    # Check if setup mode (no users at all)
+    if User.query.count() == 0:
+        return jsonify({'user': None, 'setup_mode': True})
+    user = _get_current_user()
     if user:
         return jsonify({'user': user.to_dict()})
-    return jsonify({'user': None, 'setup_mode': True})
+    return jsonify({'error': 'Authentication required'}), 401
 
 
 @auth_bp.route('/auth/setup', methods=['POST'])

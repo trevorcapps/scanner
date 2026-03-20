@@ -32,35 +32,48 @@ if not hasattr(jwt, 'encode'):
     )
 
 
+def _encode_jwt(payload):
+    """Encode JWT payload, ensuring string output (PyJWT compat)."""
+    token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
+    return token
+
+
 def create_access_token(user, expires_hours=24):
     """Create a JWT access token for a user."""
-    payload = {
+    return _encode_jwt({
         'sub': user.id,
         'username': user.username,
         'role': user.role,
         'iat': datetime.utcnow(),
         'exp': datetime.utcnow() + timedelta(hours=expires_hours),
         'type': 'access',
-    }
-    return jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    })
 
 
 def create_refresh_token(user, expires_days=30):
     """Create a JWT refresh token."""
-    payload = {
+    return _encode_jwt({
         'sub': user.id,
         'iat': datetime.utcnow(),
         'exp': datetime.utcnow() + timedelta(days=expires_days),
         'type': 'refresh',
-    }
-    return jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    })
 
 
 def decode_token(token):
     """Decode and validate a JWT token. Returns payload or None."""
     try:
         return jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-    except Exception:
+    except jwt.ExpiredSignatureError:
+        logger.debug("Token expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.debug(f"Token invalid: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Token decode error: {type(e).__name__}: {e}")
         return None
 
 
