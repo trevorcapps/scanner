@@ -79,12 +79,38 @@ def create_app(config_name=None):
     return app
 
 
+def _auto_migrate(db_path):
+    """Add missing columns to existing tables. Safe to run repeatedly."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Define expected columns: (table, column, type, default)
+    migrations = [
+        ('agents', 'mac_address', 'TEXT', None),
+    ]
+
+    for table, column, col_type, default in migrations:
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing = {row[1] for row in cursor.fetchall()}
+        if column not in existing:
+            default_clause = f" DEFAULT {default!r}" if default is not None else ""
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}{default_clause}")
+            logger.info(f"Migration: added {table}.{column} ({col_type})")
+
+    conn.commit()
+    conn.close()
+
+
 def _init_database(app):
     """Initialize all database tables — mirrors the old vuln_scan.init_db()."""
     db_path = app.config['DB_PATH']
 
     # Create SQLAlchemy tables (for any new models)
     db.create_all()
+
+    # Auto-migrate: add missing columns to existing tables
+    _auto_migrate(db_path)
 
     # Also run legacy init for tables managed by external modules
     try:
