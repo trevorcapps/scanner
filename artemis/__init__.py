@@ -71,6 +71,10 @@ def create_app(config_name=None):
     with app.app_context():
         _init_database(app)
 
+    # Start background scheduler
+    from artemis.services.scheduler_service import start_scheduler
+    start_scheduler(app)
+
     logger.info("Artemis app created successfully")
     return app
 
