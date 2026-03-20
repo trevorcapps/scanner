@@ -50,10 +50,12 @@ def _scheduler_loop(app):
 def _check_and_run(app):
     from artemis.extensions import db
     from artemis.models.scheduled_scan import ScheduledScan
+    from artemis.models.site import Site
 
     now = datetime.utcnow()
     now_iso = now.strftime('%Y-%m-%dT%H:%M:%SZ')
 
+    # Check individual scheduled scans
     due = ScheduledScan.query.filter(
         ScheduledScan.enabled == 1,
         ScheduledScan.next_run <= now_iso,
@@ -65,12 +67,29 @@ def _check_and_run(app):
         except Exception:
             logger.exception(f"Failed to execute scheduled scan {sched.id}")
         finally:
-            # Calculate and set next_run
             nxt = calculate_next_run(sched)
             sched.next_run = nxt
             sched.updated_at = _now_iso()
             if sched.schedule_type == 'once':
                 sched.enabled = 0
+            db.session.commit()
+
+    # Check sites
+    due_sites = Site.query.filter(
+        Site.schedule_enabled == 1,
+        Site.next_run <= now_iso,
+        Site.last_status != 'running',
+    ).all()
+
+    for site in due_sites:
+        try:
+            from artemis.services.site_service import execute_site_scan
+            execute_site_scan(app, site)
+        except Exception:
+            logger.exception(f"Failed to execute site scan {site.id}")
+        finally:
+            site.next_run = calculate_next_run_for_site(site)
+            site.updated_at = _now_iso()
             db.session.commit()
 
 
@@ -326,3 +345,18 @@ def calculate_next_run(sched):
         nxt = cron.get_next(datetime)
         return nxt.strftime('%Y-%m-%dT%H:%M:%SZ')
     return None
+
+
+def calculate_next_run_for_site(site):
+    """Calculate next run for a Site — reuses the same schedule logic."""
+    # Create a lightweight object with the same schedule attributes
+    class _Sched:
+        pass
+    s = _Sched()
+    s.schedule_type = site.schedule_type
+    s.schedule_hour = site.schedule_hour
+    s.schedule_minute = site.schedule_minute
+    s.schedule_day_of_week = site.schedule_day_of_week
+    s.schedule_day_of_month = site.schedule_day_of_month
+    s.cron_expression = site.cron_expression
+    return calculate_next_run(s)
