@@ -387,10 +387,10 @@ tr:nth-child(even):hover td { background-color: var(--bg-hover); }
    Messages & States
    ============================================ */
 
-.error { background-color: rgba(192,57,43,0.08); border: 1px solid var(--accent-danger); color: var(--accent-danger); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
-.success { background-color: rgba(39,174,96,0.08); border: 1px solid var(--accent-success); color: var(--accent-success); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
-.info { background-color: rgba(0,108,172,0.08); border: 1px solid var(--accent-primary); color: var(--accent-primary); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
-.warning { background-color: rgba(230,126,34,0.08); border: 1px solid var(--accent-warning); color: var(--accent-warning); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
+p.error, div.error { background-color: rgba(192,57,43,0.08); border: 1px solid var(--accent-danger); color: var(--accent-danger); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
+p.success, div.success { background-color: rgba(39,174,96,0.08); border: 1px solid var(--accent-success); color: var(--accent-success); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
+p.info, div.info { background-color: rgba(0,108,172,0.08); border: 1px solid var(--accent-primary); color: var(--accent-primary); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
+p.warning, div.warning { background-color: rgba(230,126,34,0.08); border: 1px solid var(--accent-warning); color: var(--accent-warning); padding: 14px; border-radius: 0.375rem; margin: 15px 0; font-size: 13px; }
 .loading { color: var(--text-muted); font-style: italic; }
 
 .empty-state {

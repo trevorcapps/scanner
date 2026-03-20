@@ -212,6 +212,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('scan_log', function(data) { addLog(data.message, data.level || 'info'); });
 
+    // Site scan events → log panel
+    socket.on('site_scan_started', function(data) {
+        addLog('Site scan started: ' + (data.site_name || 'Site #' + data.site_id) + ' (' + data.targets_total + ' targets)', 'info');
+        if (!logExpanded) { logExpanded = true; localStorage.setItem('logExpanded', true); updateLogPanel(); }
+    });
+    socket.on('site_scan_progress', function(data) {
+        addLog('Scanning target ' + data.current + '/' + data.total + ': ' + data.target, 'info');
+    });
+    socket.on('site_scan_completed', function(data) {
+        var level = data.status === 'success' ? 'success' : (data.status === 'partial' ? 'warning' : 'error');
+        addLog('Site scan ' + data.status + ': ' + data.targets_scanned + ' scanned, ' + data.targets_failed + ' failed, ' + data.ports_found + ' ports, ' + data.vulns_found + ' vulns (' + data.duration_seconds + 's)', level);
+        if (data.new_vulns > 0) addLog('⚠️ ' + data.new_vulns + ' new vulnerability(ies) found!', 'warning');
+        loadSites();
+        loadDashboard();
+    });
+
     // ==================== Scan Settings Management ====================
 
     var defaultSettings = {
@@ -1489,19 +1505,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function showSiteForm(site) {
         var isEdit = !!site;
-        var targets = [];
-        try { targets = JSON.parse((site && site.targets_json) || '[]'); } catch(e) {}
-        var excluded = [];
-        try { excluded = JSON.parse((site && site.excluded_targets_json) || '[]'); } catch(e) {}
+        // to_dict() returns targets/excluded_targets as arrays directly
+        var targets = (site && Array.isArray(site.targets)) ? site.targets : [];
+        var excluded = (site && Array.isArray(site.excluded_targets)) ? site.excluded_targets : [];
+        // Parse scan options from JSON string
+        var scanOpts = {};
+        try { scanOpts = JSON.parse((site && site.scan_options_json) || '{}') || {}; } catch(e) {}
 
         var html = '<h2>' + (isEdit ? 'Edit Site' : 'New Site') + '</h2><div class="modal-form">';
         html += '<div><label>Name</label><input type="text" id="site-name" value="' + escapeHtml((site && site.name) || '') + '"></div>';
         html += '<div><label>Description</label><input type="text" id="site-desc" value="' + escapeHtml((site && site.description) || '') + '"></div>';
         html += '<div><label>Targets (one per line)</label><textarea id="site-targets">' + escapeHtml(targets.join('\n')) + '</textarea></div>';
         html += '<div><label>Excluded Targets (one per line)</label><textarea id="site-excluded">' + escapeHtml(excluded.join('\n')) + '</textarea></div>';
-        html += '<div><label>Scan Type</label><select id="site-scan-type"><option value="full"' + ((site && site.scan_type === 'full') ? ' selected' : '') + '>Full</option><option value="port"' + ((site && site.scan_type === 'port') ? ' selected' : '') + '>Port Only</option><option value="vuln"' + ((site && site.scan_type === 'vuln') ? ' selected' : '') + '>Vuln Only</option></select></div>';
+        html += '<div><label>Scan Type</label><select id="site-scan-type"><option value="full"' + ((site && site.scan_type === 'full') ? ' selected' : '') + '>Full</option><option value="port"' + ((site && site.scan_type === 'port') ? ' selected' : '') + '>Port Only</option><option value="vuln"' + ((site && site.scan_type === 'vuln') ? ' selected' : '') + '>Vuln Only</option><option value="auth"' + ((site && site.scan_type === 'auth') ? ' selected' : '') + '>Auth Only</option></select></div>';
+
+        // Scan Options section
+        html += '<h3 style="margin-top:16px;margin-bottom:8px;">Scan Options</h3>';
+        html += '<div class="settings-grid">';
+        html += '<div><label>Port Range</label><input type="text" id="site-ports" placeholder="e.g., 1-1000, 22,80,443, or -" value="' + escapeHtml(scanOpts.ports || '') + '"><span class="setting-hint">Use "-" for all ports</span></div>';
+        html += '<div><label>Scan Speed</label><select id="site-scan-speed"><option value="T2"' + (scanOpts.scan_speed === 'T2' ? ' selected' : '') + '>T2 - Polite</option><option value="T3"' + ((!scanOpts.scan_speed || scanOpts.scan_speed === 'T3') ? ' selected' : '') + '>T3 - Normal</option><option value="T4"' + (scanOpts.scan_speed === 'T4' ? ' selected' : '') + '>T4 - Aggressive</option><option value="T5"' + (scanOpts.scan_speed === 'T5' ? ' selected' : '') + '>T5 - Insane</option></select></div>';
+        html += '<div><label>Host Timeout (sec)</label><input type="number" id="site-host-timeout" min="30" max="3600" value="' + (scanOpts.host_timeout || 300) + '"></div>';
+        html += '<div><label>Max Hosts</label><input type="number" id="site-max-hosts" min="1" max="1024" value="' + (scanOpts.max_hosts || 256) + '"></div>';
+        html += '<div><label>Vuln Timeout (sec)</label><input type="number" id="site-vuln-timeout" min="60" max="3600" value="' + (scanOpts.vuln_timeout || 600) + '"></div>';
+        html += '<div><label>Severity Filter</label><select id="site-severity"><option value="critical,high,medium,low"' + ((!scanOpts.severity || scanOpts.severity === 'critical,high,medium,low') ? ' selected' : '') + '>All Severities</option><option value="critical,high,medium"' + (scanOpts.severity === 'critical,high,medium' ? ' selected' : '') + '>Medium+</option><option value="critical,high"' + (scanOpts.severity === 'critical,high' ? ' selected' : '') + '>High+</option><option value="critical"' + (scanOpts.severity === 'critical' ? ' selected' : '') + '>Critical Only</option></select></div>';
+        html += '<div><label>Rate Limit (req/sec)</label><input type="number" id="site-rate-limit" min="10" max="1000" value="' + (scanOpts.rate_limit || 150) + '"></div>';
+        html += '<div><label><input type="checkbox" id="site-vulscan"' + (scanOpts.vulscan ? ' checked' : '') + '> Enable Vulscan (NSE)</label></div>';
+        html += '</div>';
+
+        html += '<h3 style="margin-top:16px;margin-bottom:8px;">Schedule</h3>';
+        html += '<div class="settings-grid">';
         html += '<div><label>Schedule Type</label><select id="site-sched-type"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>';
         html += '<div><label>Hour (UTC)</label><input type="number" id="site-hour" min="0" max="23" value="' + ((site && site.schedule_hour) || 2) + '"></div>';
+        html += '</div>';
+
         html += '<div class="modal-form-actions">';
         html += '<button class="btn-primary" id="site-save-btn">Save</button>';
         html += '<button class="btn-secondary" onclick="document.getElementById(\'generic-modal\').style.display=\'none\';document.body.style.overflow=\'\'">Cancel</button>';
@@ -1519,7 +1555,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 excluded_targets: document.getElementById('site-excluded').value.trim().split('\n').filter(Boolean),
                 scan_type: document.getElementById('site-scan-type').value,
                 schedule_type: document.getElementById('site-sched-type').value,
-                schedule_hour: parseInt(document.getElementById('site-hour').value) || 2
+                schedule_hour: parseInt(document.getElementById('site-hour').value) || 2,
+                scan_options: {
+                    ports: document.getElementById('site-ports').value.trim(),
+                    scan_speed: document.getElementById('site-scan-speed').value,
+                    host_timeout: parseInt(document.getElementById('site-host-timeout').value) || 300,
+                    max_hosts: parseInt(document.getElementById('site-max-hosts').value) || 256,
+                    vuln_timeout: parseInt(document.getElementById('site-vuln-timeout').value) || 600,
+                    severity: document.getElementById('site-severity').value,
+                    rate_limit: parseInt(document.getElementById('site-rate-limit').value) || 150,
+                    vulscan: document.getElementById('site-vulscan').checked
+                }
             };
             var method = isEdit ? 'PUT' : 'POST';
             var url = isEdit ? '/api/v1/sites/' + site.id : '/api/v1/sites';

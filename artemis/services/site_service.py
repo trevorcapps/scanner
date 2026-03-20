@@ -86,6 +86,7 @@ def execute_site_scan(app, site):
         'targets_total': len(targets),
         'started_at': start_iso,
     })
+    socketio.emit('scan_log', {'message': f'[{site.name}] Site scan started — {len(targets)} target(s), mode: {scan_type}', 'level': 'info'})
 
     scan_options = json.loads(site.scan_options_json) if site.scan_options_json else {}
     scan_type = site.scan_type or 'full'
@@ -94,6 +95,10 @@ def execute_site_scan(app, site):
     total_vulns = 0
     targets_ok = 0
     targets_fail = 0
+
+    def _site_log(message, level='info'):
+        """Emit a scan_log event so the UI log panel picks it up."""
+        socketio.emit('scan_log', {'message': f'[{site.name}] {message}', 'level': level})
 
     for idx, target in enumerate(targets):
         target_result = {'target': target, 'ports': 0, 'vulns': 0, 'status': 'pending', 'error': None}
@@ -105,16 +110,20 @@ def execute_site_scan(app, site):
                 'total': len(targets),
                 'target': target,
             })
+            _site_log(f'Scanning target {idx + 1}/{len(targets)}: {target}')
 
             # Port scan
             if scan_type in ('port', 'full'):
                 target_result['ports'] = _run_port_scan(target, scan_options)
                 total_ports += target_result['ports']
+                _site_log(f'{target}: {target_result["ports"]} open port(s)', 'success' if target_result['ports'] else 'info')
 
             # Vuln scan
             if scan_type in ('vuln', 'full'):
                 target_result['vulns'] = _run_vuln_scan(target, site.profile_id, scan_options)
                 total_vulns += target_result['vulns']
+                if target_result['vulns']:
+                    _site_log(f'{target}: {target_result["vulns"]} vulnerability(ies) found', 'warning')
 
             # Auth scan
             if scan_type == 'auth':
@@ -129,6 +138,7 @@ def execute_site_scan(app, site):
             target_result['status'] = 'failed'
             target_result['error'] = str(e)
             targets_fail += 1
+            _site_log(f'{target} failed: {e}', 'error')
             logger.warning(f"Site scan target {target} failed: {e}")
 
         per_target_results.append(target_result)
