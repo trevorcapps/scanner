@@ -205,7 +205,8 @@
                 <div class="agents-install-section" id="agents-install-section" style="margin-top:24px;">
                     <h3>Install Agent</h3>
                     <p class="setting-hint">Run this on the target host to register an agent:</p>
-                    <pre class="install-cmd" id="agent-install-cmd">curl -sSL https://YOUR_SERVER/agent/install.sh | bash</pre>
+                    <pre class="install-cmd" id="agent-install-cmd"></pre>
+                    <script>document.getElementById('agent-install-cmd').textContent = 'curl -sSL ' + window.location.origin + '/agent/install.sh | bash -s -- --server ' + window.location.origin;</script>
                 </div>
             </div>
 

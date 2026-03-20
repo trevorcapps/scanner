@@ -14,6 +14,9 @@ from artemis.api.sites import sites_bp
 
 def register_blueprints(app):
     """Register all API blueprints with versioned and legacy prefixes."""
+    # Agent install script at /agent/install.sh (convenience shortcut)
+    app.register_blueprint(agents_bp, url_prefix='/agent', name='agents_shortcut')
+
     # Versioned API
     app.register_blueprint(assets_bp, url_prefix='/api/v1')
     app.register_blueprint(scans_bp, url_prefix='/api/v1')
