@@ -216,11 +216,78 @@ echo "Logs:      journalctl -u artemis-agent -f"
 '''
 
 
+UNINSTALL_SCRIPT = r'''#!/usr/bin/env bash
+# Artemis Agent Uninstaller
+# Usage: curl -sSL http://SERVER:5005/agent/uninstall.sh | bash
+#   --keep-config   Don't delete /opt/artemis-agent (keeps agent key for re-install)
+#   --server URL    Deregister agent from server (optional)
+
+set -euo pipefail
+
+INSTALL_DIR="/opt/artemis-agent"
+KEEP_CONFIG=false
+SERVER=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --keep-config) KEEP_CONFIG=true; shift ;;
+        --server) SERVER="$2"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+echo "=== Artemis Agent Uninstaller ==="
+
+# Stop and disable service
+if systemctl list-unit-files artemis-agent.service &>/dev/null; then
+    echo "Stopping artemis-agent service..."
+    sudo systemctl stop artemis-agent 2>/dev/null || true
+    sudo systemctl disable artemis-agent 2>/dev/null || true
+    sudo rm -f /etc/systemd/system/artemis-agent.service
+    sudo systemctl daemon-reload
+    echo "Service removed."
+else
+    echo "No systemd service found."
+fi
+
+# Deregister from server if requested
+if [ -n "$SERVER" ] && [ -f "$INSTALL_DIR/agent.conf" ]; then
+    source "$INSTALL_DIR/agent.conf"
+    if [ -n "${ARTEMIS_AGENT_KEY:-}" ] && [ -n "${ARTEMIS_AGENT_ID:-}" ]; then
+        echo "Deregistering agent #$ARTEMIS_AGENT_ID from server..."
+        curl -sS -X DELETE "$SERVER/api/v1/agents/$ARTEMIS_AGENT_ID" \
+            -H "X-Agent-Key: $ARTEMIS_AGENT_KEY" 2>/dev/null && echo "Deregistered." || echo "Deregistration failed (agent may need manual removal)."
+    fi
+fi
+
+# Remove install directory
+if [ "$KEEP_CONFIG" = true ]; then
+    echo "Keeping config at $INSTALL_DIR (--keep-config)"
+    sudo rm -f "$INSTALL_DIR/artemis-agent.sh"
+else
+    if [ -d "$INSTALL_DIR" ]; then
+        sudo rm -rf "$INSTALL_DIR"
+        echo "Removed $INSTALL_DIR"
+    fi
+fi
+
+echo ""
+echo "=== Artemis Agent Uninstalled ==="
+'''
+
+
 @agents_bp.route('/install.sh', methods=['GET'])
 def agent_install_script():
     """Serve the agent install shell script."""
     return Response(INSTALL_SCRIPT, mimetype='text/plain',
                     headers={'Content-Disposition': 'inline; filename="install.sh"'})
+
+
+@agents_bp.route('/uninstall.sh', methods=['GET'])
+def agent_uninstall_script():
+    """Serve the agent uninstall shell script."""
+    return Response(UNINSTALL_SCRIPT, mimetype='text/plain',
+                    headers={'Content-Disposition': 'inline; filename="uninstall.sh"'})
 
 
 
