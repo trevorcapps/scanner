@@ -19,7 +19,7 @@ agents_bp = Blueprint('agents', __name__)
 INSTALL_SCRIPT = r'''#!/usr/bin/env bash
 # Artemis Agent Installer
 # Usage: curl -sSL http://SERVER:5005/agent/install.sh | bash -s -- [OPTIONS]
-#   --server URL   Artemis server URL (default: auto-detect from download URL)
+#   --server URL   Artemis server URL (required)
 #   --name NAME    Agent display name (default: hostname)
 #   --interval SEC Heartbeat interval in seconds (default: 300)
 
@@ -103,39 +103,79 @@ sudo tee "$INSTALL_DIR/artemis-agent.sh" > /dev/null <<'AGENT'
 # Artemis Agent — periodic system reporter
 source /opt/artemis-agent/agent.conf
 
-report() {
-    local os_info=""
-    if [ -f /etc/os-release ]; then
-        os_info=$(cat /etc/os-release | head -5 | tr '\n' ' ')
-    fi
-
-    local pkg_count=0
-    if command -v dpkg &>/dev/null; then
-        pkg_count=$(dpkg -l 2>/dev/null | grep ^ii | wc -l)
+collect_packages() {
+    if command -v dpkg-query &>/dev/null; then
+        dpkg-query -W -f '{"name":"${Package}","version":"${Version}"},\n' 2>/dev/null | head -2000 | sed '$ s/,$//'
     elif command -v rpm &>/dev/null; then
-        pkg_count=$(rpm -qa 2>/dev/null | wc -l)
+        rpm -qa --queryformat '{"name":"%{NAME}","version":"%{VERSION}-%{RELEASE}"},\n' 2>/dev/null | head -2000 | sed '$ s/,$//'
+    fi
+}
+
+collect_ports() {
+    if command -v ss &>/dev/null; then
+        ss -tlnp 2>/dev/null | awk 'NR>1{split($4,a,":"); p=a[length(a)]; if(p+0==p) print "{\"port\":"p",\"state\":\"listen\",\"protocol\":\"tcp\"},"}' | sort -t: -u -k1,1n | head -500 | sed '$ s/,$//'
+    elif command -v netstat &>/dev/null; then
+        netstat -tlnp 2>/dev/null | awk '/LISTEN/{split($4,a,":"); p=a[length(a)]; if(p+0==p) print "{\"port\":"p",\"state\":\"listen\",\"protocol\":\"tcp\"},"}' | sort -t: -u -k1,1n | head -500 | sed '$ s/,$//'
+    fi
+}
+
+report() {
+    # OS info
+    local os_name="" os_family="" os_vendor="" os_version="" pretty_name=""
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="${NAME:-}"
+        os_family="${ID_LIKE:-${ID:-}}"
+        os_vendor="${NAME:-}"
+        os_version="${VERSION_ID:-}"
+        pretty_name="${PRETTY_NAME:-}"
     fi
 
+    # System metrics
     local load=$(cat /proc/loadavg 2>/dev/null | awk '{print $1}')
     local mem_total=$(free -m 2>/dev/null | awk '/Mem:/{print $2}')
     local mem_used=$(free -m 2>/dev/null | awk '/Mem:/{print $3}')
-    local disk_usage=$(df -h / 2>/dev/null | awk 'NR==2{print $5}')
+    local disk_total=$(df -BM / 2>/dev/null | awk 'NR==2{gsub("M",""); print $2}')
+    local disk_used=$(df -BM / 2>/dev/null | awk 'NR==2{gsub("M",""); print $3}')
+    local disk_pct=$(df -h / 2>/dev/null | awk 'NR==2{print $5}')
     local uptime_sec=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+    local ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+    local mac_addr=$(ip link show 2>/dev/null | awk '/ether/{print $2; exit}')
+    local cpu_count=$(nproc 2>/dev/null || echo 1)
+
+    # Packages and ports
+    local pkg_json="[$(collect_packages)]"
+    local pkg_count=$(echo "$pkg_json" | grep -o '"name"' | wc -l)
+    local port_json="[$(collect_ports)]"
 
     curl -sS -X POST "$ARTEMIS_SERVER/api/v1/agents/report" \
         -H "Content-Type: application/json" \
         -H "X-Agent-Key: $ARTEMIS_AGENT_KEY" \
         -d "{
             \"hostname\": \"$(hostname)\",
-            \"os_info\": \"$os_info\",
+            \"ip\": \"$ip_addr\",
+            \"mac_address\": \"$mac_addr\",
+            \"os_info\": {
+                \"os_name\": \"$pretty_name\",
+                \"os_family\": \"$os_family\",
+                \"os_vendor\": \"$os_vendor\",
+                \"os_version\": \"$os_version\"
+            },
+            \"system_info\": {
+                \"kernel\": \"$(uname -r)\",
+                \"arch\": \"$(uname -m)\",
+                \"cpu_count\": $cpu_count,
+                \"load\": \"$load\",
+                \"mem_total_mb\": ${mem_total:-0},
+                \"mem_used_mb\": ${mem_used:-0},
+                \"disk_total_mb\": ${disk_total:-0},
+                \"disk_used_mb\": ${disk_used:-0},
+                \"disk_pct\": \"${disk_pct:-unknown}\",
+                \"uptime_seconds\": ${uptime_sec:-0}
+            },
+            \"packages\": $pkg_json,
             \"package_count\": $pkg_count,
-            \"load\": \"$load\",
-            \"mem_total_mb\": ${mem_total:-0},
-            \"mem_used_mb\": ${mem_used:-0},
-            \"disk_usage\": \"${disk_usage:-unknown}\",
-            \"uptime_seconds\": ${uptime_sec:-0},
-            \"kernel\": \"$(uname -r)\",
-            \"arch\": \"$(uname -m)\"
+            \"ports\": $port_json
         }" > /dev/null 2>&1
 }
 

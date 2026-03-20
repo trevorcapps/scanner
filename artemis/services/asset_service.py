@@ -140,9 +140,52 @@ def get_asset_details(ip):
         asset['installed_software'] = get_installed_software(ip)
         asset['cve_matches'] = get_cve_matches(ip)
 
+        # Agent-reported data
+        asset['agent_data'] = _get_agent_data(ip)
+
         return asset
     except sqlite3.Error as e:
         logger.error(f"Database error getting asset details for {ip}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def _get_agent_data(ip):
+    """Retrieve agent-reported system data for an asset."""
+    conn = sqlite3.connect(_get_db_path())
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_data'")
+        if not cursor.fetchone():
+            return None
+        cursor.execute('SELECT packages_json, package_count, system_info_json, os_info_json, updated_at FROM agent_data WHERE ip = ?', (ip,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        packages = []
+        try:
+            packages = json.loads(row[0]) if row[0] else []
+        except (json.JSONDecodeError, TypeError):
+            pass
+        system_info = {}
+        try:
+            system_info = json.loads(row[2]) if row[2] else {}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        os_info = {}
+        try:
+            os_info = json.loads(row[3]) if row[3] else {}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return {
+            'packages': packages,
+            'package_count': row[1] or 0,
+            'system_info': system_info,
+            'os_info': os_info,
+            'updated_at': row[4],
+        }
+    except sqlite3.Error:
         return None
     finally:
         conn.close()

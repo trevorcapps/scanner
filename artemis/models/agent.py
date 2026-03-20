@@ -11,6 +11,7 @@ class Agent(db.Model):
     name = db.Column(db.Text)
     hostname = db.Column(db.Text)
     ip = db.Column(db.Text)
+    mac_address = db.Column(db.Text)
     os_info_json = db.Column(db.Text)
     last_checkin = db.Column(db.Text)
     checkin_interval = db.Column(db.Integer, default=21600)

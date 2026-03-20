@@ -47,7 +47,7 @@ def process_report(agent, data):
         agent_id=agent.id,
         report_type=data.get('report_type', 'full'),
         report_json=json.dumps(data),
-        packages_count=len(data.get('packages', [])),
+        packages_count=data.get('package_count', len(data.get('packages', []))),
         ports_count=len(data.get('ports', [])),
         received_at=now,
     )
@@ -57,6 +57,8 @@ def process_report(agent, data):
         agent.hostname = data['hostname']
     if data.get('ip'):
         agent.ip = data['ip']
+    if data.get('mac_address'):
+        agent.mac_address = data.get('mac_address', '')
     if data.get('os_info'):
         agent.os_info_json = json.dumps(data['os_info'])
     if data.get('system_info'):
@@ -70,8 +72,8 @@ def process_report(agent, data):
     db.session.add(report)
     db.session.commit()
 
-    # Try to link agent to existing asset by IP
-    _link_agent_to_asset(agent)
+    # Create/update asset from agent data
+    _sync_agent_to_asset(agent, data)
 
     # Try to match packages against CVEs
     vulns_matched = _match_package_cves(agent, data.get('packages', []))
@@ -82,17 +84,87 @@ def process_report(agent, data):
     return report
 
 
-def _link_agent_to_asset(agent):
-    """Link agent to an existing asset record by IP address."""
+def _sync_agent_to_asset(agent, data):
+    """Create or update an asset record from agent report data."""
     if not agent.ip:
         return
     try:
-        from artemis.models.asset import Asset
-        asset = Asset.query.filter_by(ip=agent.ip).first()
-        if asset:
-            logger.info(f"Agent {agent.id} linked to asset {asset.id} ({agent.ip})")
-    except Exception:
-        pass
+        from artemis.services.asset_service import store_asset_info
+        from artemis.services.scan_service import store_scan_from_agent
+
+        os_info = data.get('os_info', {})
+        if isinstance(os_info, str):
+            os_info = {'os_name': os_info}
+
+        system_info = data.get('system_info', {})
+
+        # Map agent os_info to the format store_asset_info expects
+        asset_os = {
+            'os_name': os_info.get('os_name', ''),
+            'os_family': os_info.get('os_family', ''),
+            'os_vendor': os_info.get('os_vendor', ''),
+            'os_accuracy': '100',  # Agent-reported = definitive
+            'device_type': 'computer',
+        }
+
+        dns_info = {
+            'hostname': agent.hostname or data.get('hostname', ''),
+            'reverse_dns': None,
+            'aliases': [],
+        }
+
+        mac_address = data.get('mac_address', '')
+        store_asset_info(agent.ip, dns_info=dns_info, os_info=asset_os,
+                         mac_address=mac_address, mac_vendor=None)
+
+        # Store listening ports as scan data so they show in asset details
+        ports = data.get('ports', [])
+        if ports:
+            store_scan_from_agent(agent.ip, ports)
+
+        # Store packages and system info for asset detail view
+        _store_agent_system_data(agent.ip, data)
+
+        logger.info(f"Agent {agent.id} synced to asset ({agent.ip})")
+    except Exception as e:
+        logger.warning(f"Failed to sync agent {agent.id} to asset: {e}")
+
+
+def _store_agent_system_data(ip, data):
+    """Store agent-reported packages and system info in the DB for asset detail view."""
+    try:
+        import sqlite3
+        from flask import current_app
+        db_path = current_app.config['DB_PATH']
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Create agent_data table if not exists
+        cursor.execute('''CREATE TABLE IF NOT EXISTS agent_data (
+            ip TEXT PRIMARY KEY,
+            packages_json TEXT,
+            package_count INTEGER DEFAULT 0,
+            system_info_json TEXT,
+            os_info_json TEXT,
+            updated_at TEXT
+        )''')
+
+        now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        packages = data.get('packages', [])
+        pkg_count = data.get('package_count', len(packages))
+        system_info = data.get('system_info', {})
+        os_info = data.get('os_info', {})
+
+        cursor.execute('''INSERT OR REPLACE INTO agent_data
+            (ip, packages_json, package_count, system_info_json, os_info_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)''',
+            (ip, json.dumps(packages), pkg_count, json.dumps(system_info),
+             json.dumps(os_info), now))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to store agent system data for {ip}: {e}")
 
 
 def _match_package_cves(agent, packages):

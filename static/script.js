@@ -522,6 +522,39 @@ document.addEventListener('DOMContentLoaded', function() {
             html += '</ul></div>';
         }
 
+        // Agent-Reported System Info
+        if (asset.agent_data) {
+            var ad = asset.agent_data;
+            var si = ad.system_info || {};
+            html += '<div class="asset-modal-section"><div class="asset-section-title">Agent-Reported System Info</div><ul class="asset-info-list">';
+            if (ad.os_info && ad.os_info.os_name) html += '<li><span class="asset-info-label">OS</span><span class="asset-info-value">' + escapeHtml(ad.os_info.os_name) + '</span></li>';
+            if (si.kernel) html += '<li><span class="asset-info-label">Kernel</span><span class="asset-info-value" style="font-size:11px">' + escapeHtml(si.kernel) + '</span></li>';
+            if (si.arch) html += '<li><span class="asset-info-label">Architecture</span><span class="asset-info-value">' + escapeHtml(si.arch) + '</span></li>';
+            if (si.cpu_count) html += '<li><span class="asset-info-label">CPUs</span><span class="asset-info-value">' + si.cpu_count + '</span></li>';
+            if (si.load) html += '<li><span class="asset-info-label">Load</span><span class="asset-info-value">' + escapeHtml(String(si.load)) + '</span></li>';
+            if (si.mem_total_mb) html += '<li><span class="asset-info-label">Memory</span><span class="asset-info-value">' + (si.mem_used_mb || 0) + ' / ' + si.mem_total_mb + ' MB</span></li>';
+            if (si.disk_pct) html += '<li><span class="asset-info-label">Disk Usage</span><span class="asset-info-value">' + escapeHtml(si.disk_pct) + (si.disk_used_mb ? ' (' + si.disk_used_mb + ' / ' + (si.disk_total_mb || '?') + ' MB)' : '') + '</span></li>';
+            if (si.uptime_seconds) {
+                var uph = Math.floor(si.uptime_seconds / 3600); var upm = Math.floor((si.uptime_seconds % 3600) / 60);
+                html += '<li><span class="asset-info-label">Uptime</span><span class="asset-info-value">' + uph + 'h ' + upm + 'm</span></li>';
+            }
+            html += '<li><span class="asset-info-label">Packages</span><span class="asset-info-value">' + (ad.package_count || 0) + ' installed</span></li>';
+            html += '<li><span class="asset-info-label">Last Report</span><span class="asset-info-value">' + (ad.updated_at ? formatDate(ad.updated_at) : 'N/A') + '</span></li>';
+            html += '</ul></div>';
+
+            // Agent packages table (if we have full package list and no auth_os installed_software)
+            if (ad.packages && ad.packages.length > 0 && (!asset.installed_software || asset.installed_software.length === 0)) {
+                html += '<div class="asset-modal-section full-width"><div class="asset-section-title">Installed Packages — Agent (' + ad.packages.length + ')</div>';
+                html += '<div class="software-table-wrapper"><table class="asset-ports-table"><thead><tr><th>Package</th><th>Version</th></tr></thead><tbody>';
+                ad.packages.slice(0, 200).forEach(function(pkg) {
+                    html += '<tr><td><strong>' + escapeHtml(pkg.name || '') + '</strong></td><td>' + escapeHtml(pkg.version || '') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                if (ad.packages.length > 200) html += '<p class="text-muted" style="padding:8px">Showing 200 of ' + ad.packages.length + ' packages</p>';
+                html += '</div></div>';
+            }
+        }
+
         // Vulnerabilities
         html += '<div class="asset-modal-section"><div class="asset-section-title">Vulnerabilities</div>';
         if (asset.vuln_counts && (asset.vuln_counts.critical > 0 || asset.vuln_counts.high > 0 || asset.vuln_counts.medium > 0 || asset.vuln_counts.low > 0 || asset.vuln_counts.info > 0)) {

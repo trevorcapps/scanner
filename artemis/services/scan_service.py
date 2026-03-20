@@ -22,6 +22,42 @@ def _get_db_path():
             os.path.abspath(__file__)))), 'vuln_scan.db')
 
 
+def store_scan_from_agent(ip, ports):
+    """Store agent-reported listening ports as scan data.
+    ports is a list of dicts like: {"port": 22, "state": "listen", "protocol": "tcp"}
+    """
+    conn = sqlite3.connect(_get_db_path())
+    cursor = conn.cursor()
+    try:
+        scan_date = datetime.now().isoformat()
+        # Clear previous agent-reported ports for this IP (keep nmap scans)
+        # We use 'agent' as the service marker to distinguish
+        for p in ports:
+            port_num = p.get('port')
+            proto = p.get('protocol', 'tcp')
+            if not port_num:
+                continue
+            # Check if we already have a nmap scan for this port — don't overwrite
+            cursor.execute(
+                'SELECT id FROM scans WHERE ip = ? AND port = ? AND protocol = ? AND service != "agent-reported" ORDER BY scan_date DESC LIMIT 1',
+                (ip, port_num, proto))
+            if cursor.fetchone():
+                continue  # nmap data is richer, skip
+            # Upsert agent-reported port
+            cursor.execute(
+                'DELETE FROM scans WHERE ip = ? AND port = ? AND protocol = ? AND service = "agent-reported"',
+                (ip, port_num, proto))
+            cursor.execute(
+                'INSERT INTO scans (ip, protocol, port, state, service, product, version, scan_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (ip, proto, port_num, p.get('state', 'open'), 'agent-reported', '', '', scan_date))
+        conn.commit()
+        logger.info(f"Stored {len(ports)} agent-reported ports for {ip}")
+    except sqlite3.Error as e:
+        logger.error(f"DB error storing agent ports for {ip}: {e}")
+    finally:
+        conn.close()
+
+
 def store_scan(ip, scan_results):
     """Store port scan results in the database."""
     conn = sqlite3.connect(_get_db_path())
