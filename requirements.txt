@@ -1,5 +1,7 @@
 flask
 flask-wtf
+bcrypt
+PyJWT
 wtforms
 python-nmap
 matplotlib

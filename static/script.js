@@ -1,4 +1,156 @@
 document.addEventListener('DOMContentLoaded', function() {
+
+    // ==================== Auth System ====================
+
+    var authScreen = document.getElementById('auth-screen');
+    var appLayout = document.getElementById('app-layout');
+    var currentUser = null;
+
+    function authFetch(url, opts) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        opts.credentials = 'same-origin';
+        return fetch(url, opts).then(function(r) {
+            if (r.status === 401 && !url.includes('/auth/')) {
+                showAuthScreen();
+                return Promise.reject(new Error('Session expired'));
+            }
+            return r;
+        });
+    }
+
+    function showAuthScreen() {
+        authScreen.style.display = 'flex';
+        appLayout.style.display = 'none';
+    }
+
+    function showApp(user) {
+        currentUser = user;
+        authScreen.style.display = 'none';
+        appLayout.style.display = '';
+        // Update sidebar user info
+        if (user) {
+            var avatar = document.getElementById('user-avatar');
+            var name = document.getElementById('user-display-name');
+            var role = document.getElementById('user-role-badge');
+            if (avatar) avatar.textContent = (user.display_name || user.username || '?')[0].toUpperCase();
+            if (name) name.textContent = user.display_name || user.username;
+            if (role) role.textContent = user.role;
+        }
+    }
+
+    function checkAuth() {
+        fetch('/api/v1/auth/me', { credentials: 'same-origin' })
+            .then(function(r) {
+                if (r.ok) return r.json();
+                throw new Error('Not authenticated');
+            })
+            .then(function(data) {
+                if (data.user) {
+                    showApp(data.user);
+                } else if (data.setup_mode) {
+                    // No users — show setup form
+                    authScreen.style.display = 'flex';
+                    appLayout.style.display = 'none';
+                    document.getElementById('auth-login-form').style.display = 'none';
+                    document.getElementById('auth-setup-form').style.display = '';
+                } else {
+                    showAuthScreen();
+                }
+            })
+            .catch(function() {
+                // Check if setup mode (no users)
+                fetch('/api/v1/auth/me').then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.setup_mode) {
+                            authScreen.style.display = 'flex';
+                            appLayout.style.display = 'none';
+                            document.getElementById('auth-login-form').style.display = 'none';
+                            document.getElementById('auth-setup-form').style.display = '';
+                        } else {
+                            showAuthScreen();
+                        }
+                    })
+                    .catch(function() { showAuthScreen(); });
+            });
+    }
+
+    // Login handler
+    document.getElementById('auth-login-btn').addEventListener('click', function() {
+        var username = document.getElementById('auth-username').value.trim();
+        var password = document.getElementById('auth-password').value;
+        var errDiv = document.getElementById('auth-error');
+        errDiv.style.display = 'none';
+
+        if (!username || !password) { errDiv.textContent = 'Please enter username and password'; errDiv.style.display = ''; return; }
+
+        fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password }),
+            credentials: 'same-origin',
+        }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+          .then(function(res) {
+              if (res.ok) {
+                  showApp(res.data.user);
+              } else {
+                  errDiv.textContent = res.data.error || 'Login failed';
+                  errDiv.style.display = '';
+              }
+          })
+          .catch(function() { errDiv.textContent = 'Connection error'; errDiv.style.display = ''; });
+    });
+
+    // Enter key on password field
+    document.getElementById('auth-password').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') document.getElementById('auth-login-btn').click();
+    });
+
+    // Setup handler
+    document.getElementById('auth-setup-btn').addEventListener('click', function() {
+        var username = document.getElementById('setup-username').value.trim();
+        var email = document.getElementById('setup-email').value.trim();
+        var password = document.getElementById('setup-password').value;
+        var confirm = document.getElementById('setup-password-confirm').value;
+        var errDiv = document.getElementById('setup-error');
+        errDiv.style.display = 'none';
+
+        if (!username) { errDiv.textContent = 'Username is required'; errDiv.style.display = ''; return; }
+        if (password.length < 8) { errDiv.textContent = 'Password must be at least 8 characters'; errDiv.style.display = ''; return; }
+        if (password !== confirm) { errDiv.textContent = 'Passwords do not match'; errDiv.style.display = ''; return; }
+
+        fetch('/api/v1/auth/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password, email: email || null }),
+            credentials: 'same-origin',
+        }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+          .then(function(res) {
+              if (res.ok) {
+                  showApp(res.data.user);
+              } else {
+                  errDiv.textContent = res.data.error || 'Setup failed';
+                  errDiv.style.display = '';
+              }
+          })
+          .catch(function() { errDiv.textContent = 'Connection error'; errDiv.style.display = ''; });
+    });
+
+    // Logout handler
+    var logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) logoutBtn.addEventListener('click', function() {
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' })
+            .finally(function() {
+                currentUser = null;
+                showAuthScreen();
+                document.getElementById('auth-username').value = '';
+                document.getElementById('auth-password').value = '';
+            });
+    });
+
+    // Initial auth check
+    checkAuth();
+
     var socket = io();
 
     // ==================== Utility Functions ====================

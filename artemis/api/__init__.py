@@ -10,10 +10,15 @@ from artemis.api.reports import reports_bp
 from artemis.api.schedules import schedules_bp
 from artemis.api.agents import agents_bp
 from artemis.api.sites import sites_bp
+from artemis.api.auth import auth_bp
 
 
 def register_blueprints(app):
     """Register all API blueprints with versioned and legacy prefixes."""
+    # Auth (no prefix — /api/v1/auth/login, etc.)
+    app.register_blueprint(auth_bp, url_prefix='/api/v1')
+    app.register_blueprint(auth_bp, url_prefix='/api', name='auth_legacy')
+
     # Agent install script at /agent/install.sh (convenience shortcut)
     app.register_blueprint(agents_bp, url_prefix='/agent', name='agents_shortcut')
 

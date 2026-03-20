@@ -43,6 +43,9 @@ def create_app(config_name=None):
     # Register blueprints
     register_blueprints(app)
 
+    # Auth middleware — protect API routes
+    _setup_auth_middleware(app)
+
     # Register SQL query blueprint
     from artemis.api.sql import sql_bp
     app.register_blueprint(sql_bp, url_prefix='/api/v1')
@@ -58,6 +61,11 @@ def create_app(config_name=None):
 
     @app.route('/report/<ip>')
     def report(ip):
+        from artemis.services.auth_service import _get_current_user
+        from artemis.models.user import User
+        # Require auth for reports (unless setup mode)
+        if User.query.count() > 0 and not _get_current_user():
+            return render_template('index.html')  # redirect to login
         from artemis.services.report_service import generate_report_view
         return generate_report_view(ip)
 
@@ -77,6 +85,54 @@ def create_app(config_name=None):
 
     logger.info("Artemis app created successfully")
     return app
+
+
+def _setup_auth_middleware(app):
+    """Add before_request auth check for API routes."""
+    from flask import g, jsonify
+    from artemis.services.auth_service import _get_current_user
+    from artemis.models.user import User
+
+    # Routes that don't require auth
+    PUBLIC_PREFIXES = (
+        '/api/v1/auth/login',
+        '/api/v1/auth/setup',
+        '/api/v1/auth/refresh',
+        '/api/auth/login',
+        '/api/auth/setup',
+        '/api/auth/refresh',
+        '/api/v1/agents/register',
+        '/api/v1/agents/report',
+        '/api/agents/register',
+        '/api/agents/report',
+        '/agent/',
+        '/static/',
+    )
+
+    @app.before_request
+    def check_auth():
+        from flask import request
+        path = request.path
+
+        # Skip auth for non-API routes (index, report, static)
+        if not path.startswith('/api/'):
+            return None
+
+        # Skip auth for public endpoints
+        for prefix in PUBLIC_PREFIXES:
+            if path.startswith(prefix):
+                return None
+
+        # Skip auth if no users exist (setup mode)
+        with app.app_context():
+            if User.query.count() == 0:
+                g.current_user = None
+                g.auth_method = 'setup'
+                return None
+
+        user = _get_current_user()
+        if not user:
+            return jsonify({'error': 'Authentication required'}), 401
 
 
 def _auto_migrate(db_path):

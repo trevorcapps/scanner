@@ -8,3 +8,4 @@ vuln_scan.db-journal
 tmp.json
 scan_network.py
 vulscan/
+.secret_key

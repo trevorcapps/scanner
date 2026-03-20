@@ -10,7 +10,34 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 </head>
 <body class="theme-light">
-    <div class="app-layout">
+    <!-- Login / Setup Screen -->
+    <div id="auth-screen" class="auth-screen" style="display:none;">
+        <div class="auth-card">
+            <img src="/static/logo.svg" alt="Artemis" class="auth-logo">
+            <h1 class="auth-title">Artemis</h1>
+
+            <!-- Login Form -->
+            <div id="auth-login-form">
+                <div class="form-group"><label>Username</label><input type="text" id="auth-username" placeholder="Username" autocomplete="username"></div>
+                <div class="form-group"><label>Password</label><input type="password" id="auth-password" placeholder="Password" autocomplete="current-password"></div>
+                <div id="auth-error" class="auth-error" style="display:none;"></div>
+                <button class="btn-primary auth-btn" id="auth-login-btn">Sign In</button>
+            </div>
+
+            <!-- Setup Form (first run) -->
+            <div id="auth-setup-form" style="display:none;">
+                <p class="auth-subtitle">Welcome! Create your admin account to get started.</p>
+                <div class="form-group"><label>Username</label><input type="text" id="setup-username" placeholder="admin" autocomplete="username"></div>
+                <div class="form-group"><label>Email (optional)</label><input type="email" id="setup-email" placeholder="admin@example.com"></div>
+                <div class="form-group"><label>Password (8+ characters)</label><input type="password" id="setup-password" placeholder="Password" autocomplete="new-password"></div>
+                <div class="form-group"><label>Confirm Password</label><input type="password" id="setup-password-confirm" placeholder="Confirm password" autocomplete="new-password"></div>
+                <div id="setup-error" class="auth-error" style="display:none;"></div>
+                <button class="btn-primary auth-btn" id="auth-setup-btn">Create Admin Account</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout" id="app-layout" style="display:none;">
         <!-- Sidebar -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -30,8 +57,16 @@
                 <li class="nav-item" data-page="sql"><span class="nav-icon">🗄️</span><span class="nav-label">SQL</span></li>
             </ul>
             <div class="sidebar-footer">
-                <div class="theme-toggle" id="theme-toggle" title="Toggle theme">
-                    <span class="theme-toggle-icon">🌙</span>
+                <div class="sidebar-user" id="sidebar-user">
+                    <span class="user-avatar" id="user-avatar">?</span>
+                    <span class="user-name" id="user-display-name"></span>
+                    <span class="user-role" id="user-role-badge"></span>
+                </div>
+                <div class="sidebar-footer-actions">
+                    <div class="theme-toggle" id="theme-toggle" title="Toggle theme">
+                        <span class="theme-toggle-icon">🌙</span>
+                    </div>
+                    <button class="btn-small btn-logout" id="btn-logout" title="Sign out">↩</button>
                 </div>
             </div>
         </nav>
