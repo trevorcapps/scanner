@@ -10,485 +10,438 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 </head>
 <body class="theme-light">
-    <div class="page-layout" id="page-layout">
-    <!-- Main App Container -->
-    <div class="container">
-        <div class="header">
-            <h1><img src="/static/logo.svg" alt="Artemis" class="header-logo"> Artemis</h1>
-        </div>
-
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="scan-tab">Scan</button>
-            <button class="tab-btn" data-tab="assets-tab">Assets</button>
-            <button class="tab-btn" data-tab="vulns-tab">Vulnerabilities</button>
-            <button class="tab-btn" data-tab="settings-tab">Settings</button>
-            <button class="tab-btn" data-tab="sql-tab">SQL</button>
-        </div>
-
-        <!-- Scan Tab -->
-        <div id="scan-tab" class="tab-content active">
-            <h2>New Scan</h2>
-            <form id="scan-form">
-                <div class="form-group">
-                    <label for="ip">IP Address or CIDR:</label>
-                    <input type="text" id="ip" name="ip" placeholder="IP, CIDR, or hostname (e.g., 192.168.1.1, 10.0.0.0/24, example.com)" required>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="/static/logo.svg" alt="Artemis" class="sidebar-logo">
+                <span class="sidebar-title">Artemis</span>
+                <button class="sidebar-close" id="sidebar-close">&times;</button>
+            </div>
+            <ul class="sidebar-nav">
+                <li class="nav-item active" data-page="dashboard"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></li>
+                <li class="nav-item" data-page="scan"><span class="nav-icon">🔍</span><span class="nav-label">Scan</span></li>
+                <li class="nav-item" data-page="assets"><span class="nav-icon">💻</span><span class="nav-label">Assets</span></li>
+                <li class="nav-item" data-page="vulns"><span class="nav-icon">⚠️</span><span class="nav-label">Vulnerabilities</span></li>
+                <li class="nav-item" data-page="sites"><span class="nav-icon">🌐</span><span class="nav-label">Sites</span></li>
+                <li class="nav-item" data-page="schedules"><span class="nav-icon">📅</span><span class="nav-label">Schedules</span></li>
+                <li class="nav-item" data-page="agents"><span class="nav-icon">🤖</span><span class="nav-label">Agents</span></li>
+                <li class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></li>
+                <li class="nav-item" data-page="sql"><span class="nav-icon">🗄️</span><span class="nav-label">SQL</span></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="theme-toggle" id="theme-toggle" title="Toggle theme">
+                    <span class="theme-toggle-icon">🌙</span>
                 </div>
-                <div class="form-group">
-                    <label>Scan Type:</label>
-                    <div class="scan-type-buttons">
-                        <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
-                        <button type="button" id="fingerprint-scan-btn" class="btn-fingerprint">Fingerprint</button>
-                        <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
-                        <button type="button" id="stop-scan-btn" class="btn-stop" style="display:none;">Stop Scan</button>
+            </div>
+        </nav>
+
+        <!-- Mobile hamburger -->
+        <button class="hamburger" id="hamburger">☰</button>
+
+        <!-- Main Content -->
+        <main class="main-content" id="main-content">
+
+            <!-- Dashboard Page -->
+            <div class="page active" id="page-dashboard">
+                <h2>Dashboard</h2>
+                <div class="dashboard-cards" id="dashboard-cards">
+                    <div class="dash-card"><div class="dash-card-value" id="dash-assets">—</div><div class="dash-card-label">Total Assets</div></div>
+                    <div class="dash-card dash-card-critical"><div class="dash-card-value" id="dash-critical">—</div><div class="dash-card-label">Critical Vulns</div></div>
+                    <div class="dash-card dash-card-high"><div class="dash-card-value" id="dash-high">—</div><div class="dash-card-label">High Vulns</div></div>
+                    <div class="dash-card dash-card-medium"><div class="dash-card-value" id="dash-medium">—</div><div class="dash-card-label">Medium Vulns</div></div>
+                    <div class="dash-card"><div class="dash-card-value" id="dash-agents">—</div><div class="dash-card-label">Active Agents</div></div>
+                    <div class="dash-card"><div class="dash-card-value" id="dash-schedules">—</div><div class="dash-card-label">Scheduled Scans</div></div>
+                    <div class="dash-card"><div class="dash-card-value" id="dash-sites">—</div><div class="dash-card-label">Sites</div></div>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="dash-section">
+                        <h3>Recent Scan Activity</h3>
+                        <div id="dash-recent-scans"><p class="empty-state">Loading...</p></div>
+                    </div>
+                    <div class="dash-section">
+                        <h3>Agent Status</h3>
+                        <div id="dash-agent-status"><p class="empty-state">Loading...</p></div>
                     </div>
                 </div>
-                <div class="form-group" id="profile-group">
-                    <label>Scan Profile:</label>
-                    <div class="profile-selector" id="profile-selector">
-                        <select id="profile-dropdown" class="profile-dropdown">
-                            <option value="">⚙️ Custom</option>
-                        </select>
+            </div>
+
+            <!-- Scan Page -->
+            <div class="page" id="page-scan">
+                <h2>New Scan</h2>
+                <form id="scan-form">
+                    <div class="form-group">
+                        <label for="ip">IP Address or CIDR:</label>
+                        <input type="text" id="ip" name="ip" placeholder="IP, CIDR, or hostname (e.g., 192.168.1.1, 10.0.0.0/24, example.com)" required>
                     </div>
-                </div>
-                <div class="form-group" id="auth-credentials-group" style="display:none;">
-                    <label>Select Credentials:</label>
-                    <div class="credential-select-wrapper">
-                        <select id="scan-credential-select" multiple class="credential-multi-select">
-                            <!-- Populated dynamically -->
-                        </select>
-                        <label class="cred-use-all-label">
-                            <input type="checkbox" id="scan-use-all-creds"> Use all available
-                        </label>
-                        <span class="setting-hint">Configure credentials in <a href="#" id="goto-settings-creds">Settings</a>. Port scan runs first — credentials are matched to hosts with compatible open ports.</span>
-                    </div>
-                </div>
-            </form>
-            <div id="progress-container" style="display:none;">
-                <p id="progress-message">Scan in progress...</p>
-                <progress id="progress-bar" value="0" max="100"></progress>
-            </div>
-            <div id="scan-output"></div>
-        </div>
-
-        <!-- Assets Tab -->
-        <div id="assets-tab" class="tab-content">
-            <h2>Scanned Assets</h2>
-            <div id="assets-toolbar">
-                <button id="refresh-assets" class="btn-secondary">Refresh</button>
-                <div class="view-toggle">
-                    <button class="view-btn active" data-view="cards" title="Card View">
-                        <span class="view-icon">&#9638;</span>
-                    </button>
-                    <button class="view-btn" data-view="list" title="List View">
-                        <span class="view-icon">&#9776;</span>
-                    </button>
-                </div>
-                <select id="device-type-filter">
-                    <option value="">All Device Types</option>
-                    <option value="computer">🖥️ Computer</option>
-                    <option value="server">🗄️ Server</option>
-                    <option value="router">📡 Router</option>
-                    <option value="switch">🔀 Switch</option>
-                    <option value="firewall">🔥 Firewall</option>
-                    <option value="printer">🖨️ Printer</option>
-                    <option value="storage">💾 Storage</option>
-                    <option value="access point">📶 Access Point</option>
-                    <option value="phone">📱 Phone</option>
-                    <option value="iot">🏠 IoT</option>
-                    <option value="media device">📺 Media</option>
-                    <option value="game console">🎮 Console</option>
-                    <option value="unknown">❓ Unknown</option>
-                </select>
-                <span id="assets-count"></span>
-            </div>
-            <div id="assets-list">
-                <p class="loading">Loading assets...</p>
-            </div>
-        </div>
-
-        <!-- Vulnerabilities Tab -->
-        <div id="vulns-tab" class="tab-content">
-            <h2>Vulnerabilities</h2>
-            <div id="vulns-toolbar">
-                <button id="refresh-vulns" class="btn-secondary">Refresh</button>
-                <div class="view-toggle">
-                    <button class="view-btn-vulns active" data-view="cards" title="Card View">
-                        <span class="view-icon">&#9638;</span>
-                    </button>
-                    <button class="view-btn-vulns" data-view="list" title="List View">
-                        <span class="view-icon">&#9776;</span>
-                    </button>
-                </div>
-                <select id="vuln-filter">
-                    <option value="">All Severities</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                    <option value="info">Info</option>
-                </select>
-                <select id="vuln-source-filter">
-                    <option value="">All Sources</option>
-                    <option value="nuclei">🔬 Nuclei</option>
-                    <option value="nvd-local">📦 NVD Local</option>
-                    <option value="nmap-vulscan">🔍 Nmap Vulscan</option>
-                    <option value="auth-scan">🔑 Auth Scan</option>
-                    <option value="exploit-db">💥 Exploit DB</option>
-                </select>
-                <label class="vuln-exploit-toggle" title="Show only CVEs with known exploits">
-                    <input type="checkbox" id="vuln-exploit-filter"> ⚠️ Exploits Only
-                </label>
-                <input type="text" id="vuln-search" placeholder="Search CVE, description, CPE..." class="vuln-search-input">
-            </div>
-
-            <div id="vulns-summary">
-                <div class="summary-card total">
-                    <span class="summary-count" id="total-vulns">0</span>
-                    <span class="summary-label">Unique CVEs</span>
-                </div>
-                <div class="summary-card critical">
-                    <span class="summary-count" id="critical-count">0</span>
-                    <span class="summary-label">Critical</span>
-                </div>
-                <div class="summary-card high">
-                    <span class="summary-count" id="high-count">0</span>
-                    <span class="summary-label">High</span>
-                </div>
-                <div class="summary-card medium">
-                    <span class="summary-count" id="medium-count">0</span>
-                    <span class="summary-label">Medium</span>
-                </div>
-                <div class="summary-card low">
-                    <span class="summary-count" id="low-count">0</span>
-                    <span class="summary-label">Low</span>
-                </div>
-                <div class="summary-card exploit-summary">
-                    <span class="summary-count" id="exploit-count">0</span>
-                    <span class="summary-label">With Exploits</span>
-                </div>
-            </div>
-
-            <div id="vulns-list">
-                <p class="loading">Loading vulnerabilities...</p>
-            </div>
-        </div>
-
-        <!-- Settings Tab -->
-        <div id="settings-tab" class="tab-content">
-            <h2>Settings</h2>
-
-            <div class="settings-section">
-                <h3>Theme</h3>
-                <p class="settings-description">Choose your preferred visual theme</p>
-
-                <div class="theme-selector">
-                    <div class="theme-option" data-theme="light">
-                        <div class="theme-preview theme-preview-light">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
+                    <div class="form-group">
+                        <label>Scan Type:</label>
+                        <div class="scan-type-buttons">
+                            <button type="submit" id="port-scan-btn" class="btn-primary">Port Scan</button>
+                            <button type="button" id="fingerprint-scan-btn" class="btn-fingerprint">Fingerprint</button>
+                            <button type="button" id="vuln-scan-btn" class="btn-danger">Vulnerability Scan</button>
+                            <button type="button" id="stop-scan-btn" class="btn-stop" style="display:none;">Stop Scan</button>
                         </div>
-                        <span class="theme-name">Light</span>
-                        <span class="theme-check">&#10003;</span>
                     </div>
-
-                    <div class="theme-option" data-theme="dark">
-                        <div class="theme-preview theme-preview-dark">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
-                        </div>
-                        <span class="theme-name">Dark</span>
-                        <span class="theme-check">&#10003;</span>
-                    </div>
-
-                    <div class="theme-option" data-theme="hacker">
-                        <div class="theme-preview theme-preview-hacker">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
-                        </div>
-                        <span class="theme-name">Hacker</span>
-                        <span class="theme-check">&#10003;</span>
-                    </div>
-
-                    <div class="theme-option" data-theme="gruvbox-dark">
-                        <div class="theme-preview theme-preview-gruvbox-dark">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
-                        </div>
-                        <span class="theme-name">Gruvbox Dark</span>
-                        <span class="theme-check">&#10003;</span>
-                    </div>
-
-                    <div class="theme-option" data-theme="gruvbox-light">
-                        <div class="theme-preview theme-preview-gruvbox-light">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
-                        </div>
-                        <span class="theme-name">Gruvbox Light</span>
-                        <span class="theme-check">&#10003;</span>
-                    </div>
-
-                    <div class="theme-option" data-theme="hot-pink">
-                        <div class="theme-preview theme-preview-hot-pink">
-                            <div class="preview-header"></div>
-                            <div class="preview-content">
-                                <div class="preview-line"></div>
-                                <div class="preview-line short"></div>
-                            </div>
-                        </div>
-                        <span class="theme-name">Hot Pink</span>
-                        <span class="theme-check">&#10003;</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <h3>Port Scan Options</h3>
-                <p class="settings-description">Configure port scanning behavior</p>
-
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="setting-ports">Port Range</label>
-                        <input type="text" id="setting-ports" placeholder="e.g., 1-1000, 22,80,443, or -">
-                        <span class="setting-hint">Use "-" for all ports, or specify ranges/lists</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-scan-speed">Scan Speed</label>
-                        <select id="setting-scan-speed">
-                            <option value="T2">T2 - Polite (slow, less detection)</option>
-                            <option value="T3" selected>T3 - Normal (default)</option>
-                            <option value="T4">T4 - Aggressive (faster)</option>
-                            <option value="T5">T5 - Insane (fastest, may miss ports)</option>
-                        </select>
-                        <span class="setting-hint">Higher speeds may be less accurate</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-host-timeout">Host Timeout (seconds)</label>
-                        <input type="number" id="setting-host-timeout" min="30" max="3600" value="300">
-                        <span class="setting-hint">Max time to scan a single host (30-3600)</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-max-hosts">Max CIDR Hosts</label>
-                        <input type="number" id="setting-max-hosts" min="1" max="1024" value="256">
-                        <span class="setting-hint">Maximum hosts to scan in a CIDR range (1-1024)</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-vulscan">
-                            <input type="checkbox" id="setting-vulscan"> Enable Vulscan (NSE CVE Detection)
-                        </label>
-                        <span class="setting-hint">Adds vulscan NSE script to nmap scans — matches service versions against offline CVE databases. Slower but finds CVEs during port scans.</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <h3>Vulnerability Scan Options (Nuclei)</h3>
-                <p class="settings-description">Configure Nuclei vulnerability scanning behavior</p>
-
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="setting-vuln-timeout">Scan Timeout (seconds)</label>
-                        <input type="number" id="setting-vuln-timeout" min="60" max="3600" value="600">
-                        <span class="setting-hint">Max time for vulnerability scan per host (60-3600)</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-severity">Severity Filter</label>
-                        <select id="setting-severity">
-                            <option value="critical,high,medium,low" selected>All Severities</option>
-                            <option value="critical,high,medium">Medium and Above</option>
-                            <option value="critical,high">High and Critical Only</option>
-                            <option value="critical">Critical Only</option>
-                        </select>
-                        <span class="setting-hint">Filter vulnerabilities by severity level</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-rate-limit">Rate Limit (req/sec)</label>
-                        <input type="number" id="setting-rate-limit" min="10" max="1000" value="150">
-                        <span class="setting-hint">Requests per second (10-1000)</span>
-                    </div>
-
-                    <div class="setting-item">
-                        <label for="setting-templates">Template Tags (optional)</label>
-                        <input type="text" id="setting-templates" placeholder="e.g., cve,rce,lfi">
-                        <span class="setting-hint">Comma-separated tags to filter templates</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <div class="settings-actions">
-                    <button id="save-settings" class="btn-primary">Save Settings</button>
-                    <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
-                    <span id="settings-status" class="settings-status"></span>
-                </div>
-            </div>
-
-            <div class="settings-section" id="settings-credentials-section">
-                <h3>Credentials</h3>
-                <p class="settings-description">Manage SSH credentials for authenticated scanning</p>
-
-                <div id="credentials-list" class="credentials-list">
-                    <p class="loading">Loading credentials...</p>
-                </div>
-
-                <div class="cred-add-form" id="cred-add-form">
-                    <h4 id="cred-form-title">Add Credential</h4>
-                    <input type="hidden" id="cred-edit-id" value="">
-                    <div class="settings-grid">
-                        <div class="setting-item">
-                            <label for="cred-name">Name</label>
-                            <input type="text" id="cred-name" placeholder="e.g., Linux SSH Key">
-                        </div>
-                        <div class="setting-item">
-                            <label for="cred-type">Auth Type</label>
-                            <select id="cred-type">
-                                <option value="ssh_key">SSH Key</option>
-                                <option value="ssh_password">SSH Password</option>
+                    <div class="form-group" id="profile-group">
+                        <label>Scan Profile:</label>
+                        <div class="profile-selector" id="profile-selector">
+                            <select id="profile-dropdown" class="profile-dropdown">
+                                <option value="">⚙️ Custom</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="form-group" id="auth-credentials-group" style="display:none;">
+                        <label>Select Credentials:</label>
+                        <div class="credential-select-wrapper">
+                            <select id="scan-credential-select" multiple class="credential-multi-select"></select>
+                            <label class="cred-use-all-label">
+                                <input type="checkbox" id="scan-use-all-creds"> Use all available
+                            </label>
+                            <span class="setting-hint">Configure credentials in <a href="#" id="goto-settings-creds">Settings</a>. Port scan runs first — credentials are matched to hosts with compatible open ports.</span>
+                        </div>
+                    </div>
+                </form>
+                <div id="progress-container" style="display:none;">
+                    <p id="progress-message">Scan in progress...</p>
+                    <progress id="progress-bar" value="0" max="100"></progress>
+                </div>
+                <div id="scan-output"></div>
+            </div>
+
+            <!-- Assets Page -->
+            <div class="page" id="page-assets">
+                <h2>Scanned Assets</h2>
+                <div id="assets-toolbar">
+                    <button id="refresh-assets" class="btn-secondary">Refresh</button>
+                    <div class="view-toggle">
+                        <button class="view-btn active" data-view="cards" title="Card View"><span class="view-icon">&#9638;</span></button>
+                        <button class="view-btn" data-view="list" title="List View"><span class="view-icon">&#9776;</span></button>
+                    </div>
+                    <select id="device-type-filter">
+                        <option value="">All Device Types</option>
+                        <option value="computer">🖥️ Computer</option>
+                        <option value="server">🗄️ Server</option>
+                        <option value="router">📡 Router</option>
+                        <option value="switch">🔀 Switch</option>
+                        <option value="firewall">🔥 Firewall</option>
+                        <option value="printer">🖨️ Printer</option>
+                        <option value="storage">💾 Storage</option>
+                        <option value="access point">📶 Access Point</option>
+                        <option value="phone">📱 Phone</option>
+                        <option value="iot">🏠 IoT</option>
+                        <option value="media device">📺 Media</option>
+                        <option value="game console">🎮 Console</option>
+                        <option value="unknown">❓ Unknown</option>
+                    </select>
+                    <span id="assets-count"></span>
+                </div>
+                <div id="assets-list"><p class="loading">Loading assets...</p></div>
+            </div>
+
+            <!-- Vulnerabilities Page -->
+            <div class="page" id="page-vulns">
+                <h2>Vulnerabilities</h2>
+                <div id="vulns-toolbar">
+                    <button id="refresh-vulns" class="btn-secondary">Refresh</button>
+                    <div class="view-toggle">
+                        <button class="view-btn-vulns active" data-view="cards" title="Card View"><span class="view-icon">&#9638;</span></button>
+                        <button class="view-btn-vulns" data-view="list" title="List View"><span class="view-icon">&#9776;</span></button>
+                    </div>
+                    <select id="vuln-filter">
+                        <option value="">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="info">Info</option>
+                    </select>
+                    <select id="vuln-source-filter">
+                        <option value="">All Sources</option>
+                        <option value="nuclei">🔬 Nuclei</option>
+                        <option value="nvd-local">📦 NVD Local</option>
+                        <option value="nmap-vulscan">🔍 Nmap Vulscan</option>
+                        <option value="auth-scan">🔑 Auth Scan</option>
+                        <option value="exploit-db">💥 Exploit DB</option>
+                    </select>
+                    <label class="vuln-exploit-toggle" title="Show only CVEs with known exploits">
+                        <input type="checkbox" id="vuln-exploit-filter"> ⚠️ Exploits Only
+                    </label>
+                    <input type="text" id="vuln-search" placeholder="Search CVE, description, CPE..." class="vuln-search-input">
+                </div>
+                <div id="vulns-summary">
+                    <div class="summary-card total"><span class="summary-count" id="total-vulns">0</span><span class="summary-label">Unique CVEs</span></div>
+                    <div class="summary-card critical"><span class="summary-count" id="critical-count">0</span><span class="summary-label">Critical</span></div>
+                    <div class="summary-card high"><span class="summary-count" id="high-count">0</span><span class="summary-label">High</span></div>
+                    <div class="summary-card medium"><span class="summary-count" id="medium-count">0</span><span class="summary-label">Medium</span></div>
+                    <div class="summary-card low"><span class="summary-count" id="low-count">0</span><span class="summary-label">Low</span></div>
+                    <div class="summary-card exploit-summary"><span class="summary-count" id="exploit-count">0</span><span class="summary-label">With Exploits</span></div>
+                </div>
+                <div id="vulns-list"><p class="loading">Loading vulnerabilities...</p></div>
+            </div>
+
+            <!-- Sites Page -->
+            <div class="page" id="page-sites">
+                <div class="page-header-row">
+                    <h2>Sites</h2>
+                    <button class="btn-primary" id="btn-create-site">+ New Site</button>
+                </div>
+                <div id="sites-list"><p class="empty-state">Loading sites...</p></div>
+            </div>
+
+            <!-- Schedules Page -->
+            <div class="page" id="page-schedules">
+                <div class="page-header-row">
+                    <h2>Schedules</h2>
+                    <button class="btn-primary" id="btn-create-schedule">+ New Schedule</button>
+                </div>
+                <div id="schedules-list"><p class="empty-state">Loading schedules...</p></div>
+            </div>
+
+            <!-- Agents Page -->
+            <div class="page" id="page-agents">
+                <h2>Agents</h2>
+                <div id="agents-list"><p class="empty-state">Loading agents...</p></div>
+                <div class="agents-install-section" id="agents-install-section" style="margin-top:24px;">
+                    <h3>Install Agent</h3>
+                    <p class="setting-hint">Run this on the target host to register an agent:</p>
+                    <pre class="install-cmd" id="agent-install-cmd">curl -sSL https://YOUR_SERVER/agent/install.sh | bash</pre>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div class="page" id="page-settings">
+                <h2>Settings</h2>
+
+                <div class="settings-section">
+                    <h3>Theme</h3>
+                    <p class="settings-description">Choose your preferred visual theme</p>
+                    <div class="theme-selector">
+                        <div class="theme-option" data-theme="light">
+                            <div class="theme-preview theme-preview-light"><div class="preview-header"></div><div class="preview-content"><div class="preview-line"></div><div class="preview-line short"></div></div></div>
+                            <span class="theme-name">Light</span><span class="theme-check">&#10003;</span>
+                        </div>
+                        <div class="theme-option" data-theme="dark">
+                            <div class="theme-preview theme-preview-dark"><div class="preview-header"></div><div class="preview-content"><div class="preview-line"></div><div class="preview-line short"></div></div></div>
+                            <span class="theme-name">Dark</span><span class="theme-check">&#10003;</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Port Scan Options</h3>
+                    <p class="settings-description">Configure port scanning behavior</p>
+                    <div class="settings-grid">
                         <div class="setting-item">
-                            <label for="cred-username">Username</label>
-                            <input type="text" id="cred-username" placeholder="root" value="root">
+                            <label for="setting-ports">Port Range</label>
+                            <input type="text" id="setting-ports" placeholder='e.g., 1-1000, 22,80,443, or -'>
+                            <span class="setting-hint">Use "-" for all ports, or specify ranges/lists</span>
                         </div>
-                        <div class="setting-item" id="cred-key-field">
-                            <label for="cred-key-path">Key Path</label>
-                            <input type="text" id="cred-key-path" placeholder="/home/user/.ssh/id_rsa">
+                        <div class="setting-item">
+                            <label for="setting-scan-speed">Scan Speed</label>
+                            <select id="setting-scan-speed">
+                                <option value="T2">T2 - Polite (slow, less detection)</option>
+                                <option value="T3" selected>T3 - Normal (default)</option>
+                                <option value="T4">T4 - Aggressive (faster)</option>
+                                <option value="T5">T5 - Insane (fastest, may miss ports)</option>
+                            </select>
+                            <span class="setting-hint">Higher speeds may be less accurate</span>
                         </div>
-                        <div class="setting-item" id="cred-password-field" style="display:none;">
-                            <label for="cred-password">Password</label>
-                            <div class="password-toggle-wrapper">
-                                <input type="password" id="cred-password" placeholder="••••••••">
-                                <button type="button" class="btn-toggle-vis" id="cred-password-toggle" title="Show/hide">👁</button>
+                        <div class="setting-item">
+                            <label for="setting-host-timeout">Host Timeout (seconds)</label>
+                            <input type="number" id="setting-host-timeout" min="30" max="3600" value="300">
+                            <span class="setting-hint">Max time to scan a single host (30-3600)</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="setting-max-hosts">Max CIDR Hosts</label>
+                            <input type="number" id="setting-max-hosts" min="1" max="1024" value="256">
+                            <span class="setting-hint">Maximum hosts to scan in a CIDR range (1-1024)</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="setting-vulscan"><input type="checkbox" id="setting-vulscan"> Enable Vulscan (NSE CVE Detection)</label>
+                            <span class="setting-hint">Adds vulscan NSE script to nmap scans — matches service versions against offline CVE databases.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Vulnerability Scan Options (Nuclei)</h3>
+                    <p class="settings-description">Configure Nuclei vulnerability scanning behavior</p>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="setting-vuln-timeout">Scan Timeout (seconds)</label>
+                            <input type="number" id="setting-vuln-timeout" min="60" max="3600" value="600">
+                            <span class="setting-hint">Max time for vulnerability scan per host (60-3600)</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="setting-severity">Severity Filter</label>
+                            <select id="setting-severity">
+                                <option value="critical,high,medium,low" selected>All Severities</option>
+                                <option value="critical,high,medium">Medium and Above</option>
+                                <option value="critical,high">High and Critical Only</option>
+                                <option value="critical">Critical Only</option>
+                            </select>
+                            <span class="setting-hint">Filter vulnerabilities by severity level</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="setting-rate-limit">Rate Limit (req/sec)</label>
+                            <input type="number" id="setting-rate-limit" min="10" max="1000" value="150">
+                            <span class="setting-hint">Requests per second (10-1000)</span>
+                        </div>
+                        <div class="setting-item">
+                            <label for="setting-templates">Template Tags (optional)</label>
+                            <input type="text" id="setting-templates" placeholder="e.g., cve,rce,lfi">
+                            <span class="setting-hint">Comma-separated tags to filter templates</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-actions">
+                        <button id="save-settings" class="btn-primary">Save Settings</button>
+                        <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
+                        <span id="settings-status" class="settings-status"></span>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="settings-credentials-section">
+                    <h3>Credentials</h3>
+                    <p class="settings-description">Manage SSH credentials for authenticated scanning</p>
+                    <div id="credentials-list" class="credentials-list"><p class="loading">Loading credentials...</p></div>
+                    <div class="cred-add-form" id="cred-add-form">
+                        <h4 id="cred-form-title">Add Credential</h4>
+                        <input type="hidden" id="cred-edit-id" value="">
+                        <div class="settings-grid">
+                            <div class="setting-item">
+                                <label for="cred-name">Name</label>
+                                <input type="text" id="cred-name" placeholder="e.g., Linux SSH Key">
                             </div>
+                            <div class="setting-item">
+                                <label for="cred-type">Auth Type</label>
+                                <select id="cred-type">
+                                    <option value="ssh_key">SSH Key</option>
+                                    <option value="ssh_password">SSH Password</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label for="cred-username">Username</label>
+                                <input type="text" id="cred-username" placeholder="root" value="root">
+                            </div>
+                            <div class="setting-item" id="cred-key-field">
+                                <label for="cred-key-path">Key Path</label>
+                                <input type="text" id="cred-key-path" placeholder="/home/user/.ssh/id_rsa">
+                            </div>
+                            <div class="setting-item" id="cred-password-field" style="display:none;">
+                                <label for="cred-password">Password</label>
+                                <div class="password-toggle-wrapper">
+                                    <input type="password" id="cred-password" placeholder="••••••••">
+                                    <button type="button" class="btn-toggle-vis" id="cred-password-toggle" title="Show/hide">👁</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-actions" style="margin-top: 10px;">
+                            <button id="cred-save-btn" class="btn-primary">Save Credential</button>
+                            <button id="cred-cancel-btn" class="btn-secondary" style="display:none;">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="settings-nvd-section">
+                    <h3>NVD Vulnerability Database</h3>
+                    <p class="settings-description">Local database of all CVEs from NVD bulk feeds for offline CPE matching</p>
+                    <div class="nvd-status-panel">
+                        <div class="nvd-stats">
+                            <div class="nvd-stat"><span class="nvd-stat-value" id="nvd-total-cves">—</span><span class="nvd-stat-label">CVEs in Database</span></div>
+                            <div class="nvd-stat"><span class="nvd-stat-value" id="nvd-last-sync">Never</span><span class="nvd-stat-label">Last Synced</span></div>
+                        </div>
+                        <div class="nvd-sync-actions">
+                            <button id="nvd-sync-btn" class="btn-primary">Update (Modified Feed)</button>
+                            <button id="nvd-full-sync-btn" class="btn-secondary">Full Sync (All Years)</button>
+                        </div>
+                        <div id="nvd-sync-progress" style="display:none;">
+                            <p id="nvd-sync-message">Syncing...</p>
+                            <progress id="nvd-sync-bar" value="0" max="100"></progress>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>NVD API Key</h3>
+                    <p class="settings-description">Optional API key for faster NVD CVE lookups during authenticated scans</p>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="nvd-api-key">API Key</label>
+                            <div class="password-toggle-wrapper">
+                                <input type="password" id="nvd-api-key" placeholder="Enter NVD API key">
+                                <button type="button" class="btn-toggle-vis" id="nvd-key-toggle" title="Show/hide">👁</button>
+                            </div>
+                            <span class="setting-hint">Get a free key at <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank">nvd.nist.gov</a></span>
                         </div>
                     </div>
                     <div class="settings-actions" style="margin-top: 10px;">
-                        <button id="cred-save-btn" class="btn-primary">Save Credential</button>
-                        <button id="cred-cancel-btn" class="btn-secondary" style="display:none;">Cancel</button>
+                        <button id="nvd-key-save" class="btn-primary">Save NVD Key</button>
+                        <span id="nvd-key-status" class="settings-status"></span>
                     </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>About</h3>
+                    <p class="settings-description">Vulnerability Scanning Platform v1.0</p>
                 </div>
             </div>
 
-            <div class="settings-section" id="settings-nvd-section">
-                <h3>NVD Vulnerability Database</h3>
-                <p class="settings-description">Local database of all CVEs from NVD bulk feeds for offline CPE matching</p>
-                <div class="nvd-status-panel">
-                    <div class="nvd-stats">
-                        <div class="nvd-stat">
-                            <span class="nvd-stat-value" id="nvd-total-cves">—</span>
-                            <span class="nvd-stat-label">CVEs in Database</span>
+            <!-- SQL Page -->
+            <div class="page" id="page-sql">
+                <h2>SQL Query</h2>
+                <div class="sql-layout">
+                    <div class="sql-main">
+                        <div class="sql-editor-container">
+                            <textarea id="sql-editor">SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;</textarea>
                         </div>
-                        <div class="nvd-stat">
-                            <span class="nvd-stat-value" id="nvd-last-sync">Never</span>
-                            <span class="nvd-stat-label">Last Synced</span>
+                        <div class="sql-toolbar">
+                            <button id="sql-run-btn" class="btn-primary">▶ Run Query</button>
+                            <button id="sql-export-csv" class="btn-secondary" disabled>Export CSV</button>
+                            <button id="sql-export-json" class="btn-secondary" disabled>Export JSON</button>
+                            <span id="sql-status" class="sql-status"></span>
+                        </div>
+                        <div id="sql-error" class="sql-error" style="display:none;"></div>
+                        <div id="sql-results-container" class="sql-results-container">
+                            <p class="empty-state">Run a query to see results. Press Ctrl+Enter to execute.</p>
                         </div>
                     </div>
-                    <div class="nvd-sync-actions">
-                        <button id="nvd-sync-btn" class="btn-primary">Update (Modified Feed)</button>
-                        <button id="nvd-full-sync-btn" class="btn-secondary">Full Sync (All Years)</button>
-                    </div>
-                    <div id="nvd-sync-progress" style="display:none;">
-                        <p id="nvd-sync-message">Syncing...</p>
-                        <progress id="nvd-sync-bar" value="0" max="100"></progress>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <h3>NVD API Key</h3>
-                <p class="settings-description">Optional API key for faster NVD CVE lookups during authenticated scans</p>
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <label for="nvd-api-key">API Key</label>
-                        <div class="password-toggle-wrapper">
-                            <input type="password" id="nvd-api-key" placeholder="Enter NVD API key">
-                            <button type="button" class="btn-toggle-vis" id="nvd-key-toggle" title="Show/hide">👁</button>
+                    <div class="sql-sidebar">
+                        <div class="sql-history-header">Query History</div>
+                        <div id="sql-history-list" class="sql-history-list">
+                            <p class="text-muted" style="padding:8px;font-size:12px;">No queries yet.</p>
                         </div>
-                        <span class="setting-hint">Get a free key at <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank">nvd.nist.gov</a></span>
                     </div>
-                </div>
-                <div class="settings-actions" style="margin-top: 10px;">
-                    <button id="nvd-key-save" class="btn-primary">Save NVD Key</button>
-                    <span id="nvd-key-status" class="settings-status"></span>
                 </div>
             </div>
+        </main>
 
-            <div class="settings-section">
-                <h3>About</h3>
-                <p class="settings-description">Vulnerability Scanning Platform v1.0</p>
-                <p class="settings-description">A web-based network vulnerability scanner powered by Nmap.</p>
+        <!-- Log Panel (collapsible bottom panel) -->
+        <div class="log-panel" id="log-panel">
+            <div class="log-panel-header" id="log-panel-header">
+                <span class="log-panel-title">📋 Logs</span>
+                <div class="log-panel-controls">
+                    <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
+                    <button id="log-toggle" class="btn-small btn-secondary" title="Toggle logs">▼</button>
+                </div>
             </div>
-        </div>
-
-        <!-- SQL Tab -->
-        <div id="sql-tab" class="tab-content">
-            <h2>SQL Query</h2>
-            <div class="sql-layout">
-                <div class="sql-main">
-                    <div class="sql-editor-container">
-                        <textarea id="sql-editor">SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;</textarea>
-                    </div>
-                    <div class="sql-toolbar">
-                        <button id="sql-run-btn" class="btn-primary">▶ Run Query</button>
-                        <button id="sql-export-csv" class="btn-secondary" disabled>Export CSV</button>
-                        <button id="sql-export-json" class="btn-secondary" disabled>Export JSON</button>
-                        <span id="sql-status" class="sql-status"></span>
-                    </div>
-                    <div id="sql-error" class="sql-error" style="display:none;"></div>
-                    <div id="sql-results-container" class="sql-results-container">
-                        <p class="empty-state">Run a query to see results. Press Ctrl+Enter to execute.</p>
-                    </div>
-                </div>
-                <div class="sql-sidebar">
-                    <div class="sql-history-header">Query History</div>
-                    <div id="sql-history-list" class="sql-history-list">
-                        <p class="text-muted" style="padding:8px;font-size:12px;">No queries yet.</p>
-                    </div>
-                </div>
+            <div class="log-panel-body" id="log-panel-body">
+                <div id="log-content"></div>
             </div>
         </div>
     </div>
 
-    <!-- Log Panel (separate container, only visible on Scan tab) -->
-    <div class="log-container" id="log-container">
-        <div class="log-container-header">
-            <span class="log-container-title">&#128421; Scan Logs</span>
-            <div id="log-controls">
-                <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
-            </div>
-        </div>
-        <div id="log-content"></div>
-    </div>
-
-    </div><!-- /page-layout -->
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
 
     <!-- CVE Detail Modal -->
     <div id="cve-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <button class="modal-close" id="modal-close">&times;</button>
-            <div id="modal-body">
-                <!-- Content populated by JavaScript -->
-            </div>
+            <div id="modal-body"></div>
         </div>
     </div>
 
@@ -496,9 +449,15 @@
     <div id="asset-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content modal-wide">
             <button class="modal-close" id="asset-modal-close">&times;</button>
-            <div id="asset-modal-body">
-                <!-- Content populated by JavaScript -->
-            </div>
+            <div id="asset-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Generic Modal (Sites, Schedules, etc.) -->
+    <div id="generic-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-wide">
+            <button class="modal-close" id="generic-modal-close">&times;</button>
+            <div id="generic-modal-body"></div>
         </div>
     </div>
 
