@@ -27,43 +27,30 @@ def generate_report_from_existing(ip):
     if not validate_ip(ip):
         ip = resolve_target(ip)
 
-    import sqlite3
-    conn = sqlite3.connect(os.path.join(BASE_DIR, 'vuln_scan.db'))
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT MAX(scan_date) FROM scans WHERE ip = ?''', (ip,))
-        result = cursor.fetchone()
-        latest_date = result[0] if result else None
+    latest_scan = get_latest_scan(ip)
+    if not latest_scan:
+        raise ScanError(f"No scan data found for {ip}")
 
-        if not latest_date:
-            raise ScanError(f"No scan data found for {ip}")
+    latest_date = _latest_scan_date(ip)
+    previous_scan, previous_date = get_previous_scan(ip, latest_date)
+    vulnerabilities = get_unified_vulnerabilities(ip=ip)
 
-        cursor.execute('''SELECT protocol, port, state, service, product, version
-                          FROM scans WHERE ip = ? AND scan_date = ?''', (ip, latest_date))
-        latest_scan = cursor.fetchall()
-
-        if not latest_scan:
-            return [], {'added': [], 'removed': [], 'changed': [], 'latest_date': latest_date, 'previous_date': None}, []
-
-        previous_scan, previous_date = get_previous_scan(ip, latest_date)
-        vulnerabilities = get_unified_vulnerabilities(ip=ip)
-
-        if not previous_scan:
-            changes = {
-                'added': latest_scan, 'removed': [], 'changed': [],
-                'latest_date': latest_date, 'previous_date': None
-            }
-            return latest_scan, changes, vulnerabilities
-
-        changes = compare_scans(previous_scan, latest_scan)
-        changes['latest_date'] = latest_date
-        changes['previous_date'] = previous_date
-
+    if not previous_scan:
+        changes = {'added': latest_scan, 'removed': [], 'changed': [],
+                   'latest_date': latest_date, 'previous_date': None}
         return latest_scan, changes, vulnerabilities
-    except Exception as e:
-        raise ScanError(f"Database error: {e}")
-    finally:
-        conn.close()
+
+    changes = compare_scans(previous_scan, latest_scan)
+    changes['latest_date'] = latest_date
+    changes['previous_date'] = previous_date
+    return latest_scan, changes, vulnerabilities
+
+
+def _latest_scan_date(ip):
+    from sqlalchemy import func
+    from artemis.extensions import db
+    from artemis.models.scan import Scan
+    return db.session.query(func.max(Scan.scan_date)).filter(Scan.ip == ip).scalar()
 
 
 def generate_report(ip):
@@ -92,18 +79,13 @@ def generate_report(ip):
 
 def generate_report_plot(ip):
     """Generate a matplotlib plot showing port scan trends over time."""
-    import sqlite3
-    db_path = os.path.join(BASE_DIR, 'vuln_scan.db')
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    from sqlalchemy import func
+    from artemis.extensions import db
+    from artemis.models.scan import Scan
 
     try:
-        cursor.execute('''SELECT scan_date, COUNT(*)
-                          FROM scans
-                          WHERE ip = ?
-                          GROUP BY scan_date
-                          ORDER BY scan_date''', (ip,))
-        data = cursor.fetchall()
+        data = db.session.query(Scan.scan_date, func.count()).filter(
+            Scan.ip == ip).group_by(Scan.scan_date).order_by(Scan.scan_date).all()
 
         if not data:
             return
@@ -112,13 +94,9 @@ def generate_report_plot(ip):
         counts = []
         for row in data:
             try:
-                date_str = row[0]
-                if '.' in date_str:
-                    dates.append(datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f'))
-                else:
-                    dates.append(datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S'))
+                dates.append(datetime.fromisoformat(str(row[0]).replace(' ', 'T')))
                 counts.append(row[1])
-            except ValueError:
+            except (ValueError, TypeError):
                 continue
 
         if not dates:
@@ -140,7 +118,6 @@ def generate_report_plot(ip):
         logger.error(f"Error generating plot for {ip}: {e}")
     finally:
         plt.close()
-        conn.close()
 
 
 def generate_report_view(ip):

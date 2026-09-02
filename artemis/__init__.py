@@ -52,11 +52,6 @@ def create_app(config_name=None, start_background_services=True):
     # Auth middleware — protect API routes
     _setup_auth_middleware(app)
 
-    # Register SQL query blueprint
-    from artemis.api.sql import sql_bp
-    app.register_blueprint(sql_bp, url_prefix='/api/v1')
-    app.register_blueprint(sql_bp, url_prefix='/api', name='sql_legacy')
-
     # Register SocketIO event handlers
     from artemis import socketio_handlers
     socketio_handlers.register_socketio_handlers()
@@ -161,73 +156,36 @@ def _setup_auth_middleware(app):
                 return jsonify({'error': 'Read-only credentials cannot modify resources'}), 403
 
 
-def _auto_migrate(db_path):
-    """Add missing columns to existing tables. Safe to run repeatedly."""
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    # Define expected columns: (table, column, type, default)
-    migrations = [
-        ('agents', 'mac_address', 'TEXT', None),
-    ]
-
-    for table, column, col_type, default in migrations:
-        cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,))
-        if not cursor.fetchone():
-            continue
-        cursor.execute(f"PRAGMA table_info({table})")
-        existing = {row[1] for row in cursor.fetchall()}
-        if column not in existing:
-            default_clause = f" DEFAULT {default!r}" if default is not None else ""
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}{default_clause}")
-            logger.info(f"Migration: added {table}.{column} ({col_type})")
-
-    conn.commit()
-    conn.close()
-
-
 def _init_database(app):
-    """Initialize all database tables — mirrors the old vuln_scan.init_db()."""
-    db_path = app.config['DB_PATH']
+    """Prepare the databases.
 
+    Postgres (SQLALCHEMY_DATABASE_URI) is the system of record; its schema is
+    owned by Alembic (`flask db upgrade` in the container entrypoint), with
+    ``db.create_all()`` as a dev-only convenience. The NVD/CPE/ExploitDB feed
+    cache is a separate local SQLite file (``NVD_CACHE_PATH``).
+    """
     if app.config.get('AUTO_CREATE_SCHEMA', True):
         db.create_all()
+
+    # One-time copy of pre-Postgres application rows into Postgres.
+    try:
+        from artemis.services.legacy_migration import migrate_legacy_sqlite
+        migrate_legacy_sqlite(app)
+    except Exception as e:
+        logger.warning(f"Legacy SQLite migration skipped: {e}")
 
     if not app.config.get('INITIALIZE_LEGACY_SCHEMA', True):
         return
 
-    # Create the legacy raw-sqlite schema (scans, assets, fingerprints,
-    # vulnerabilities, settings, auth-scan tables, ...). The scan/asset/vuln
-    # services talk to this sqlite file directly via config['DB_PATH'] rather
-    # than through SQLAlchemy, so these tables must exist independently of the
-    # SQLAlchemy backend. When DATABASE_URL points at the same sqlite file
-    # (local dev) db.create_all() already covers the model-backed tables, but
-    # in a Postgres deployment DB_PATH is a separate database that nothing else
-    # initializes — without this the Assets tab and vuln storage silently fail
-    # with "no such table: scans".
-    try:
-        import vuln_scan
-        if getattr(vuln_scan, 'DB_PATH', db_path) != db_path:
-            vuln_scan.DB_PATH = db_path
-        vuln_scan.init_db()
-    except Exception as e:
-        logger.warning(f"Could not initialize legacy sqlite schema: {e}")
-
-    # Auto-migrate: add missing columns to existing tables
-    _auto_migrate(db_path)
-
-    # Also run legacy init for tables managed by external modules
-    try:
-        from nvd_feeds import init_nvd_tables
-        init_nvd_tables(db_path)
-    except Exception as e:
-        logger.warning(f"Could not initialize NVD tables: {e}")
-
-    try:
-        from cpe_dict import init_cpe_tables
-        init_cpe_tables(db_path)
-    except Exception as e:
-        logger.warning(f"Could not initialize CPE tables: {e}")
-
-    logger.info(f"Database initialized: {db_path}")
+    # Ensure the SQLite feed-cache schema exists (idempotent).
+    cache_path = app.config.get('NVD_CACHE_PATH')
+    if cache_path and cache_path != ':memory:':
+        for label, fn_path in (('NVD', 'nvd_feeds.init_nvd_tables'),
+                               ('CPE', 'cpe_dict.init_cpe_tables')):
+            try:
+                module_name, fn_name = fn_path.rsplit('.', 1)
+                fn = getattr(__import__(module_name, fromlist=[fn_name]), fn_name)
+                fn(cache_path)
+            except Exception as e:
+                logger.warning(f"Could not initialize {label} cache tables: {e}")
+        logger.info(f"NVD feed cache ready: {cache_path}")

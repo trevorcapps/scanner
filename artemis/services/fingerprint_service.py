@@ -1,14 +1,23 @@
-"""Fingerprint orchestration service — extracted from vuln_scan.py."""
+"""Fingerprint orchestration service.
+
+System of record: Postgres via the ``Fingerprint`` model. Rows are upserted on
+``(ip, port, protocol, signature_id)``.
+"""
 
 import json
-import sqlite3
 import logging
 from datetime import datetime
+
+from artemis.extensions import db
+from artemis.models.fingerprint_model import Fingerprint
+from artemis.services._db import upsert
 
 logger = logging.getLogger(__name__)
 
 # Singleton fingerprint engine
 _fingerprint_engine = None
+
+_MATCH_KEYS = ('port', 'protocol', 'signature_id')
 
 
 def get_fingerprint_engine():
@@ -25,172 +34,133 @@ def get_fingerprint_engine():
     return _fingerprint_engine
 
 
-def _get_db_path():
+def _write(ip, rows):
+    """Upsert a batch of fingerprint dicts. Each row carries at least
+    port/protocol/signature_id/name/category; the rest default sensibly."""
+    scan_date = datetime.now().isoformat()
+    stored = 0
+    for r in rows:
+        evidence = r.get('evidence')
+        values = {
+            'name': r.get('name'), 'category': r.get('category'),
+            'vendor': r.get('vendor', ''), 'version': r.get('version'),
+            'cpe': r.get('cpe'), 'confidence': r.get('confidence'),
+            'evidence_json': json.dumps(evidence) if evidence is not None else None,
+            'tls_subject_cn': r.get('tls_subject_cn'), 'tls_subject_org': r.get('tls_subject_org'),
+            'tls_issuer_org': r.get('tls_issuer_org'),
+            'tls_self_signed': 1 if r.get('tls_self_signed') else 0,
+            'http_title': r.get('http_title', ''), 'http_server': r.get('http_server', ''),
+            'favicon_hash': r.get('favicon_hash'), 'scan_date': scan_date,
+        }
+        upsert(Fingerprint,
+               {'ip': ip, 'port': r['port'], 'protocol': r['protocol'],
+                'signature_id': r['signature_id']},
+               values)
+        stored += 1
+    db.session.commit()
+    return stored
+
+
+def store_raw_fingerprints(ip, rows):
+    """Public helper for callers that already have fingerprint dicts
+    (Wappalyzer / JARM in socketio_handlers)."""
     try:
-        from flask import current_app
-        return current_app.config['DB_PATH']
-    except Exception:
-        import os
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), 'vuln_scan.db')
+        return _write(ip, rows)
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Database error storing raw fingerprints for {ip}: {e}")
+        return 0
 
 
 def store_fingerprints(ip, fingerprint_results):
-    """Store fingerprint results in the database."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-    scan_date = datetime.now().isoformat()
-
+    """Store engine fingerprint results (objects with .matches / .tls_info / .http_info)."""
+    rows = []
+    for fp in fingerprint_results:
+        tls = fp.tls_info or {}
+        http = fp.http_info or {}
+        for m in fp.matches:
+            if m.confidence < 10:
+                continue
+            rows.append({
+                'port': fp.port, 'protocol': fp.protocol,
+                'signature_id': m.signature_id, 'name': m.name, 'category': m.category,
+                'vendor': m.vendor, 'version': m.version, 'cpe': m.cpe,
+                'confidence': m.confidence, 'evidence': m.evidence,
+                'tls_subject_cn': tls.get('subject_cn'), 'tls_subject_org': tls.get('subject_org'),
+                'tls_issuer_org': tls.get('issuer_org'), 'tls_self_signed': tls.get('self_signed'),
+                'http_title': http.get('title', ''), 'http_server': http.get('server', ''),
+                'favicon_hash': fp.favicon_hash,
+            })
     try:
-        stored_count = 0
-        for fp_result in fingerprint_results:
-            for match in fp_result.matches:
-                if match.confidence < 10:
-                    continue
-
-                tls_info = fp_result.tls_info or {}
-                http_info = fp_result.http_info or {}
-
-                cursor.execute('''INSERT OR REPLACE INTO fingerprints
-                    (ip, port, protocol, signature_id, name, category, vendor,
-                     version, cpe, confidence, evidence_json,
-                     tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                     http_title, http_server, favicon_hash, scan_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (ip, fp_result.port, fp_result.protocol,
-                     match.signature_id, match.name, match.category, match.vendor,
-                     match.version, match.cpe, match.confidence,
-                     json.dumps(match.evidence),
-                     tls_info.get('subject_cn'), tls_info.get('subject_org'),
-                     tls_info.get('issuer_org'),
-                     1 if tls_info.get('self_signed') else 0,
-                     http_info.get('title', ''), http_info.get('server', ''),
-                     fp_result.favicon_hash, scan_date))
-                stored_count += 1
-
-        conn.commit()
-        logger.info(f"Stored {stored_count} fingerprint matches for {ip}")
-    except sqlite3.Error as e:
+        stored = _write(ip, rows)
+        logger.info(f"Stored {stored} fingerprint matches for {ip}")
+    except Exception as e:
+        db.session.rollback()
         logger.error(f"Database error storing fingerprints for {ip}: {e}")
-    finally:
-        conn.close()
 
 
 def store_fpx_results(ip, fpx_results):
     """Store fingerprintx protocol-level identification results."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-    scan_date = datetime.now().isoformat()
+    service_categories = {
+        'ssh': 'remote-access', 'rdp': 'remote-access', 'vnc': 'remote-access',
+        'telnet': 'remote-access',
+        'http': 'web-server', 'https': 'web-server',
+        'mysql': 'database', 'postgresql': 'database', 'mssql': 'database',
+        'mongodb': 'database', 'redis': 'database', 'elasticsearch': 'database',
+        'couchdb': 'database', 'cassandra': 'database', 'oracle': 'database',
+        'influxdb': 'database', 'neo4j': 'database', 'memcached': 'database',
+        'smtp': 'email', 'imap': 'email', 'pop3': 'email',
+        'ftp': 'file-transfer', 'smb': 'file-transfer', 'rsync': 'file-transfer',
+        'dns': 'dns', 'ldap': 'directory', 'snmp': 'network-management',
+        'ntp': 'network-service', 'dhcp': 'network-service',
+        'kafka': 'message-queue', 'mqtt': 'message-queue',
+        'modbus': 'industrial', 'ipmi': 'management',
+    }
+    service_vendors = {
+        'mysql': 'Oracle', 'mssql': 'Microsoft', 'postgresql': 'PostgreSQL',
+        'mongodb': 'MongoDB', 'redis': 'Redis', 'elasticsearch': 'Elastic',
+        'rdp': 'Microsoft', 'smb': 'Microsoft',
+    }
 
+    rows = []
+    for fpx in fpx_results:
+        svc = fpx.service
+        vendor = service_vendors.get(svc.lower(), '')
+        if svc.lower() == 'ssh':
+            vendor = 'OpenBSD' if fpx.version and 'openssh' in (fpx.version or '').lower() else 'Various'
+        evidence = [f'fpx_protocol_handshake:{svc}']
+        if fpx.metadata:
+            for k, v in fpx.metadata.items():
+                if v and isinstance(v, str) and len(v) < 200:
+                    evidence.append(f'fpx_meta:{k}={v[:100]}')
+        rows.append({
+            'port': fpx.port, 'protocol': fpx.transport,
+            'signature_id': f"fpx-{svc}",
+            'name': svc.upper() if len(svc) <= 5 else svc.title(),
+            'category': service_categories.get(svc.lower(), 'service'),
+            'vendor': vendor, 'version': fpx.version, 'cpe': None,
+            'confidence': 90, 'evidence': evidence,
+        })
     try:
-        stored_count = 0
-        for fpx in fpx_results:
-            sig_id = f"fpx-{fpx.service}"
-            name = fpx.service.upper() if len(fpx.service) <= 5 else fpx.service.title()
-
-            service_categories = {
-                'ssh': 'remote-access', 'rdp': 'remote-access', 'vnc': 'remote-access',
-                'telnet': 'remote-access',
-                'http': 'web-server', 'https': 'web-server',
-                'mysql': 'database', 'postgresql': 'database', 'mssql': 'database',
-                'mongodb': 'database', 'redis': 'database', 'elasticsearch': 'database',
-                'couchdb': 'database', 'cassandra': 'database', 'oracle': 'database',
-                'influxdb': 'database', 'neo4j': 'database', 'memcached': 'database',
-                'smtp': 'email', 'imap': 'email', 'pop3': 'email',
-                'ftp': 'file-transfer', 'smb': 'file-transfer', 'rsync': 'file-transfer',
-                'dns': 'dns', 'ldap': 'directory', 'snmp': 'network-management',
-                'ntp': 'network-service', 'dhcp': 'network-service',
-                'kafka': 'message-queue', 'mqtt': 'message-queue',
-                'modbus': 'industrial', 'ipmi': 'management',
-            }
-            category = service_categories.get(fpx.service.lower(), 'service')
-
-            service_vendors = {
-                'ssh': 'OpenBSD' if fpx.version and 'openssh' in (fpx.version or '').lower() else 'Various',
-                'mysql': 'Oracle', 'mssql': 'Microsoft', 'postgresql': 'PostgreSQL',
-                'mongodb': 'MongoDB', 'redis': 'Redis', 'elasticsearch': 'Elastic',
-                'rdp': 'Microsoft', 'smb': 'Microsoft',
-            }
-            vendor = service_vendors.get(fpx.service.lower(), '')
-
-            evidence = [f'fpx_protocol_handshake:{fpx.service}']
-            if fpx.metadata:
-                for k, v in fpx.metadata.items():
-                    if v and isinstance(v, str) and len(v) < 200:
-                        evidence.append(f'fpx_meta:{k}={v[:100]}')
-
-            confidence = 90
-
-            cursor.execute('''INSERT OR REPLACE INTO fingerprints
-                (ip, port, protocol, signature_id, name, category, vendor,
-                 version, cpe, confidence, evidence_json,
-                 tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                 http_title, http_server, favicon_hash, scan_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (ip, fpx.port, fpx.transport,
-                 sig_id, name, category, vendor,
-                 fpx.version, None, confidence,
-                 json.dumps(evidence),
-                 None, None, None, 0,
-                 '', '', None, scan_date))
-            stored_count += 1
-
-        conn.commit()
-        logger.info(f"Stored {stored_count} fingerprintx results for {ip}")
-    except sqlite3.Error as e:
+        stored = _write(ip, rows)
+        logger.info(f"Stored {stored} fingerprintx results for {ip}")
+    except Exception as e:
+        db.session.rollback()
         logger.error(f"Database error storing fpx results for {ip}: {e}")
-    finally:
-        conn.close()
 
 
 def get_fingerprints(ip, port=None):
     """Retrieve fingerprint data for an IP, optionally filtered by port."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-
     try:
+        q = Fingerprint.query.filter_by(ip=ip)
         if port is not None:
-            cursor.execute('''SELECT ip, port, protocol, signature_id, name, category, vendor,
-                              version, cpe, confidence, evidence_json,
-                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                              http_title, http_server, favicon_hash, scan_date
-                              FROM fingerprints
-                              WHERE ip = ? AND port = ?
-                              ORDER BY confidence DESC''', (ip, port))
+            q = q.filter_by(port=port).order_by(Fingerprint.confidence.desc())
         else:
-            cursor.execute('''SELECT ip, port, protocol, signature_id, name, category, vendor,
-                              version, cpe, confidence, evidence_json,
-                              tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                              http_title, http_server, favicon_hash, scan_date
-                              FROM fingerprints
-                              WHERE ip = ?
-                              ORDER BY port, confidence DESC''', (ip,))
-
-        results = []
-        for row in cursor.fetchall():
-            evidence = []
-            try:
-                evidence = json.loads(row[10]) if row[10] else []
-            except json.JSONDecodeError:
-                pass
-
-            results.append({
-                'ip': row[0], 'port': row[1], 'protocol': row[2],
-                'signature_id': row[3], 'name': row[4], 'category': row[5],
-                'vendor': row[6], 'version': row[7], 'cpe': row[8],
-                'confidence': row[9], 'evidence': evidence,
-                'tls_subject_cn': row[11], 'tls_subject_org': row[12],
-                'tls_issuer_org': row[13], 'tls_self_signed': bool(row[14]),
-                'http_title': row[15], 'http_server': row[16],
-                'favicon_hash': row[17], 'scan_date': row[18],
-            })
-
-        return results
-    except sqlite3.Error as e:
+            q = q.order_by(Fingerprint.port, Fingerprint.confidence.desc())
+        return [fp.to_dict() for fp in q.all()]
+    except Exception as e:
         logger.error(f"Database error getting fingerprints for {ip}: {e}")
         return []
-    finally:
-        conn.close()
 
 
 def get_fingerprint_summary(ip):
@@ -210,8 +180,4 @@ def get_fingerprint_summary(ip):
             all_techs[sig_id] = fp
 
     technologies = sorted(all_techs.values(), key=lambda t: t['confidence'], reverse=True)
-
-    return {
-        'technologies': technologies,
-        'by_port': by_port,
-    }
+    return {'technologies': technologies, 'by_port': by_port}

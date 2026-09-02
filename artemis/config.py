@@ -58,8 +58,24 @@ class Config:
         'SCAN_PROFILES_PATH',
         os.path.join(basedir, 'scan_profiles.json'))
 
-    # Database file path (for raw sqlite3 access where needed)
+    # Database file path (legacy). Retained as an alias: a few top-level modules
+    # (vuln_scan, nvd_feeds, cpe_dict) still import it. Application state now
+    # lives in Postgres (SQLALCHEMY_DATABASE_URI); this only backs the NVD cache
+    # and the one-time legacy-data migrator.
     DB_PATH = os.environ.get('DB_PATH', os.path.join(basedir, 'vuln_scan.db'))
+
+    # Local SQLite read-cache for NVD CVE feeds, the CPE dictionary and the
+    # ExploitDB mapping — ~3M+ rows of public data, rebuilt by `sync`. This is a
+    # derived cache, never the system of record. Defaults to the legacy DB file
+    # so the cache tables already present there are reused as-is.
+    NVD_CACHE_PATH = os.environ.get('NVD_CACHE_PATH') or DB_PATH
+
+    # Path to the pre-Postgres SQLite database. On first boot the migrator copies
+    # any application rows (assets, scans, vulnerabilities, ...) from here into
+    # Postgres, then records a sentinel and never runs again. Set to '' to skip.
+    LEGACY_SQLITE_PATH = os.environ.get('LEGACY_SQLITE_PATH')
+    if LEGACY_SQLITE_PATH is None:
+        LEGACY_SQLITE_PATH = DB_PATH
 
     # Debug
     DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'
@@ -78,6 +94,8 @@ class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     DB_PATH = ':memory:'
+    NVD_CACHE_PATH = ':memory:'
+    LEGACY_SQLITE_PATH = ''
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'cache+memory://'
     CELERY_TASK_ALWAYS_EAGER = True

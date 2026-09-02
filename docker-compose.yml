@@ -21,7 +21,11 @@ x-app-env: &app-env
   CELERY_BROKER_URL: redis://${REDIS_HOST:-redis}:6379/0
   CELERY_RESULT_BACKEND: redis://${REDIS_HOST:-redis}:6379/1
   CELERY_TASK_ALWAYS_EAGER: "false"
+  # Postgres (DATABASE_URL) is the system of record. DB_PATH / NVD_CACHE_PATH
+  # is the local SQLite read-cache for NVD/CPE/ExploitDB feeds only.
   DB_PATH: /data/vuln_scan.db
+  NVD_CACHE_PATH: /data/vuln_scan.db
+  LEGACY_SQLITE_PATH: /data/vuln_scan.db
   AUTO_CREATE_SCHEMA: "false"
   INITIALIZE_LEGACY_SCHEMA: "true"
   NVD_API_KEY: ${NVD_API_KEY:-}

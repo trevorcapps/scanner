@@ -210,39 +210,23 @@ def _sync_agent_to_asset(agent, data):
 
 
 def _store_agent_system_data(ip, data):
-    """Store agent-reported packages and system info in the DB for asset detail view."""
+    """Store agent-reported packages and system info for the asset detail view."""
     try:
-        import sqlite3
-        from flask import current_app
-        db_path = current_app.config['DB_PATH']
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Create agent_data table if not exists
-        cursor.execute('''CREATE TABLE IF NOT EXISTS agent_data (
-            ip TEXT PRIMARY KEY,
-            packages_json TEXT,
-            package_count INTEGER DEFAULT 0,
-            system_info_json TEXT,
-            os_info_json TEXT,
-            updated_at TEXT
-        )''')
+        from artemis.models.agent_data import AgentData
+        from artemis.services._db import upsert
 
         now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
         packages = data.get('packages', [])
-        pkg_count = data.get('package_count', len(packages))
-        system_info = data.get('system_info', {})
-        os_info = data.get('os_info', {})
-
-        cursor.execute('''INSERT OR REPLACE INTO agent_data
-            (ip, packages_json, package_count, system_info_json, os_info_json, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)''',
-            (ip, json.dumps(packages), pkg_count, json.dumps(system_info),
-             json.dumps(os_info), now))
-
-        conn.commit()
-        conn.close()
+        upsert(AgentData, {'ip': ip}, {
+            'packages_json': json.dumps(packages),
+            'package_count': data.get('package_count', len(packages)),
+            'system_info_json': json.dumps(data.get('system_info', {})),
+            'os_info_json': json.dumps(data.get('os_info', {})),
+            'updated_at': now,
+        })
+        db.session.commit()
     except Exception as e:
+        db.session.rollback()
         logger.warning(f"Failed to store agent system data for {ip}: {e}")
 
 

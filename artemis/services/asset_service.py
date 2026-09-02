@@ -1,95 +1,71 @@
-"""Asset CRUD & device classification service — extracted from vuln_scan.py."""
+"""Asset CRUD & device classification service.
+
+System of record: Postgres via the ``Asset`` / ``AgentData`` models.
+"""
 
 import json
-import sqlite3
 import logging
 from datetime import datetime
 
-from artemis.utils.validation import validate_ip, validate_hostname
-from artemis.utils.dns import ScanError
+from artemis.extensions import db
+from artemis.models.asset import Asset
+from artemis.models.agent_data import AgentData
 
 logger = logging.getLogger(__name__)
 
 
-def _get_db_path():
-    try:
-        from flask import current_app
-        return current_app.config['DB_PATH']
-    except Exception:
-        import os
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), 'vuln_scan.db')
-
-
 def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None):
-    """Store or update asset information in the database."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
+    """Create or update an asset row. Non-None fields overwrite; others are kept.
+
+    Returns True when a new asset row was created, else False.
+    """
     now = datetime.now().isoformat()
+    dns_info = dns_info or {}
+    os_info = os_info or {}
+
+    updates = {
+        'hostname': dns_info.get('hostname'),
+        'reverse_dns': dns_info.get('reverse_dns'),
+        'aliases_json': json.dumps(dns_info['aliases']) if dns_info.get('aliases') is not None else None,
+        'os_name': os_info.get('os_name'),
+        'os_family': os_info.get('os_family'),
+        'os_vendor': os_info.get('os_vendor'),
+        'os_accuracy': os_info.get('os_accuracy'),
+        'device_type': os_info.get('device_type'),
+        'mac_address': mac_address,
+        'mac_vendor': mac_vendor,
+    }
 
     try:
-        cursor.execute('SELECT id, scan_count, first_seen FROM assets WHERE ip = ?', (ip,))
-        existing = cursor.fetchone()
+        asset = Asset.query.filter_by(ip=ip).first()
+        created = asset is None
+        if created:
+            asset = Asset(ip=ip, first_seen=now, scan_count=0)
+            db.session.add(asset)
 
-        hostname = dns_info.get('hostname') if dns_info else None
-        reverse_dns = dns_info.get('reverse_dns') if dns_info else None
-        aliases_json = json.dumps(dns_info.get('aliases', [])) if dns_info else None
-
-        os_name = os_info.get('os_name') if os_info else None
-        os_family = os_info.get('os_family') if os_info else None
-        os_vendor = os_info.get('os_vendor') if os_info else None
-        os_accuracy = os_info.get('os_accuracy') if os_info else None
-        device_type = os_info.get('device_type') if os_info else None
-
-        if existing:
-            cursor.execute('''UPDATE assets SET
-                hostname = COALESCE(?, hostname),
-                reverse_dns = COALESCE(?, reverse_dns),
-                aliases_json = COALESCE(?, aliases_json),
-                os_name = COALESCE(?, os_name),
-                os_family = COALESCE(?, os_family),
-                os_vendor = COALESCE(?, os_vendor),
-                os_accuracy = COALESCE(?, os_accuracy),
-                device_type = COALESCE(?, device_type),
-                mac_address = COALESCE(?, mac_address),
-                mac_vendor = COALESCE(?, mac_vendor),
-                last_seen = ?,
-                scan_count = scan_count + 1
-                WHERE ip = ?''',
-                (hostname, reverse_dns, aliases_json, os_name, os_family,
-                 os_vendor, os_accuracy, device_type, mac_address, mac_vendor, now, ip))
-        else:
-            cursor.execute('''INSERT INTO assets
-                (ip, hostname, reverse_dns, aliases_json, os_name, os_family,
-                 os_vendor, os_accuracy, device_type, mac_address, mac_vendor,
-                 first_seen, last_seen, scan_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)''',
-                (ip, hostname, reverse_dns, aliases_json, os_name, os_family,
-                 os_vendor, os_accuracy, device_type, mac_address, mac_vendor, now, now))
-
-        conn.commit()
-    except sqlite3.Error as e:
+        for field, value in updates.items():
+            if value is not None:
+                setattr(asset, field, value)
+        asset.last_seen = now
+        asset.scan_count = (asset.scan_count or 0) + 1
+        db.session.commit()
+        return created
+    except Exception as e:
+        db.session.rollback()
         logger.error(f"Database error storing asset info for {ip}: {e}")
-    finally:
-        conn.close()
+        return False
 
 
 def get_asset_details(ip):
-    """Retrieve full asset details including ports, vulnerabilities, and metadata."""
-    from artemis.services.scan_service import get_latest_scan, get_open_ports_for_ip
+    """Full asset detail: metadata + ports + vulns + fingerprints + auth-scan data."""
     from artemis.services.vuln_service import get_vulnerability_counts_by_severity, get_vulnerabilities
     from artemis.services.fingerprint_service import get_fingerprint_summary
     from artemis.services.auth_scan_service import get_asset_os_details, get_installed_software, get_cve_matches
-
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
+    from artemis.models.scan import Scan
+    from sqlalchemy import func
 
     try:
-        cursor.execute('''SELECT ip, hostname, reverse_dns, aliases_json,
-                          os_name, os_family, os_vendor, os_accuracy, device_type,
-                          mac_address, mac_vendor, first_seen, last_seen, scan_count
-                          FROM assets WHERE ip = ?''', (ip,))
-        asset_row = cursor.fetchone()
+        row = Asset.query.filter_by(ip=ip).first()
 
         asset = {
             'ip': ip, 'hostname': None, 'reverse_dns': None, 'aliases': [],
@@ -97,36 +73,29 @@ def get_asset_details(ip):
             'os_accuracy': None, 'device_type': None,
             'mac_address': None, 'mac_vendor': None,
             'first_seen': None, 'last_seen': None, 'scan_count': 0,
-            'ports': [], 'vulnerabilities': []
+            'ports': [], 'vulnerabilities': [],
         }
 
-        if asset_row:
-            asset['hostname'] = asset_row[1]
-            asset['reverse_dns'] = asset_row[2]
+        if row:
+            asset.update({
+                'hostname': row.hostname, 'reverse_dns': row.reverse_dns,
+                'os_name': row.os_name, 'os_family': row.os_family,
+                'os_vendor': row.os_vendor, 'os_accuracy': row.os_accuracy,
+                'device_type': row.device_type, 'mac_address': row.mac_address,
+                'mac_vendor': row.mac_vendor, 'first_seen': row.first_seen,
+                'last_seen': row.last_seen, 'scan_count': row.scan_count,
+            })
             try:
-                asset['aliases'] = json.loads(asset_row[3]) if asset_row[3] else []
-            except json.JSONDecodeError:
+                asset['aliases'] = json.loads(row.aliases_json) if row.aliases_json else []
+            except (json.JSONDecodeError, TypeError):
                 asset['aliases'] = []
-            asset['os_name'] = asset_row[4]
-            asset['os_family'] = asset_row[5]
-            asset['os_vendor'] = asset_row[6]
-            asset['os_accuracy'] = asset_row[7]
-            asset['device_type'] = asset_row[8]
-            asset['mac_address'] = asset_row[9]
-            asset['mac_vendor'] = asset_row[10]
-            asset['first_seen'] = asset_row[11]
-            asset['last_seen'] = asset_row[12]
-            asset['scan_count'] = asset_row[13]
 
-        cursor.execute('''SELECT MAX(scan_date) FROM scans WHERE ip = ?''', (ip,))
-        latest = cursor.fetchone()
-        if latest and latest[0]:
-            cursor.execute('''SELECT protocol, port, state, service, product, version
-                              FROM scans WHERE ip = ? AND scan_date = ?''', (ip, latest[0]))
-            for row in cursor.fetchall():
+        latest = db.session.query(func.max(Scan.scan_date)).filter(Scan.ip == ip).scalar()
+        if latest:
+            for s in Scan.query.filter_by(ip=ip, scan_date=latest).all():
                 asset['ports'].append({
-                    'protocol': row[0], 'port': row[1], 'state': row[2],
-                    'service': row[3], 'product': row[4], 'version': row[5]
+                    'protocol': s.protocol, 'port': s.port, 'state': s.state,
+                    'service': s.service, 'product': s.product, 'version': s.version,
                 })
 
         asset['vuln_counts'] = get_vulnerability_counts_by_severity(ip)
@@ -139,56 +108,44 @@ def get_asset_details(ip):
         asset['auth_os'] = get_asset_os_details(ip)
         asset['installed_software'] = get_installed_software(ip)
         asset['cve_matches'] = get_cve_matches(ip)
-
-        # Agent-reported data
         asset['agent_data'] = _get_agent_data(ip)
 
         return asset
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Database error getting asset details for {ip}: {e}")
         return None
-    finally:
-        conn.close()
 
 
 def _get_agent_data(ip):
-    """Retrieve agent-reported system data for an asset."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
+    """Latest agent-reported system data for an asset, or None."""
     try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_data'")
-        if not cursor.fetchone():
-            return None
-        cursor.execute('SELECT packages_json, package_count, system_info_json, os_info_json, updated_at FROM agent_data WHERE ip = ?', (ip,))
-        row = cursor.fetchone()
-        if not row:
-            return None
-        packages = []
-        try:
-            packages = json.loads(row[0]) if row[0] else []
-        except (json.JSONDecodeError, TypeError):
-            pass
-        system_info = {}
-        try:
-            system_info = json.loads(row[2]) if row[2] else {}
-        except (json.JSONDecodeError, TypeError):
-            pass
-        os_info = {}
-        try:
-            os_info = json.loads(row[3]) if row[3] else {}
-        except (json.JSONDecodeError, TypeError):
-            pass
-        return {
-            'packages': packages,
-            'package_count': row[1] or 0,
-            'system_info': system_info,
-            'os_info': os_info,
-            'updated_at': row[4],
-        }
-    except sqlite3.Error:
+        row = AgentData.query.filter_by(ip=ip).first()
+        return row.to_dict() if row else None
+    except Exception:
         return None
-    finally:
-        conn.close()
+
+
+def delete_asset(ip):
+    """Purge an asset and every row keyed to its IP across the scan pipeline."""
+    from artemis.models.scan import Scan
+    from artemis.models.fingerprint_model import Fingerprint
+    from artemis.models.vulnerability import Vulnerability
+    from artemis.models.cve_match import CveMatch
+    from artemis.models.software import InstalledSoftware
+    from artemis.models.asset_os import AssetOsDetails
+
+    removed = {}
+    try:
+        for model in (Scan, Fingerprint, Vulnerability, CveMatch,
+                      InstalledSoftware, AssetOsDetails, AgentData, Asset):
+            removed[model.__tablename__] = model.query.filter_by(ip=ip).delete()
+        db.session.commit()
+        logger.info(f"Deleted asset {ip}: {removed}")
+        return removed
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting asset {ip}: {e}")
+        raise
 
 
 def update_device_type(ip):
@@ -198,40 +155,33 @@ def update_device_type(ip):
     scanner_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if scanner_dir not in sys.path:
         sys.path.insert(0, scanner_dir)
-    from device_type import classify_device, get_device_icon
+    from device_type import classify_device
     from artemis.services.scan_service import get_open_ports_for_ip
     from artemis.services.fingerprint_service import get_fingerprints
 
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
     try:
-        cursor.execute('SELECT os_name, os_family, os_vendor, os_accuracy, device_type, mac_vendor FROM assets WHERE ip = ?', (ip,))
-        row = cursor.fetchone()
-        if not row:
+        asset = Asset.query.filter_by(ip=ip).first()
+        if not asset:
             return None
 
         os_info = {
-            'os_name': row[0], 'os_family': row[1], 'os_vendor': row[2],
-            'os_accuracy': row[3], 'device_type': row[4]
+            'os_name': asset.os_name, 'os_family': asset.os_family,
+            'os_vendor': asset.os_vendor, 'os_accuracy': asset.os_accuracy,
+            'device_type': asset.device_type,
         }
-        mac_vendor = row[5]
-
-        open_ports = get_open_ports_for_ip(ip)
-        fingerprints = get_fingerprints(ip)
 
         device_type = classify_device(
             os_info=os_info,
-            mac_vendor=mac_vendor,
-            open_ports=open_ports,
-            fingerprints=fingerprints
+            mac_vendor=asset.mac_vendor,
+            open_ports=get_open_ports_for_ip(ip),
+            fingerprints=get_fingerprints(ip),
         )
 
-        cursor.execute('UPDATE assets SET device_type = ? WHERE ip = ?', (device_type, ip))
-        conn.commit()
+        asset.device_type = device_type
+        db.session.commit()
         logger.info(f"Updated device type for {ip}: {device_type}")
         return device_type
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error updating device type for {ip}: {e}")
         return None
-    finally:
-        conn.close()

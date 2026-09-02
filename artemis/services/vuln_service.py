@@ -1,4 +1,11 @@
-"""Vulnerability scanning orchestration service — extracted from vuln_scan.py."""
+"""Vulnerability scanning orchestration service.
+
+System of record: Postgres via the ``Vulnerability`` / ``CveMatch`` /
+``InstalledSoftware`` models. The one deliberate exception is the NVD enrichment
+step in ``get_unified_vulnerabilities``, which reads the local SQLite NVD cache
+(``NVD_CACHE_PATH``) — public, re-syncable feed data that is not the system of
+record.
+"""
 
 import json
 import sqlite3
@@ -8,7 +15,11 @@ import urllib.error
 import time
 from datetime import datetime
 
-from artemis.utils.dns import ScanError
+from artemis.extensions import db
+from artemis.models.vulnerability import Vulnerability
+from artemis.models.cve_match import CveMatch
+from artemis.models.software import InstalledSoftware
+from artemis.services._db import upsert
 
 logger = logging.getLogger(__name__)
 
@@ -17,18 +28,16 @@ NVD_API_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_API_DELAY = 0.6
 
 
-def _get_db_path():
+def _nvd_cache_path():
     try:
         from flask import current_app
-        return current_app.config['DB_PATH']
+        return current_app.config.get('NVD_CACHE_PATH') or current_app.config.get('DB_PATH')
     except Exception:
-        import os
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), 'vuln_scan.db')
+        return None
 
 
 def fetch_nvd_data(cve_id):
-    """Fetch CVE data from NVD API."""
+    """Fetch CVE data from the live NVD API."""
     if not cve_id or not cve_id.upper().startswith('CVE-'):
         return None
 
@@ -49,18 +58,12 @@ def fetch_nvd_data(cve_id):
         cvss_vector = None
         metrics = cve_data.get('metrics', {})
 
-        if 'cvssMetricV31' in metrics:
-            cvss_data = metrics['cvssMetricV31'][0]['cvssData']
-            cvss_score = cvss_data.get('baseScore')
-            cvss_vector = cvss_data.get('vectorString')
-        elif 'cvssMetricV30' in metrics:
-            cvss_data = metrics['cvssMetricV30'][0]['cvssData']
-            cvss_score = cvss_data.get('baseScore')
-            cvss_vector = cvss_data.get('vectorString')
-        elif 'cvssMetricV2' in metrics:
-            cvss_data = metrics['cvssMetricV2'][0]['cvssData']
-            cvss_score = cvss_data.get('baseScore')
-            cvss_vector = cvss_data.get('vectorString')
+        for key in ('cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2'):
+            if key in metrics:
+                cvss_data = metrics[key][0]['cvssData']
+                cvss_score = cvss_data.get('baseScore')
+                cvss_vector = cvss_data.get('vectorString')
+                break
 
         description = ''
         for desc in cve_data.get('descriptions', []):
@@ -77,22 +80,13 @@ def fetch_nvd_data(cve_id):
             if cwe_id:
                 break
 
-        references = []
-        for ref in cve_data.get('references', [])[:5]:
-            references.append({
-                'url': ref.get('url', ''),
-                'source': ref.get('source', '')
-            })
-
-        published_date = cve_data.get('published', '')
+        references = [{'url': ref.get('url', ''), 'source': ref.get('source', '')}
+                      for ref in cve_data.get('references', [])[:5]]
 
         result = {
-            'cvss_score': cvss_score,
-            'cvss_vector': cvss_vector,
-            'description': description,
-            'cwe_id': cwe_id,
-            'references': references,
-            'published_date': published_date
+            'cvss_score': cvss_score, 'cvss_vector': cvss_vector,
+            'description': description, 'cwe_id': cwe_id,
+            'references': references, 'published_date': cve_data.get('published', ''),
         }
 
         time.sleep(NVD_API_DELAY)
@@ -113,19 +107,28 @@ def fetch_nvd_data(cve_id):
         return None
 
 
+def _severity_from_score(score):
+    if score is None:
+        return None
+    if score >= 9.0:
+        return 'critical'
+    if score >= 7.0:
+        return 'high'
+    if score >= 4.0:
+        return 'medium'
+    return 'low'
+
+
 def store_vulnerabilities(ip, vulnerabilities):
-    """Store vulnerability scan results in the database, enriching CVEs with NVD data."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-    scan_date = datetime.now()
+    """Store Nuclei findings, enriching CVEs with NVD data. Returns the stored dicts."""
+    scan_date = datetime.now().isoformat()
+    stored = []
 
     try:
-        stored_count = 0
         for vuln in vulnerabilities:
             vuln_id = vuln['vuln_id']
             description = vuln['description']
             severity = vuln['severity']
-
             cvss_score = vuln.get('cvss_score')
             cvss_vector = None
             cwe_id = vuln.get('cwe_id')
@@ -157,139 +160,154 @@ def store_vulnerabilities(ip, vulnerabilities):
                                 existing_refs.append(ref)
                         references_json = json.dumps(existing_refs)
 
-                    if cvss_score is not None:
-                        if cvss_score >= 9.0:
-                            severity = 'critical'
-                        elif cvss_score >= 7.0:
-                            severity = 'high'
-                        elif cvss_score >= 4.0:
-                            severity = 'medium'
-                        else:
-                            severity = 'low'
+                    severity = _severity_from_score(cvss_score) or severity
 
-            cursor.execute('''INSERT OR REPLACE INTO vulnerabilities
-                              (ip, port, protocol, vuln_id, vuln_name, severity, description,
-                               cvss_score, cvss_vector, cwe_id, references_json, published_date, scan_date)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (ip, vuln['port'], vuln['protocol'], vuln_id,
-                            vuln['vuln_name'], severity, description,
-                            cvss_score, cvss_vector, cwe_id, references_json, published_date, scan_date))
-            if cursor.rowcount > 0:
-                stored_count += 1
-        conn.commit()
-        logger.info(f"Stored/updated {stored_count} vulnerabilities for {ip}")
-    except sqlite3.Error as e:
+            row = upsert(Vulnerability,
+                         {'ip': ip, 'port': vuln['port'], 'protocol': vuln['protocol'],
+                          'vuln_id': vuln_id},
+                         {'vuln_name': vuln['vuln_name'], 'severity': severity,
+                          'description': description, 'cvss_score': cvss_score,
+                          'cvss_vector': cvss_vector, 'cwe_id': cwe_id,
+                          'references_json': references_json,
+                          'published_date': published_date, 'scan_date': scan_date})
+            stored.append(row)
+
+        db.session.commit()
+        result = [r.to_dict() for r in stored]
+        logger.info(f"Stored/updated {len(result)} vulnerabilities for {ip}")
+        return result
+    except Exception as e:
+        db.session.rollback()
         logger.error(f"Database error storing vulnerabilities: {e}")
-    finally:
-        conn.close()
+        return []
 
 
 def get_vulnerabilities(ip=None):
-    """Retrieve vulnerabilities from database, optionally filtered by IP."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-
+    """Retrieve vulnerabilities, optionally filtered by IP."""
     try:
+        q = Vulnerability.query
         if ip:
-            cursor.execute('''SELECT ip, port, protocol, vuln_id, vuln_name, severity, description,
-                              cvss_score, cvss_vector, cwe_id, references_json, published_date, scan_date
-                              FROM vulnerabilities WHERE ip = ? ORDER BY cvss_score DESC, scan_date DESC''', (ip,))
-        else:
-            cursor.execute('''SELECT ip, port, protocol, vuln_id, vuln_name, severity, description,
-                              cvss_score, cvss_vector, cwe_id, references_json, published_date, scan_date
-                              FROM vulnerabilities ORDER BY cvss_score DESC, scan_date DESC''')
-
-        results = cursor.fetchall()
-        vulnerabilities = []
-        for row in results:
-            references = []
-            if row[10]:
-                try:
-                    references = json.loads(row[10])
-                except json.JSONDecodeError:
-                    pass
-
-            vulnerabilities.append({
-                'ip': row[0], 'port': row[1], 'protocol': row[2],
-                'vuln_id': row[3], 'vuln_name': row[4], 'severity': row[5],
-                'description': row[6], 'cvss_score': row[7], 'cvss_vector': row[8],
-                'cwe_id': row[9], 'references': references,
-                'published_date': row[11], 'scan_date': row[12]
-            })
-        return vulnerabilities
-    except sqlite3.Error as e:
+            q = q.filter_by(ip=ip)
+        q = q.order_by(Vulnerability.cvss_score.desc().nullslast(),
+                       Vulnerability.scan_date.desc())
+        return [v.to_dict() for v in q.all()]
+    except Exception as e:
         logger.error(f"Database error retrieving vulnerabilities: {e}")
         return []
-    finally:
-        conn.close()
 
 
 def get_vulnerability_counts_by_severity(ip):
-    """Get vulnerability counts by severity for a specific IP."""
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-
+    """Vulnerability counts by severity for a specific IP."""
+    from sqlalchemy import func
     try:
-        cursor.execute('''SELECT severity, COUNT(*) FROM vulnerabilities
-                          WHERE ip = ? GROUP BY severity''', (ip,))
-        counts = dict(cursor.fetchall())
+        rows = db.session.query(Vulnerability.severity, func.count()).filter(
+            Vulnerability.ip == ip).group_by(Vulnerability.severity).all()
+        counts = {sev: n for sev, n in rows}
         return {
-            'critical': counts.get('critical', 0),
-            'high': counts.get('high', 0),
-            'medium': counts.get('medium', 0),
-            'low': counts.get('low', 0),
-            'info': counts.get('info', 0),
-            'total': sum(counts.values())
+            'critical': counts.get('critical', 0), 'high': counts.get('high', 0),
+            'medium': counts.get('medium', 0), 'low': counts.get('low', 0),
+            'info': counts.get('info', 0), 'total': sum(counts.values()),
         }
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Database error getting severity counts: {e}")
         return {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0, 'total': 0}
-    finally:
+
+
+def _enrich_from_nvd_cache(unified):
+    """Step 3: enrich unified findings from the local SQLite NVD cache."""
+    path = _nvd_cache_path()
+    if not path or path == ':memory:':
+        return
+    try:
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cves'")
+        if not cur.fetchone():
+            conn.close()
+            return
+
+        for cve_id, entry in unified.items():
+            if not cve_id.upper().startswith('CVE-'):
+                continue
+            cur.execute('''SELECT description, cvss_v2_score, cvss_v2_vector,
+                           cvss_v3_score, cvss_v3_vector, published_date, last_modified,
+                           source_json FROM nvd_cves WHERE cve_id = ?''', (cve_id,))
+            nvd_row = cur.fetchone()
+            if not nvd_row:
+                continue
+
+            if nvd_row['description'] and len(nvd_row['description']) > len(entry['description']):
+                entry['description'] = nvd_row['description']
+            if nvd_row['cvss_v3_score']:
+                entry['cvss_v3_score'] = nvd_row['cvss_v3_score']
+                entry['cvss_score'] = nvd_row['cvss_v3_score']
+            if nvd_row['cvss_v2_score']:
+                entry['cvss_v2_score'] = nvd_row['cvss_v2_score']
+                if not entry['cvss_score']:
+                    entry['cvss_score'] = nvd_row['cvss_v2_score']
+            if nvd_row['cvss_v3_vector']:
+                entry['cvss_vector'] = nvd_row['cvss_v3_vector']
+            elif nvd_row['cvss_v2_vector'] and not entry['cvss_vector']:
+                entry['cvss_vector'] = nvd_row['cvss_v2_vector']
+            if nvd_row['published_date']:
+                entry['published_date'] = nvd_row['published_date']
+            if nvd_row['last_modified']:
+                entry['last_modified'] = nvd_row['last_modified']
+
+            if nvd_row['source_json']:
+                try:
+                    src = json.loads(nvd_row['source_json'])
+                    if not entry['cwe_id']:
+                        for weakness in src.get('weaknesses', []):
+                            for desc in weakness.get('description', []):
+                                if desc.get('value', '').startswith('CWE-'):
+                                    entry['cwe_id'] = desc['value']
+                                    break
+                            if entry['cwe_id']:
+                                break
+                    existing_urls = {r.get('url') for r in entry['references']}
+                    for ref in src.get('references', [])[:10]:
+                        url = ref.get('url', '')
+                        if url and url not in existing_urls:
+                            entry['references'].append({'url': url, 'source': ref.get('source', 'NVD')})
+                            existing_urls.add(url)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            sev = _severity_from_score(entry['cvss_score'])
+            if sev and (entry['cvss_score'] or 0) > 0:
+                entry['severity'] = sev
         conn.close()
+    except Exception as e:
+        logger.debug(f"NVD enrichment error: {e}")
 
 
 def get_unified_vulnerabilities(ip=None, source=None, has_exploit=None, search=None):
-    """Get unified vulnerabilities from all sources, deduplicated by CVE ID.
-
-    This is a large function extracted as-is from vuln_scan.py.
-    """
-    conn = sqlite3.connect(_get_db_path())
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
+    """Unified vulnerabilities from all sources, deduplicated by CVE ID."""
     try:
         unified = {}
 
-        # 1. Fetch from vulnerabilities table (Nuclei results)
-        vuln_query = '''SELECT ip, port, protocol, vuln_id, vuln_name, severity, description,
-                        cvss_score, cvss_vector, cwe_id, references_json, published_date, scan_date
-                        FROM vulnerabilities'''
-        vuln_params = []
+        # 1. Nuclei results (vulnerabilities table)
+        vq = Vulnerability.query
         if ip:
-            vuln_query += ' WHERE ip = ?'
-            vuln_params.append(ip)
-
-        cursor.execute(vuln_query, vuln_params)
-        for row in cursor.fetchall():
-            vuln_id = row['vuln_id']
+            vq = vq.filter_by(ip=ip)
+        for row in vq.all():
+            vuln_id = row.vuln_id
             cve_id = vuln_id.upper() if vuln_id.upper().startswith('CVE-') else vuln_id
-
             references = []
-            if row['references_json']:
+            if row.references_json:
                 try:
-                    references = json.loads(row['references_json'])
+                    references = json.loads(row.references_json)
                 except json.JSONDecodeError:
                     pass
-
-            asset_key = f"{row['ip']}:{row['port']}/{row['protocol']}"
+            asset_key = f"{row.ip}:{row.port}/{row.protocol}"
 
             if cve_id in unified:
                 entry = unified[cve_id]
                 if asset_key not in [a['key'] for a in entry['affected_assets']]:
-                    entry['affected_assets'].append({
-                        'key': asset_key, 'ip': row['ip'],
-                        'port': row['port'], 'protocol': row['protocol']
-                    })
+                    entry['affected_assets'].append({'key': asset_key, 'ip': row.ip,
+                                                     'port': row.port, 'protocol': row.protocol})
                 if 'nuclei' not in entry['detection_sources']:
                     entry['detection_sources'].append('nuclei')
                 existing_urls = {r.get('url') for r in entry['references']}
@@ -300,213 +318,116 @@ def get_unified_vulnerabilities(ip=None, source=None, has_exploit=None, search=N
                 if not entry.get('template_id'):
                     entry['template_id'] = vuln_id if not vuln_id.upper().startswith('CVE-') else ''
                 if not entry.get('nuclei_scan_date'):
-                    entry['nuclei_scan_date'] = row['scan_date']
+                    entry['nuclei_scan_date'] = row.scan_date
             else:
                 unified[cve_id] = {
-                    'cve_id': cve_id, 'vuln_name': row['vuln_name'],
-                    'severity': row['severity'], 'description': row['description'] or '',
-                    'cvss_score': row['cvss_score'], 'cvss_v3_score': row['cvss_score'],
-                    'cvss_v2_score': None, 'cvss_vector': row['cvss_vector'],
-                    'cwe_id': row['cwe_id'], 'references': references,
-                    'published_date': row['published_date'], 'last_modified': None,
-                    'has_exploit': False, 'exploit_ids': '', 'exploit_url': '',
-                    'affected_cpe': '',
-                    'affected_assets': [{'key': asset_key, 'ip': row['ip'],
-                                         'port': row['port'], 'protocol': row['protocol']}],
+                    'cve_id': cve_id, 'vuln_name': row.vuln_name, 'severity': row.severity,
+                    'description': row.description or '', 'cvss_score': row.cvss_score,
+                    'cvss_v3_score': row.cvss_score, 'cvss_v2_score': None,
+                    'cvss_vector': row.cvss_vector, 'cwe_id': row.cwe_id, 'references': references,
+                    'published_date': row.published_date, 'last_modified': None,
+                    'has_exploit': False, 'exploit_ids': '', 'exploit_url': '', 'affected_cpe': '',
+                    'affected_assets': [{'key': asset_key, 'ip': row.ip, 'port': row.port,
+                                         'protocol': row.protocol}],
                     'detection_sources': ['nuclei'],
                     'template_id': vuln_id if not vuln_id.upper().startswith('CVE-') else '',
-                    'nuclei_scan_date': row['scan_date'], 'scan_date': row['scan_date'],
+                    'nuclei_scan_date': row.scan_date, 'scan_date': row.scan_date,
                 }
 
-        # 2. Fetch from cve_matches table
-        cve_query = '''SELECT ip, cve_id, severity, cvss_score, description, affected_cpe,
-                       has_exploit, exploit_ids, exploit_url, scan_date
-                       FROM cve_matches'''
-        cve_params = []
+        # 2. cve_matches table (auth scan / vulscan)
+        cq = CveMatch.query
         if ip:
-            cve_query += ' WHERE ip = ?'
-            cve_params.append(ip)
-
-        cursor.execute(cve_query, cve_params)
-        for row in cursor.fetchall():
-            cve_id = row['cve_id'].upper() if row['cve_id'] else ''
+            cq = cq.filter_by(ip=ip)
+        sw_ips = {r[0] for r in db.session.query(InstalledSoftware.ip).distinct().all()}
+        for row in cq.all():
+            cve_id = (row.cve_id or '').upper()
             if not cve_id:
                 continue
-
-            asset_key = f"{row['ip']}:0/tcp"
-
-            det_source = 'nvd-local'
-            cursor2 = conn.cursor()
-            cursor2.execute('SELECT COUNT(*) FROM installed_software WHERE ip = ?', (row['ip'],))
-            has_sw = cursor2.fetchone()[0] > 0
-            if has_sw:
-                det_source = 'auth-scan'
+            asset_key = f"{row.ip}:0/tcp"
+            det_source = 'auth-scan' if row.ip in sw_ips else 'nvd-local'
 
             if cve_id in unified:
                 entry = unified[cve_id]
                 if asset_key not in [a['key'] for a in entry['affected_assets']]:
-                    entry['affected_assets'].append({
-                        'key': asset_key, 'ip': row['ip'], 'port': 0, 'protocol': 'tcp'
-                    })
+                    entry['affected_assets'].append({'key': asset_key, 'ip': row.ip,
+                                                     'port': 0, 'protocol': 'tcp'})
                 if det_source not in entry['detection_sources']:
                     entry['detection_sources'].append(det_source)
-                if row['has_exploit']:
+                if row.has_exploit:
                     entry['has_exploit'] = True
-                    if row['exploit_ids'] and not entry['exploit_ids']:
-                        entry['exploit_ids'] = row['exploit_ids']
-                    if row['exploit_url'] and not entry['exploit_url']:
-                        entry['exploit_url'] = row['exploit_url']
-                if row['description'] and len(row['description']) > len(entry.get('description', '')):
-                    entry['description'] = row['description']
-                if row['affected_cpe'] and row['affected_cpe'] not in (entry.get('affected_cpe') or ''):
-                    existing = entry.get('affected_cpe', '')
-                    entry['affected_cpe'] = (existing + ', ' + row['affected_cpe']).strip(', ')
+                    if row.exploit_ids and not entry['exploit_ids']:
+                        entry['exploit_ids'] = row.exploit_ids
+                    if row.exploit_url and not entry['exploit_url']:
+                        entry['exploit_url'] = row.exploit_url
+                if row.description and len(row.description) > len(entry.get('description', '')):
+                    entry['description'] = row.description
+                if row.affected_cpe and row.affected_cpe not in (entry.get('affected_cpe') or ''):
+                    entry['affected_cpe'] = (entry.get('affected_cpe', '') + ', ' + row.affected_cpe).strip(', ')
             else:
                 unified[cve_id] = {
-                    'cve_id': cve_id, 'vuln_name': cve_id,
-                    'severity': row['severity'] or 'medium',
-                    'description': row['description'] or '',
-                    'cvss_score': row['cvss_score'], 'cvss_v3_score': row['cvss_score'],
-                    'cvss_v2_score': None, 'cvss_vector': None,
-                    'cwe_id': None, 'references': [],
-                    'published_date': None, 'last_modified': None,
-                    'has_exploit': bool(row['has_exploit']),
-                    'exploit_ids': row['exploit_ids'] or '',
-                    'exploit_url': row['exploit_url'] or '',
-                    'affected_cpe': row['affected_cpe'] or '',
-                    'affected_assets': [{'key': asset_key, 'ip': row['ip'], 'port': 0, 'protocol': 'tcp'}],
-                    'detection_sources': [det_source],
-                    'template_id': '', 'nuclei_scan_date': None,
-                    'scan_date': row['scan_date'],
+                    'cve_id': cve_id, 'vuln_name': cve_id, 'severity': row.severity or 'medium',
+                    'description': row.description or '', 'cvss_score': row.cvss_score,
+                    'cvss_v3_score': row.cvss_score, 'cvss_v2_score': None, 'cvss_vector': None,
+                    'cwe_id': None, 'references': [], 'published_date': None, 'last_modified': None,
+                    'has_exploit': bool(row.has_exploit), 'exploit_ids': row.exploit_ids or '',
+                    'exploit_url': row.exploit_url or '', 'affected_cpe': row.affected_cpe or '',
+                    'affected_assets': [{'key': asset_key, 'ip': row.ip, 'port': 0, 'protocol': 'tcp'}],
+                    'detection_sources': [det_source], 'template_id': '', 'nuclei_scan_date': None,
+                    'scan_date': row.scan_date,
                 }
 
-        # 3. Enrich with NVD local database
-        try:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cves'")
-            if cursor.fetchone():
-                for cve_id, entry in unified.items():
-                    if not cve_id.upper().startswith('CVE-'):
-                        continue
-                    cursor.execute('''SELECT cve_id, description, cvss_v2_score, cvss_v2_vector,
-                                      cvss_v3_score, cvss_v3_vector, published_date, last_modified,
-                                      source_json
-                                      FROM nvd_cves WHERE cve_id = ?''', (cve_id,))
-                    nvd_row = cursor.fetchone()
-                    if nvd_row:
-                        if nvd_row['description'] and len(nvd_row['description']) > len(entry['description']):
-                            entry['description'] = nvd_row['description']
-                        if nvd_row['cvss_v3_score']:
-                            entry['cvss_v3_score'] = nvd_row['cvss_v3_score']
-                            entry['cvss_score'] = nvd_row['cvss_v3_score']
-                        if nvd_row['cvss_v2_score']:
-                            entry['cvss_v2_score'] = nvd_row['cvss_v2_score']
-                            if not entry['cvss_score']:
-                                entry['cvss_score'] = nvd_row['cvss_v2_score']
-                        if nvd_row['cvss_v3_vector']:
-                            entry['cvss_vector'] = nvd_row['cvss_v3_vector']
-                        elif nvd_row['cvss_v2_vector'] and not entry['cvss_vector']:
-                            entry['cvss_vector'] = nvd_row['cvss_v2_vector']
-                        if nvd_row['published_date']:
-                            entry['published_date'] = nvd_row['published_date']
-                        if nvd_row['last_modified']:
-                            entry['last_modified'] = nvd_row['last_modified']
+        # 3. Enrich from the local NVD cache (SQLite)
+        _enrich_from_nvd_cache(unified)
 
-                        if nvd_row['source_json']:
-                            try:
-                                src = json.loads(nvd_row['source_json'])
-                                if not entry['cwe_id']:
-                                    for weakness in src.get('weaknesses', []):
-                                        for desc in weakness.get('description', []):
-                                            val = desc.get('value', '')
-                                            if val.startswith('CWE-'):
-                                                entry['cwe_id'] = val
-                                                break
-                                        if entry['cwe_id']:
-                                            break
-                                existing_urls = {r.get('url') for r in entry['references']}
-                                for ref in src.get('references', [])[:10]:
-                                    url = ref.get('url', '')
-                                    if url and url not in existing_urls:
-                                        entry['references'].append({
-                                            'url': url, 'source': ref.get('source', 'NVD')
-                                        })
-                                        existing_urls.add(url)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-                        score = entry['cvss_score']
-                        if score is not None:
-                            if score >= 9.0:
-                                entry['severity'] = 'critical'
-                            elif score >= 7.0:
-                                entry['severity'] = 'high'
-                            elif score >= 4.0:
-                                entry['severity'] = 'medium'
-                            elif score > 0:
-                                entry['severity'] = 'low'
-        except Exception as e:
-            logger.debug(f"NVD enrichment error: {e}")
-
-        # 4. Mark exploit-db as detection source
-        for cve_id, entry in unified.items():
+        # 4. Mark exploit-db as a detection source
+        for entry in unified.values():
             if entry['has_exploit'] and 'exploit-db' not in entry['detection_sources']:
                 entry['detection_sources'].append('exploit-db')
 
         results = list(unified.values())
 
-        # Apply filters
         if source:
             results = [r for r in results if source in r['detection_sources']]
         if has_exploit is not None:
-            if has_exploit:
-                results = [r for r in results if r['has_exploit']]
-            else:
-                results = [r for r in results if not r['has_exploit']]
+            results = [r for r in results if bool(r['has_exploit']) == bool(has_exploit)]
         if search:
-            search_lower = search.lower()
+            s = search.lower()
             results = [r for r in results if
-                       search_lower in r['cve_id'].lower() or
-                       search_lower in (r['description'] or '').lower() or
-                       search_lower in (r['affected_cpe'] or '').lower() or
-                       search_lower in (r['vuln_name'] or '').lower()]
+                       s in r['cve_id'].lower() or s in (r['description'] or '').lower() or
+                       s in (r['affected_cpe'] or '').lower() or s in (r['vuln_name'] or '').lower()]
 
         severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4}
         results.sort(key=lambda r: (
             0 if r['has_exploit'] else 1,
             -1 * (r['cvss_score'] or 0),
-            severity_order.get(r['severity'], 5)
+            severity_order.get(r['severity'], 5),
         ))
 
         for r in results:
             r['affected_assets'] = [{'ip': a['ip'], 'port': a['port'], 'protocol': a['protocol']}
-                                     for a in r['affected_assets']]
-
+                                    for a in r['affected_assets']]
         return results
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Database error in get_unified_vulnerabilities: {e}")
         return []
-    finally:
-        conn.close()
 
 
 def get_unified_vulnerability_summary(ip=None):
-    """Get summary counts for unified vulnerabilities."""
+    """Summary counts for unified vulnerabilities."""
     try:
         summary = {
-            'total_findings': 0, 'unique_cves': 0, 'with_exploits': 0,
-            'affected_hosts': 0,
+            'total_findings': 0, 'unique_cves': 0, 'with_exploits': 0, 'affected_hosts': 0,
             'by_severity': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0},
-            'by_source': {'nuclei': 0, 'nvd-local': 0, 'nmap-vulscan': 0, 'auth-scan': 0, 'exploit-db': 0}
+            'by_source': {'nuclei': 0, 'nvd-local': 0, 'nmap-vulscan': 0, 'auth-scan': 0, 'exploit-db': 0},
         }
-
         vulns = get_unified_vulnerabilities(ip=ip)
         summary['unique_cves'] = len(vulns)
 
         all_ips = set()
         total_findings = 0
         for v in vulns:
-            summary['by_severity'][v.get('severity', 'info')] = \
-                summary['by_severity'].get(v.get('severity', 'info'), 0) + 1
+            sev = v.get('severity', 'info')
+            summary['by_severity'][sev] = summary['by_severity'].get(sev, 0) + 1
             if v['has_exploit']:
                 summary['with_exploits'] += 1
             for a in v['affected_assets']:
@@ -522,8 +443,7 @@ def get_unified_vulnerability_summary(ip=None):
     except Exception as e:
         logger.error(f"Error getting unified summary: {e}")
         return {
-            'total_findings': 0, 'unique_cves': 0, 'with_exploits': 0,
-            'affected_hosts': 0,
+            'total_findings': 0, 'unique_cves': 0, 'with_exploits': 0, 'affected_hosts': 0,
             'by_severity': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0},
-            'by_source': {}
+            'by_source': {},
         }

@@ -1,105 +1,131 @@
 """Assets API blueprint."""
 
-import sqlite3
 import logging
 
 from flask import Blueprint, request
+from sqlalchemy import func
 
+from artemis.extensions import db
+from artemis.models.asset import Asset
+from artemis.models.scan import Scan
 from artemis.utils.validation import validate_ip, validate_hostname, is_hostname
 from artemis.utils.dns import ScanError, resolve_target, resolve_ip_param
-from artemis.services.asset_service import get_asset_details
+from artemis.services.asset_service import get_asset_details, delete_asset, update_device_type
 from artemis.services.vuln_service import get_vulnerability_counts_by_severity
 from artemis.services.fingerprint_service import get_fingerprint_summary
 from artemis.services.auth_scan_service import get_asset_os_details, get_installed_software, get_cve_matches
+from artemis.services.auth_service import role_required
 
 logger = logging.getLogger(__name__)
 
 assets_bp = Blueprint('assets', __name__)
 
 
-def _get_db_path():
-    from flask import current_app
-    return current_app.config['DB_PATH']
-
-
-@assets_bp.route('/assets')
-def get_assets():
-    """Get list of previously scanned hosts with their latest scan info."""
-    import sys, os
+def _device_icon(device_type):
+    import sys
+    import os
     scanner_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if scanner_dir not in sys.path:
         sys.path.insert(0, scanner_dir)
     from device_type import get_device_icon
+    return get_device_icon(device_type) if device_type else None
 
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
+
+def _asset_summary(asset_row, ip, last_scan):
+    """Build the list-view payload for one asset."""
+    ports = Scan.query.filter_by(ip=ip, scan_date=last_scan).all() if last_scan else []
+    fp_summary = get_fingerprint_summary(ip)
+    fp_by_port = fp_summary.get('by_port', {})
+
+    return {
+        'ip': ip,
+        'hostname': asset_row.hostname if asset_row else None,
+        'reverse_dns': asset_row.reverse_dns if asset_row else None,
+        'device_type': asset_row.device_type if asset_row else None,
+        'device_icon': _device_icon(asset_row.device_type) if asset_row else None,
+        'mac_address': asset_row.mac_address if asset_row else None,
+        'mac_vendor': asset_row.mac_vendor if asset_row else None,
+        'os_name': asset_row.os_name if asset_row else None,
+        'last_scan': last_scan,
+        'port_count': len(ports),
+        'vuln_counts': get_vulnerability_counts_by_severity(ip),
+        'technologies': fp_summary.get('technologies', [])[:5],
+        'ports': [
+            {
+                'protocol': p.protocol, 'port': p.port, 'state': p.state,
+                'service': p.service, 'product': p.product, 'version': p.version,
+                'fingerprint': fp_by_port.get(p.port, {}),
+            } for p in ports
+        ],
+    }
+
+
+@assets_bp.route('/assets')
+def get_assets():
+    """
+    ---
+    get:
+      summary: List scanned assets
+      tags: [Assets]
+      parameters:
+        - in: query
+          name: device_type
+          schema: {type: string}
+        - in: query
+          name: q
+          schema: {type: string}
+          description: Substring match on IP or hostname
+      responses:
+        200:
+          description: Assets, most-recently-scanned first
+      security: [{bearerAuth: []}, {apiKeyAuth: []}]
+    """
+    device_type = request.args.get('device_type')
+    q = (request.args.get('q') or '').strip().lower()
 
     try:
-        cursor.execute('''
-            SELECT ip, MAX(scan_date) as last_scan
-            FROM scans GROUP BY ip ORDER BY last_scan DESC
-        ''')
-        hosts = cursor.fetchall()
+        latest = db.session.query(
+            Scan.ip, func.max(Scan.scan_date).label('last_scan'),
+        ).group_by(Scan.ip).all()
+        latest_by_ip = {ip: ls for ip, ls in latest}
+
+        asset_rows = {a.ip: a for a in Asset.query.all()}
+        ips = set(latest_by_ip) | set(asset_rows)
 
         assets = []
-        for host in hosts:
-            ip, last_scan = host
-            cursor.execute('''
-                SELECT protocol, port, state, service, product, version
-                FROM scans WHERE ip = ? AND scan_date = ?
-            ''', (ip, last_scan))
-            ports = cursor.fetchall()
-            port_count = len(ports)
+        for ip in ips:
+            row = asset_rows.get(ip)
+            if device_type and (not row or (row.device_type or 'unknown') != device_type):
+                continue
+            if q and q not in ip.lower() and not (row and row.hostname and q in row.hostname.lower()):
+                continue
+            assets.append(_asset_summary(row, ip, latest_by_ip.get(ip)))
 
-            vuln_counts = get_vulnerability_counts_by_severity(ip)
-            fp_summary = get_fingerprint_summary(ip)
-            fp_techs = fp_summary.get('technologies', [])
-            fp_by_port = fp_summary.get('by_port', {})
-
-            cursor.execute('''SELECT hostname, reverse_dns, device_type, mac_address, mac_vendor, os_name
-                              FROM assets WHERE ip = ?''', (ip,))
-            asset_row = cursor.fetchone()
-            hostname = asset_row[0] if asset_row else None
-            reverse_dns = asset_row[1] if asset_row else None
-            device_type = asset_row[2] if asset_row else None
-            mac_address = asset_row[3] if asset_row else None
-            mac_vendor = asset_row[4] if asset_row else None
-            os_name = asset_row[5] if asset_row else None
-            device_icon = get_device_icon(device_type) if device_type else None
-
-            assets.append({
-                'ip': ip,
-                'hostname': hostname,
-                'reverse_dns': reverse_dns,
-                'device_type': device_type,
-                'device_icon': device_icon,
-                'mac_address': mac_address,
-                'mac_vendor': mac_vendor,
-                'os_name': os_name,
-                'last_scan': last_scan,
-                'port_count': port_count,
-                'vuln_counts': vuln_counts,
-                'technologies': fp_techs[:5],
-                'ports': [
-                    {
-                        'protocol': p[0], 'port': p[1], 'state': p[2],
-                        'service': p[3], 'product': p[4], 'version': p[5],
-                        'fingerprint': fp_by_port.get(p[1], {})
-                    } for p in ports
-                ]
-            })
-
+        assets.sort(key=lambda a: (a['last_scan'] or ''), reverse=True)
         return {'assets': assets}
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Database error in get_assets: {e}")
         return {'error': str(e)}, 500
-    finally:
-        conn.close()
 
 
 @assets_bp.route('/asset/<ip>')
+@assets_bp.route('/assets/<ip>')
 def get_asset(ip):
-    """Get detailed information for a specific asset."""
+    """
+    ---
+    get:
+      summary: Get one asset with full detail
+      tags: [Assets]
+      parameters:
+        - in: path
+          name: ip
+          required: true
+          schema: {type: string}
+      responses:
+        200: {description: Asset detail}
+        404: {description: Not found}
+      security: [{bearerAuth: []}, {apiKeyAuth: []}]
+    """
     try:
         ip = resolve_ip_param(ip)
     except (ValueError, ScanError) as e:
@@ -108,13 +134,108 @@ def get_asset(ip):
     asset = get_asset_details(ip)
     if not asset:
         return {'error': 'Asset not found'}, 404
-
     return {'asset': asset}
 
 
+@assets_bp.route('/asset/<ip>', methods=['PATCH'])
+@assets_bp.route('/assets/<ip>', methods=['PATCH'])
+@role_required('analyst')
+def patch_asset(ip):
+    """
+    ---
+    patch:
+      summary: Edit asset metadata (hostname / device_type override)
+      tags: [Assets]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostname: {type: string}
+                device_type: {type: string}
+      responses:
+        200: {description: Updated asset detail}
+        404: {description: Not found}
+      security: [{bearerAuth: []}]
+    """
+    try:
+        ip = resolve_ip_param(ip)
+    except (ValueError, ScanError) as e:
+        return {'error': str(e)}, 400
+
+    data = request.get_json(silent=True) or {}
+    asset = Asset.query.filter_by(ip=ip).first()
+    if not asset:
+        return {'error': 'Asset not found'}, 404
+
+    if 'hostname' in data:
+        asset.hostname = (data['hostname'] or '').strip() or None
+    if 'device_type' in data:
+        asset.device_type = (data['device_type'] or '').strip() or None
+    db.session.commit()
+    return {'asset': get_asset_details(ip)}
+
+
+@assets_bp.route('/asset/<ip>', methods=['DELETE'])
+@assets_bp.route('/assets/<ip>', methods=['DELETE'])
+@role_required('analyst')
+def remove_asset(ip):
+    """
+    ---
+    delete:
+      summary: Purge an asset and every scan/vuln/fingerprint row for its IP
+      tags: [Assets]
+      responses:
+        200: {description: Row counts removed per table}
+        404: {description: Not found}
+      security: [{bearerAuth: []}]
+    """
+    try:
+        ip = resolve_ip_param(ip)
+    except (ValueError, ScanError) as e:
+        return {'error': str(e)}, 400
+
+    if not Asset.query.filter_by(ip=ip).first() and not Scan.query.filter_by(ip=ip).first():
+        return {'error': 'Asset not found'}, 404
+    try:
+        removed = delete_asset(ip)
+        return {'deleted': ip, 'removed': removed}
+    except Exception as e:
+        return {'error': str(e)}, 500
+
+
+@assets_bp.route('/asset/<ip>/reclassify', methods=['POST'])
+@role_required('analyst')
+def reclassify_asset(ip):
+    """
+    ---
+    post:
+      summary: Re-run device-type classification for an asset
+      tags: [Assets]
+      responses:
+        200: {description: New device type}
+      security: [{bearerAuth: []}]
+    """
+    try:
+        ip = resolve_ip_param(ip)
+    except (ValueError, ScanError) as e:
+        return {'error': str(e)}, 400
+    return {'ip': ip, 'device_type': update_device_type(ip)}
+
+
 @assets_bp.route('/asset/<ip>/auth-details')
+@assets_bp.route('/assets/<ip>/auth-details')
 def get_asset_auth_details(ip):
-    """Get authenticated scan details."""
+    """
+    ---
+    get:
+      summary: Authenticated-scan detail for an asset (OS, packages, CVEs)
+      tags: [Assets]
+      responses:
+        200: {description: Auth scan detail}
+      security: [{bearerAuth: []}, {apiKeyAuth: []}]
+    """
     try:
         if not validate_ip(ip) and not validate_hostname(ip):
             return {'error': 'Invalid target'}, 400
@@ -125,7 +246,6 @@ def get_asset_auth_details(ip):
         software = get_installed_software(ip)
         cves = get_cve_matches(ip)
 
-        # Enrich CVEs with exploit info
         for cve in cves:
             if not cve.get('has_exploit') and cve.get('cve_id'):
                 try:
@@ -142,7 +262,7 @@ def get_asset_auth_details(ip):
             'software': software,
             'software_count': len(software),
             'cves': cves,
-            'cve_count': len(cves)
+            'cve_count': len(cves),
         }
     except Exception as e:
         logger.error(f"Error getting auth details for {ip}: {e}")

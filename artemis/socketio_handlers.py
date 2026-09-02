@@ -7,7 +7,6 @@ The heavy scanning logic delegates to services/ and scanners/.
 import json
 import threading
 import logging
-from datetime import datetime
 
 from flask import request
 from flask_socketio import emit
@@ -21,7 +20,9 @@ from artemis.scanners.nuclei_scanner import vuln_scan, parse_vuln_scan
 from artemis.scanners.ssh_scanner import run_authenticated_scan
 from artemis.services.scan_service import store_scan, get_latest_scan, get_open_ports_for_ip
 from artemis.services.asset_service import store_asset_info, update_device_type, get_asset_details
-from artemis.services.fingerprint_service import store_fingerprints, store_fpx_results, get_fingerprint_engine
+from artemis.services.fingerprint_service import (
+    store_fingerprints, store_fpx_results, store_raw_fingerprints, get_fingerprint_engine,
+)
 from artemis.services.vuln_service import store_vulnerabilities, get_vulnerabilities
 from artemis.services.auth_scan_service import store_auth_scan_results, get_all_credentials, get_credential
 from artemis.services.fingerprint_service import get_fingerprint_summary
@@ -139,11 +140,9 @@ def _spawn_scan_thread(target, *args, **kwargs):
     """Run ``target`` in a daemon thread that holds a Flask app context.
 
     Socket.IO event handlers execute inside an app/request context, but the
-    worker threads they start do not. Without an app context the scan services'
-    ``_get_db_path()`` helpers fall back from ``current_app.config['DB_PATH']``
-    to a path next to the source tree — a different (empty) sqlite file in the
-    Docker image — so scan results are written where nothing can read them and
-    follow-up steps report "No scan data for <ip>".
+    worker threads they start do not. The scan services use ``db.session`` /
+    ``current_app.config`` and raise outside an app context, so every scan
+    worker must push one (mirrors what ``scheduler_service`` already does).
     """
     from flask import current_app
     app = current_app._get_current_object()
@@ -157,26 +156,9 @@ def _spawn_scan_thread(target, *args, **kwargs):
     return thread
 
 
-def _get_db_path():
-    try:
-        from flask import current_app
-        return current_app.config['DB_PATH']
-    except Exception:
-        import os
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'vuln_scan.db')
-
-
 def _get_setting(key, default=None):
-    from artemis.services.asset_service import _get_db_path
-    import sqlite3
-    conn = sqlite3.connect(_get_db_path())
-    cursor = conn.cursor()
-    try:
-        cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
-        row = cursor.fetchone()
-        return row[0] if row else default
-    finally:
-        conn.close()
+    from artemis.services.auth_scan_service import get_setting
+    return get_setting(key, default)
 
 
 # --------------- Port Scan ---------------
@@ -312,33 +294,22 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                                     url = f"{scheme}://{scan_target_str}:{port_num}"
                                     try:
                                         import urllib.request
-                                        import sqlite3
                                         req = urllib.request.Request(url, headers={'User-Agent': 'Artemis-Scanner/1.0'})
                                         with urllib.request.urlopen(req, timeout=5) as resp:
                                             html = resp.read().decode('utf-8', errors='replace')
                                             headers = dict(resp.headers)
                                         wap_results = _wap_module.analyze_response(url, html, headers)
                                         if wap_results:
-                                            db_path = _get_db_path()
-                                            conn = sqlite3.connect(db_path)
-                                            cur = conn.cursor()
-                                            for wr in wap_results:
-                                                cat = wr['categories'][0] if wr.get('categories') else 'web-technology'
-                                                sig_id = f"wap-{wr['name'].lower().replace(' ', '-')}"
-                                                cur.execute('''INSERT OR REPLACE INTO fingerprints
-                                                    (ip, port, protocol, signature_id, name, category, vendor,
-                                                     version, cpe, confidence, evidence_json,
-                                                     tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                                                     http_title, http_server, favicon_hash, scan_date)
-                                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                                    (store_ip, port_num, 'tcp', sig_id, wr['name'], cat, '',
-                                                     wr.get('version'), None, wr.get('confidence', 100),
-                                                     json.dumps(['wappalyzer']),
-                                                     None, None, None, 0, '', '', None,
-                                                     datetime.now().isoformat()))
-                                                wap_stored += 1
-                                            conn.commit()
-                                            conn.close()
+                                            store_raw_fingerprints(store_ip, [{
+                                                'port': port_num, 'protocol': 'tcp',
+                                                'signature_id': f"wap-{wr['name'].lower().replace(' ', '-')}",
+                                                'name': wr['name'],
+                                                'category': wr['categories'][0] if wr.get('categories') else 'web-technology',
+                                                'vendor': '', 'version': wr.get('version'), 'cpe': None,
+                                                'confidence': wr.get('confidence', 100),
+                                                'evidence': ['wappalyzer'],
+                                            } for wr in wap_results])
+                                            wap_stored += len(wap_results)
                                             emit_log(sid, f'  Wappalyzer found {len(wap_results)} tech(s) on port {port_num}', 'info')
                                     except Exception:
                                         pass
@@ -354,26 +325,15 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                         jarm_results = _jarm_module.scan_host_tls_ports(store_ip, ports_for_fp, timeout=10,
                                                                         log_callback=lambda msg: emit_log(sid, msg, 'debug'))
                         if jarm_results:
-                            import sqlite3
-                            db_path = _get_db_path()
-                            conn = sqlite3.connect(db_path)
-                            cur = conn.cursor()
-                            for jr in jarm_results:
-                                sig_id = f"jarm-{jr['port']}"
-                                name = jr.get('identified_as') or 'TLS Fingerprint'
-                                cur.execute('''INSERT OR REPLACE INTO fingerprints
-                                    (ip, port, protocol, signature_id, name, category, vendor,
-                                     version, cpe, confidence, evidence_json,
-                                     tls_subject_cn, tls_subject_org, tls_issuer_org, tls_self_signed,
-                                     http_title, http_server, favicon_hash, scan_date)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                    (store_ip, jr['port'], 'tcp', sig_id, name, 'tls-fingerprint', '',
-                                     None, None, 70 if jr.get('identified_as') else 50,
-                                     json.dumps([f"jarm:{jr['jarm_hash']}"]),
-                                     None, None, None, 0, '', '', None,
-                                     datetime.now().isoformat()))
-                            conn.commit()
-                            conn.close()
+                            store_raw_fingerprints(store_ip, [{
+                                'port': jr['port'], 'protocol': 'tcp',
+                                'signature_id': f"jarm-{jr['port']}",
+                                'name': jr.get('identified_as') or 'TLS Fingerprint',
+                                'category': 'tls-fingerprint', 'vendor': '',
+                                'version': None, 'cpe': None,
+                                'confidence': 70 if jr.get('identified_as') else 50,
+                                'evidence': [f"jarm:{jr['jarm_hash']}"],
+                            } for jr in jarm_results])
                             emit_log(sid, f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {store_ip}', 'success')
                 except Exception:
                     pass
