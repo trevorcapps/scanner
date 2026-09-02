@@ -22,12 +22,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function showAuthScreen() {
         authScreen.style.display = 'flex';
         appLayout.style.display = 'none';
+        if (typeof socket !== 'undefined' && socket && socket.connected) {
+            socket.disconnect();
+        }
     }
 
     function showApp(user) {
         currentUser = user;
         authScreen.style.display = 'none';
         appLayout.style.display = '';
+        // (Re)connect the socket now that the auth cookie is set, so the
+        // handshake carries it and scan events pass the role check.
+        if (typeof socket !== 'undefined' && socket) {
+            if (socket.connected) socket.disconnect();
+            socket.connect();
+        }
         // Update sidebar user info
         if (user) {
             var avatar = document.getElementById('user-avatar');
@@ -149,10 +158,15 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
-    // Initial auth check
-    checkAuth();
+    // Socket.IO auth rides on the session cookie sent with the connection
+    // handshake, so the socket must not connect until the user is authenticated
+    // (otherwise the cached handshake has no cookie and every scan event is
+    // rejected as "Insufficient permissions"). connect/disconnect is driven by
+    // showApp/showAuthScreen below.
+    var socket = io({ autoConnect: false });
 
-    var socket = io();
+    // Initial auth check — connects the socket via showApp when already logged in.
+    checkAuth();
 
     // ==================== Utility Functions ====================
 
@@ -333,7 +347,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var logToggle = document.getElementById('log-toggle');
     var logPanel = document.getElementById('log-panel');
     var logPanelHeader = document.getElementById('log-panel-header');
-    var maxLogEntries = 500;
+    var maxLogEntries = 2000;
     var logExpanded = localStorage.getItem('logExpanded') === 'true';
 
     function updateLogPanel() {
@@ -2052,12 +2066,16 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteAgent = function(id, name) {
-        if (!confirm('Delete agent "' + name + '"?')) return;
+        if (!confirm('Remove agent "' + name + '" from the console?\n\n'
+            + 'This deletes the server-side record and its report history. The endpoint '
+            + 'will re-register on its next check-in unless you also run the uninstaller '
+            + 'on the host:\n\n'
+            + '  curl -fsSL ' + window.location.origin + '/agent/uninstall.sh | bash')) return;
         fetch('/api/v1/agents/' + id, { method: 'DELETE' }).then(function(r) {
             if (!r.ok) throw new Error('Delete failed');
             return r.json();
         })
-            .then(function() { selectedAgentId = null; showToast('Agent deleted', 'success'); loadAgents(); })
+            .then(function() { selectedAgentId = null; showToast('Agent removed from console', 'success'); loadAgents(); })
             .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
     };
 

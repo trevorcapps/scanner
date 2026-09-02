@@ -5,6 +5,7 @@ Usage:
     python3 artemis_agent.py --server https://artemis.example.com --key <api-key> [--interval 21600]
     python3 artemis_agent.py --server https://artemis.example.com --register [--name "My Server"]
     python3 artemis_agent.py --server https://artemis.example.com --key <api-key> --once
+    python3 artemis_agent.py --deregister        # remove this agent from the server
 
 Config file: /etc/artemis/agent.conf or ~/.artemis/agent.conf (JSON)
 
@@ -24,7 +25,7 @@ import time
 import urllib.request
 import urllib.error
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 TELEMETRY_SCHEMA_VERSION = 2
 
 DEFAULT_INTERVAL = 21600  # 6 hours
@@ -55,6 +56,20 @@ def save_config(data):
         except PermissionError:
             continue
     return None
+
+
+def remove_config():
+    """Delete every agent config file we can find. Returns removed paths."""
+    removed = []
+    for path in CONFIG_PATHS:
+        try:
+            os.remove(path)
+            removed.append(path)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"Could not remove {path}: {e}", file=sys.stderr)
+    return removed
 
 
 def get_os_info():
@@ -560,6 +575,26 @@ def do_report(server, key):
         return False
 
 
+def do_deregister(server, key, keep_config=False):
+    """Remove this agent from the server, then delete the local config."""
+    if server and key:
+        print(f"Deregistering from {server}...")
+        result = api_call(server, '/agents/deregister', {}, key=key)
+        if result and result.get('status') == 'deregistered':
+            print(f"Server removed agent #{result.get('id')}.")
+        else:
+            print("Server did not confirm removal (continuing with local cleanup).",
+                  file=sys.stderr)
+    else:
+        print("No server/key in config — skipping server deregistration.", file=sys.stderr)
+
+    if keep_config:
+        return True
+    for path in remove_config():
+        print(f"Removed {path}")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description='Artemis Agent')
     parser.add_argument('--server', help='Artemis server URL')
@@ -567,6 +602,10 @@ def main():
     parser.add_argument('--register', action='store_true', help='Register this agent')
     parser.add_argument('--name', help='Agent friendly name (for registration)')
     parser.add_argument('--once', action='store_true', help='Run once and exit')
+    parser.add_argument('--deregister', action='store_true',
+                        help='Remove this agent from the server and delete local config')
+    parser.add_argument('--keep-config', action='store_true',
+                        help='With --deregister, leave the local config file in place')
     parser.add_argument('--interval', type=int, help=f'Report interval in seconds (default: {DEFAULT_INTERVAL})')
     parser.add_argument('--version', action='version', version=f'artemis-agent {__version__}')
     args = parser.parse_args()
@@ -575,6 +614,10 @@ def main():
     server = args.server or cfg.get('server')
     key = args.key or cfg.get('key')
     interval = args.interval or cfg.get('interval', DEFAULT_INTERVAL)
+
+    if args.deregister:
+        do_deregister(server, key, keep_config=args.keep_config)
+        return
 
     if not server:
         print("Error: --server required (or set in config file)", file=sys.stderr)

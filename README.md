@@ -27,6 +27,19 @@ A web-based network vulnerability scanner and asset fingerprinting platform powe
 
 ## Quick Start
 
+### Docker Compose (full stack)
+
+```bash
+cp .env.example .env   # set SECRET_KEY and POSTGRES_PASSWORD
+docker compose up -d --build
+```
+
+Open <http://localhost:5005> and create the admin account. This brings up the
+web UI, a Celery worker, PostgreSQL, and Redis, with `nmap` and `nuclei`
+bundled in the image. See [DEPLOY.md](DEPLOY.md) for details.
+
+### Local development
+
 ```bash
 python -m venv env
 . env/bin/activate

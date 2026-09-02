@@ -1,0 +1,123 @@
+# Artemis vulnerability scanner — full-stack deployment.
+#
+#   cp .env.example .env      # then set SECRET_KEY and POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   open http://localhost:5005   (first visit walks through admin setup)
+#
+# Services:
+#   postgres — application database (SQLAlchemy models + migrations)
+#   redis    — Celery broker/result backend and SocketIO message queue
+#   web      — Flask/SocketIO app (gunicorn + gevent-websocket), runs migrations
+#   worker   — Celery worker that executes scan jobs (nmap / nuclei)
+
+# DB_HOST / REDIS_HOST default to the compose service names (bridge networking).
+# For host networking use the docker-compose.host.yml override, which also sets
+# these to 127.0.0.1 — see DEPLOY.md.
+x-app-env: &app-env
+  FLASK_CONFIG: production
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  DATABASE_URL: postgresql+psycopg://artemis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@${DB_HOST:-postgres}:5432/artemis
+  REDIS_URL: redis://${REDIS_HOST:-redis}:6379/0
+  CELERY_BROKER_URL: redis://${REDIS_HOST:-redis}:6379/0
+  CELERY_RESULT_BACKEND: redis://${REDIS_HOST:-redis}:6379/1
+  CELERY_TASK_ALWAYS_EAGER: "false"
+  DB_PATH: /data/vuln_scan.db
+  AUTO_CREATE_SCHEMA: "false"
+  INITIALIZE_LEGACY_SCHEMA: "true"
+  NVD_API_KEY: ${NVD_API_KEY:-}
+  PORT: "5005"
+
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      NUCLEI_VERSION: ${NUCLEI_VERSION:-}
+  image: artemis-scanner:local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: artemis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: artemis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U artemis -d artemis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    <<: *app-build
+    command: ["web"]
+    environment:
+      <<: *app-env
+      START_BACKGROUND_SERVICES: "true"
+      WEB_CONCURRENCY: "1"
+    ports:
+      - "${WEB_PORT:-5005}:5005"
+    volumes:
+      - artemis-data:/data
+      - nuclei-templates:/root/nuclei-templates
+      - nuclei-config:/root/.config
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5005/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+  worker:
+    <<: *app-build
+    command: ["worker"]
+    environment:
+      <<: *app-env
+      START_BACKGROUND_SERVICES: "false"
+      CELERY_CONCURRENCY: "4"
+    volumes:
+      - artemis-data:/data
+      - nuclei-templates:/root/nuclei-templates
+      - nuclei-config:/root/.config
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  artemis-data:
+  nuclei-templates:
+  nuclei-config:

@@ -109,8 +109,10 @@ def _setup_auth_middleware(app):
     PUBLIC_PATHS = {
         '/api/v1/agents/register',
         '/api/v1/agents/report',
+        '/api/v1/agents/deregister',
         '/api/agents/register',
         '/api/agents/report',
+        '/api/agents/deregister',
         '/agent/install.sh',
         '/agent/artemis_agent.py',
         '/agent/uninstall.sh',
@@ -194,6 +196,23 @@ def _init_database(app):
 
     if not app.config.get('INITIALIZE_LEGACY_SCHEMA', True):
         return
+
+    # Create the legacy raw-sqlite schema (scans, assets, fingerprints,
+    # vulnerabilities, settings, auth-scan tables, ...). The scan/asset/vuln
+    # services talk to this sqlite file directly via config['DB_PATH'] rather
+    # than through SQLAlchemy, so these tables must exist independently of the
+    # SQLAlchemy backend. When DATABASE_URL points at the same sqlite file
+    # (local dev) db.create_all() already covers the model-backed tables, but
+    # in a Postgres deployment DB_PATH is a separate database that nothing else
+    # initializes — without this the Assets tab and vuln storage silently fail
+    # with "no such table: scans".
+    try:
+        import vuln_scan
+        if getattr(vuln_scan, 'DB_PATH', db_path) != db_path:
+            vuln_scan.DB_PATH = db_path
+        vuln_scan.init_db()
+    except Exception as e:
+        logger.warning(f"Could not initialize legacy sqlite schema: {e}")
 
     # Auto-migrate: add missing columns to existing tables
     _auto_migrate(db_path)

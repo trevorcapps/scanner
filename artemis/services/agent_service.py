@@ -256,6 +256,22 @@ def _match_package_cves(agent, packages):
     return 0
 
 
+def deregister_agent(agent):
+    """Remove an agent and all of its stored reports.
+
+    Used both by the authenticated UI (DELETE /agents/<id>) and by the agent
+    itself calling /agents/deregister during uninstall. agent_reports has no FK
+    cascade, so its rows are cleared explicitly to avoid orphans.
+    """
+    agent_id = agent.id
+    label = agent.hostname or agent.ip or 'unknown'
+    AgentReport.query.filter_by(agent_id=agent_id).delete()
+    db.session.delete(agent)
+    db.session.commit()
+    logger.info(f"Deregistered agent #{agent_id} ({label})")
+    return agent_id
+
+
 def update_stale_agents():
     """Mark agents as stale if no checkin in 2x their interval."""
     now = datetime.utcnow()

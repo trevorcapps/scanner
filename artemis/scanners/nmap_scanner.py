@@ -1,7 +1,17 @@
-"""Nmap scanner wrapper — extracted from vuln_scan.py."""
+"""Nmap scanner wrapper — extracted from vuln_scan.py.
 
-import os
+Runs the ``nmap`` binary directly (rather than through python-nmap's blocking
+``PortScanner.scan``) so that nmap's own progress output can be streamed to the
+live trace window while the scan runs. Results are collected from an XML output
+file and parsed with python-nmap so the return shape is unchanged.
+"""
+
 import logging
+import os
+import shlex
+import shutil
+import subprocess
+import tempfile
 
 import nmap
 
@@ -13,62 +23,140 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def scan(ip, options=None):
-    """Execute Nmap scan on the given target (IP address or hostname).
-
-    Args:
-        ip: Target IP address or hostname
-        options: Dict with optional scan settings:
-            - ports: Port range string (e.g., '1-1000', '22,80,443', '-' for all)
-            - scan_speed: Timing template (T2, T3, T4, T5)
-            - host_timeout: Timeout in seconds per host
-            - vulscan: Enable vulscan NSE script
-    """
-    if not validate_ip(ip) and not validate_hostname(ip):
-        raise ScanError(f"Invalid target: {ip}")
-
-    nm = nmap.PortScanner()
-
+def _build_args(options):
+    """Build the nmap argument list (excluding target and output flags)."""
     args = ['-sV']
 
+    scan_speed = 'T3'
+    host_timeout = 300
     if options:
-        scan_speed = options.get('scan_speed', 'T3')
-        if scan_speed in ['T2', 'T3', 'T4', 'T5']:
-            args.append(f'-{scan_speed}')
-
-        host_timeout = options.get('host_timeout', 300)
+        candidate_speed = options.get('scan_speed', 'T3')
+        if candidate_speed in ('T2', 'T3', 'T4', 'T5'):
+            scan_speed = candidate_speed
         try:
-            host_timeout = max(30, min(3600, int(host_timeout)))
+            host_timeout = max(30, min(3600, int(options.get('host_timeout', 300))))
         except (ValueError, TypeError):
             host_timeout = 300
-        args.append(f'--host-timeout {host_timeout}')
-    else:
-        args.append('--host-timeout 300')
 
-    # Add vulscan NSE script if enabled
+    args.append(f'-{scan_speed}')
+    # An explicit unit is required — a bare number is interpreted as
+    # milliseconds by nmap, which makes every host time out instantly.
+    args.append('--host-timeout')
+    args.append(f'{host_timeout}s')
+
+    # Skip host discovery by default. Users scan targets they have explicitly
+    # entered, and ICMP/ping probes are frequently dropped (firewalls, Docker
+    # bridge networking), which otherwise makes nmap report the host as down
+    # and scan nothing. Set options['host_discovery'] = True to re-enable pings.
+    if not (options and options.get('host_discovery')):
+        args.append('-Pn')
+
     if options and options.get('vulscan'):
         vulscan_path = os.path.join(BASE_DIR, 'vulscan', 'vulscan.nse')
         if os.path.isfile(vulscan_path):
             args.append(f'--script={vulscan_path}')
-            args.append('--script-args "vulscandb=cve.csv"')
+            args.append('--script-args')
+            args.append('vulscandb=cve.csv')
             logger.info("Vulscan NSE enabled for this scan")
         else:
             logger.warning("Vulscan requested but vulscan.nse not found")
 
-    arguments = ' '.join(args)
+    return args
 
-    port_spec = None
+
+def _port_spec(options):
     if options and options.get('ports'):
-        port_spec = options['ports'].strip()
-        if port_spec == '-':
-            port_spec = '1-65535'
+        spec = str(options['ports']).strip()
+        return '1-65535' if spec == '-' else spec
+    return None
 
+
+def scan(ip, options=None, log_callback=None, cancel_check=None):
+    """Execute an Nmap scan on the given target (IP address or hostname).
+
+    Args:
+        ip: Target IP address or hostname
+        options: Dict with optional scan settings (ports, scan_speed,
+            host_timeout, vulscan)
+        log_callback: Optional ``callable(str)`` that receives each line of
+            nmap's live output.
+        cancel_check: Optional ``callable() -> bool``; when it returns True the
+            running nmap process is terminated.
+
+    Returns:
+        A python-nmap host result dict (as returned by ``PortScanner[host]``).
+    """
+    if not validate_ip(ip) and not validate_hostname(ip):
+        raise ScanError(f"Invalid target: {ip}")
+
+    nmap_bin = shutil.which('nmap')
+    if not nmap_bin:
+        raise ScanError("nmap is not installed or not on PATH")
+
+    args = _build_args(options)
+    port_spec = _port_spec(options)
+
+    xml_fd, xml_path = tempfile.mkstemp(prefix='artemis-nmap-', suffix='.xml')
+    os.close(xml_fd)
+
+    cmd = [nmap_bin, '-v', '--stats-every', '2s', '-oX', xml_path]
+    cmd.extend(args)
+    if port_spec:
+        cmd.extend(['-p', port_spec])
+    cmd.append(ip)
+
+    printable = ' '.join(shlex.quote(part) for part in cmd)
+    logger.info(f"Running nmap: {printable}")
+    if log_callback:
+        log_callback(f"$ {printable}")
+
+    tail = []
     try:
-        logger.info(f"Starting scan for IP: {ip} with args: {arguments}, ports: {port_spec or 'default'}")
-        if port_spec:
-            nm.scan(ip, ports=port_spec, arguments=arguments)
-        else:
-            nm.scan(ip, arguments=arguments)
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError:
+            raise ScanError("nmap is not installed or not on PATH")
+
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            if not line:
+                continue
+            tail.append(line)
+            if len(tail) > 40:
+                tail.pop(0)
+            if log_callback:
+                log_callback(f"nmap: {line}")
+            if cancel_check and cancel_check():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                if log_callback:
+                    log_callback("nmap: terminated (scan cancelled)")
+                raise ScanError("Scan cancelled")
+
+        returncode = proc.wait()
+
+        if not os.path.exists(xml_path) or os.path.getsize(xml_path) == 0:
+            detail = tail[-1] if tail else f"nmap exited with code {returncode}"
+            raise ScanError(f"Nmap produced no output: {detail}")
+
+        with open(xml_path) as fh:
+            xml_output = fh.read()
+
+        nm = nmap.PortScanner()
+        try:
+            nm.analyse_nmap_xml_scan(nmap_xml_output=xml_output)
+        except nmap.PortScannerError as e:
+            raise ScanError(f"Failed to parse nmap output: {e}")
 
         all_hosts = nm.all_hosts()
         if ip in all_hosts:
@@ -76,16 +164,20 @@ def scan(ip, options=None):
         elif all_hosts:
             scan_key = all_hosts[0]
         else:
+            if returncode != 0:
+                detail = tail[-1] if tail else f"exit code {returncode}"
+                raise ScanError(f"Nmap error: {detail}")
             raise ScanError(f"Host {ip} is unreachable or returned no results")
 
-        logger.info(f"Scan completed for target: {ip}")
+        logger.info(f"Scan completed for target: {ip} (nmap exit {returncode})")
+        if log_callback:
+            log_callback(f"nmap: finished (exit {returncode})")
         return nm[scan_key]
-    except nmap.PortScannerError as e:
-        logger.error(f"Nmap error scanning {ip}: {e}")
-        raise ScanError(f"Nmap error: {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error scanning {ip}: {e}")
-        raise ScanError(f"Scan failed: {e}")
+    finally:
+        try:
+            os.unlink(xml_path)
+        except OSError:
+            pass
 
 
 def parse_scan(scan_result):

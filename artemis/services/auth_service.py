@@ -85,6 +85,21 @@ def decode_token(token):
         return None
 
 
+def _user_from_token_payload(payload):
+    """Load the user referenced by a token's ``sub`` claim.
+
+    The claim is stored as a string (JWT spec), so it is coerced back to int
+    before querying — PostgreSQL will not compare an integer column to a string.
+    """
+    if not payload:
+        return None
+    try:
+        user_id = int(payload['sub'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return User.query.filter_by(id=user_id, enabled=1).first()
+
+
 # ==================== User Management ====================
 
 def create_user(username, password, email=None, role='analyst', display_name=None):
@@ -194,7 +209,7 @@ def _get_current_user():
         token = auth_header[7:]
         payload = decode_token(token)
         if payload and payload.get('type') == 'access':
-            user = User.query.filter_by(id=payload['sub'], enabled=1).first()
+            user = _user_from_token_payload(payload)
             if user:
                 g.current_user = user
                 g.auth_method = 'jwt'
@@ -217,7 +232,7 @@ def _get_current_user():
     if token:
         payload = decode_token(token)
         if payload and payload.get('type') == 'access':
-            user = User.query.filter_by(id=payload['sub'], enabled=1).first()
+            user = _user_from_token_payload(payload)
             if user:
                 g.current_user = user
                 g.auth_method = 'cookie'

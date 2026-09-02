@@ -135,6 +135,28 @@ def is_scan_cancelled(sid):
         return active_scans.get(sid, {}).get('cancelled', False)
 
 
+def _spawn_scan_thread(target, *args, **kwargs):
+    """Run ``target`` in a daemon thread that holds a Flask app context.
+
+    Socket.IO event handlers execute inside an app/request context, but the
+    worker threads they start do not. Without an app context the scan services'
+    ``_get_db_path()`` helpers fall back from ``current_app.config['DB_PATH']``
+    to a path next to the source tree — a different (empty) sqlite file in the
+    Docker image — so scan results are written where nothing can read them and
+    follow-up steps report "No scan data for <ip>".
+    """
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _run():
+        with app.app_context():
+            target(*args, **kwargs)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return thread
+
+
 def _get_db_path():
     try:
         from flask import current_app
@@ -184,7 +206,12 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
         }, room=sid)
 
         emit_log(sid, f'Initiating nmap scan on {scan_target_str}', 'debug')
-        scan_result = nmap_scan(scan_target_str, options=scan_options)
+        scan_result = nmap_scan(
+            scan_target_str,
+            options=scan_options,
+            log_callback=lambda msg: emit_log(sid, msg, 'debug'),
+            cancel_check=lambda: is_scan_cancelled(sid),
+        )
         scan_data = parse_scan(scan_result)
 
         os_info = get_os_info_from_scan(scan_result)
@@ -444,8 +471,7 @@ def handle_start_scan(data):
     with scan_lock:
         active_scans[sid] = {'type': 'port_scan', 'target': target, 'cancelled': False}
 
-    thread = threading.Thread(target=scan_target, args=(target, sid, scan_options), daemon=True)
-    thread.start()
+    _spawn_scan_thread(scan_target, target, sid, scan_options)
 
 
 @socketio.on('stop_scan')
@@ -614,8 +640,7 @@ def handle_start_vuln_scan(data):
     with scan_lock:
         active_scans[sid] = {'type': 'vuln_scan', 'target': target, 'cancelled': False}
 
-    thread = threading.Thread(target=vuln_scan_target, args=(target, sid, scan_options), daemon=True)
-    thread.start()
+    _spawn_scan_thread(vuln_scan_target, target, sid, scan_options)
 
 
 # --------------- Fingerprint Scan ---------------
@@ -710,8 +735,7 @@ def handle_start_fingerprint_scan(data):
     with scan_lock:
         active_scans[sid] = {'type': 'fingerprint', 'target': target, 'cancelled': False}
 
-    thread = threading.Thread(target=run_fingerprint, args=(target, sid), daemon=True)
-    thread.start()
+    _spawn_scan_thread(run_fingerprint, target, sid)
 
 
 # --------------- Auth Scan ---------------
@@ -862,8 +886,7 @@ def handle_start_auth_scan(data):
     with scan_lock:
         active_scans[sid] = {'type': 'auth_scan', 'target': target, 'cancelled': False}
 
-    thread = threading.Thread(target=run_smart_auth_scan, args=(target, sid, creds), daemon=True)
-    thread.start()
+    _spawn_scan_thread(run_smart_auth_scan, target, sid, creds)
 
 
 # --------------- NVD Sync ---------------
@@ -894,8 +917,7 @@ def handle_start_nvd_sync(data):
             socketio.emit('nvd_sync_progress', {'status': 'error', 'message': str(e)})
 
     emit_log(sid, f'Starting NVD database sync ({"full" if full_sync else "incremental"})...', 'info')
-    thread = threading.Thread(target=run_sync, daemon=True)
-    thread.start()
+    _spawn_scan_thread(run_sync)
 
 
 def register_socketio_handlers():

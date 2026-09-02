@@ -435,6 +435,8 @@ tbody tr:hover { background: var(--surface-hover); }
 .log-level.error { color: var(--danger); }
 .log-level.warning { color: var(--amber); }
 .log-level.success { color: var(--lime); }
+.log-level.debug { color: var(--faint); }
+.log-entry:has(.log-level.debug) .log-message { color: var(--muted); font-family: var(--mono, monospace); }
 .log-message { color: var(--text-soft); overflow-wrap: anywhere; }
 .log-empty, .empty-state, .loading { display: grid; min-height: 100px; place-items: center; padding: 18px; color: var(--muted); text-align: center; }
 .empty-state-icon { display: none; }

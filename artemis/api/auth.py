@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, make_response, g
 from artemis.services.auth_service import (
     authenticate_user, create_access_token, create_refresh_token,
     decode_token, create_user, generate_api_key,
-    login_required, admin_required,
+    login_required, admin_required, _user_from_token_payload,
 )
 from artemis.extensions import db
 from artemis.models.user import User
@@ -63,7 +63,7 @@ def refresh():
     if not payload or payload.get('type') != 'refresh':
         return jsonify({'error': 'Invalid or expired refresh token'}), 401
 
-    user = User.query.filter_by(id=payload['sub'], enabled=1).first()
+    user = _user_from_token_payload(payload)
     if not user:
         return jsonify({'error': 'User not found or disabled'}), 401
 

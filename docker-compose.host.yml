@@ -1,0 +1,27 @@
+# Host-networking override — enables layer-2 scan features (ARP/MAC discovery,
+# SYN scans) by placing the scanner containers directly on the host network.
+#
+# Usage:
+#   1. Add to .env:
+#        DB_HOST=127.0.0.1
+#        REDIS_HOST=127.0.0.1
+#   2. docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
+#
+# Postgres and Redis are pinned to loopback so host networking does not expose
+# them on other interfaces. If the host already runs its own Postgres/Redis on
+# 5432/6379 this will conflict — stop them or stay on bridge networking.
+
+services:
+  postgres:
+    network_mode: host
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+
+  redis:
+    network_mode: host
+    command: ["redis-server", "--bind", "127.0.0.1", "--save", "60", "1", "--appendonly", "yes"]
+
+  web:
+    network_mode: host
+
+  worker:
+    network_mode: host

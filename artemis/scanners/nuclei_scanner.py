@@ -119,15 +119,10 @@ def vuln_scan(ip, options=None, log_callback=None):
                     if line:
                         line = line.strip()
                         stderr_lines.append(line)
-
+                        # Forward every line of nuclei's live output to the
+                        # trace window so scans can be troubleshot in-place.
                         if log_callback and line:
-                            if line and not line.startswith('[') and 'templates' in line.lower():
-                                log_callback(f"Nuclei: {line}")
-                            elif 'loaded' in line.lower() or 'template' in line.lower():
-                                log_callback(f"Nuclei: {line}")
-                            elif any(kw in line.lower() for kw in ['info', 'low', 'medium', 'high', 'critical']):
-                                log_callback(f"Nuclei finding: {line}")
-
+                            log_callback(f"nuclei: {line}")
                         logger.debug(f"Nuclei: {line}")
                 else:
                     time.sleep(0.1)

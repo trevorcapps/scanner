@@ -18,8 +18,11 @@ from fingerprint.engine import FingerprintEngine, FingerprintResult
 from fingerprint.fpx import scan_host as fpx_scan_host, check_installed as fpx_check_installed
 from device_type import classify_device, get_device_icon, lookup_mac_vendor
 
-# Database path - use absolute path relative to this script's location
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vuln_scan.db')
+# Database path for the legacy sqlite NVD/CPE cache.
+# Honors the DB_PATH env var (used by Docker/production) and falls back to a
+# file next to this script for local development.
+DB_PATH = os.environ.get('DB_PATH') or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'vuln_scan.db')
 
 # Singleton fingerprint engine (loaded once, reused)
 _fingerprint_engine = None
