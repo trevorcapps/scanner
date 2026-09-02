@@ -5,7 +5,7 @@ import sys
 import json
 import logging
 
-from flask import Flask, render_template
+from flask import Flask, render_template, send_from_directory, abort
 
 from artemis.config import config_map
 from artemis.extensions import db, migrate, socketio, init_celery
@@ -56,10 +56,32 @@ def create_app(config_name=None, start_background_services=True):
     from artemis import socketio_handlers
     socketio_handlers.register_socketio_handlers()
 
-    # Legacy routes (index + report)
+    # ---- Frontend serving ----
+    _ui_dir = os.path.join(_scanner_dir, 'static', 'ui')
+    _ui_index = os.path.join(_ui_dir, 'index.html')
+    # Paths owned by the backend / classic app — never SPA-fallback these.
+    _spa_reserved = ('api/', 'agent/', 'static/', 'socket.io/', 'report/', 'scan',
+                     'classic', 'favicon')
+
+    def _serve_spa():
+        if os.path.isfile(_ui_index):
+            return send_from_directory(_ui_dir, 'index.html')
+        # No build present (local dev without `npm run build`) — fall back to classic.
+        return render_template('index.html')
+
     @app.route('/')
     def index():
+        return _serve_spa()
+
+    @app.route('/classic')
+    def classic():
         return render_template('index.html')
+
+    @app.route('/<path:sub_path>')
+    def spa_fallback(sub_path):
+        if sub_path.startswith(_spa_reserved) or '.' in sub_path.rsplit('/', 1)[-1]:
+            abort(404)
+        return _serve_spa()
 
     @app.route('/report/<ip>')
     def report(ip):

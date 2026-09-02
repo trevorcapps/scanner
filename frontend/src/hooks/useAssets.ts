@@ -1,0 +1,63 @@
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, qs } from '@/lib/api';
+import type { AssetDetail, AssetSummary, Pagination } from '@/types';
+
+export interface AssetQuery {
+  q?: string;
+  device_type?: string;
+  severity?: string;
+  has_vulns?: boolean;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+interface AssetPage {
+  assets: AssetSummary[];
+  pagination: Pagination;
+}
+
+export function useAssetList(params: AssetQuery) {
+  return useQuery({
+    queryKey: ['assets', params],
+    queryFn: () =>
+      api.get<AssetPage>(`/api/v1/assets${qs({ ...params, page: params.page ?? 1 })}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAsset(ip: string | null) {
+  return useQuery({
+    queryKey: ['asset', ip],
+    queryFn: () => api.get<{ asset: AssetDetail }>(`/api/v1/assets/${ip}`),
+    enabled: !!ip,
+  });
+}
+
+export function useAssetActions(ip: string) {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['assets'] });
+    qc.invalidateQueries({ queryKey: ['asset', ip] });
+    qc.invalidateQueries({ queryKey: ['dash'] });
+  };
+
+  const scan = useMutation({
+    mutationFn: (scan_type: string) =>
+      api.post<{ id: string }>('/api/v1/scans', { target: ip, scan_type }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dash', 'queue'] }),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.del(`/api/v1/assets/${ip}`),
+    onSuccess: invalidate,
+  });
+
+  const reclassify = useMutation({
+    mutationFn: () => api.post(`/api/v1/asset/${ip}/reclassify`),
+    onSuccess: invalidate,
+  });
+
+  return { scan, remove, reclassify };
+}

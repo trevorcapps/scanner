@@ -21,6 +21,11 @@ env/
 venv/
 .venv/
 
+# Frontend — built in a dedicated stage, never copied from the host
+frontend/node_modules/
+frontend/dist/
+static/ui/
+
 # Local secrets & data — provided via environment / volumes at runtime
 .env
 .secret_key

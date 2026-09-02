@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens as "R G B" channels so Tailwind's /opacity modifier works.
+   Carried from static/style.css, refreshed: same dark/tactical spirit,
+   a touch more breathing room, sans body + mono for data. */
+:root,
+[data-theme='dark'] {
+  --bg: 10 11 13;
+  --surface: 16 17 20;
+  --surface-raised: 22 24 28;
+  --surface-hover: 28 31 36;
+  --line: 47 51 59;
+  --line-soft: 32 35 41;
+  --text: 238 240 244;
+  --text-soft: 166 172 182;
+  --muted: 115 122 134;
+  --faint: 74 80 91;
+  --blue: 123 147 255;
+  --cyan: 82 221 207;
+  --lime: 157 231 91;
+  --magenta: 223 97 255;
+  --amber: 239 184 79;
+  --danger: 240 133 122;
+  --danger-bg: 33 21 20;
+  --shadow: 0 0 0;
+}
+
+[data-theme='light'] {
+  --bg: 236 238 241;
+  --surface: 247 248 250;
+  --surface-raised: 255 255 255;
+  --surface-hover: 238 241 245;
+  --line: 196 201 209;
+  --line-soft: 221 225 231;
+  --text: 20 23 28;
+  --text-soft: 61 67 77;
+  --muted: 101 109 122;
+  --faint: 154 161 172;
+  --blue: 51 82 201;
+  --cyan: 10 125 114;
+  --lime: 79 120 15;
+  --magenta: 157 35 189;
+  --amber: 143 93 9;
+  --danger: 178 61 52;
+  --danger-bg: 253 238 236;
+  --shadow: 20 24 31;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+  font-family: theme('fontFamily.sans');
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-mono text-2xs uppercase tracking-[0.18em] text-muted;
+  }
+  .panel {
+    @apply rounded border border-line-soft bg-raised;
+  }
+  .data {
+    @apply font-mono tabular-nums;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded border border-line px-3 py-1.5
+           font-mono text-2xs uppercase tracking-wider text-text-soft transition-colors
+           hover:border-blue hover:text-text disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn border-blue/50 bg-blue/10 text-blue hover:bg-blue/20;
+  }
+  .btn-danger {
+    @apply btn border-danger/50 bg-danger/10 text-danger hover:bg-danger/20;
+  }
+  .input {
+    @apply w-full rounded border border-line bg-surface px-2.5 py-1.5 font-mono text-xs text-text
+           outline-none placeholder:text-faint focus:border-blue;
+  }
+}

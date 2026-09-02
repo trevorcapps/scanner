@@ -1,18 +1,29 @@
-.claude/
+node_modules
+dist
+*.local
+.vite
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.egg-info/
-.pytest_cache/
 .coverage
 coverage.xml
-build/
-dist/
-test-results/
-env/
-venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local runtime state / secrets
+.env
+.secret_key
 vuln_scan.db
 vuln_scan.db-journal
-tmp.json
-scan_network.py
-vulscan/
-.secret_key
+*.sqlite
+*.sqlite3
+
+# Frontend build output (produced by `npm run build` / Docker frontend stage)
+static/ui/
+frontend/node_modules/
+frontend/dist/
+
+# smoke test output
+frontend/smoke-*.png

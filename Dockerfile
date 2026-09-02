@@ -8,6 +8,17 @@
 # "web" and "worker" services in docker-compose; the entrypoint selects the role.
 ###############################################################################
 
+# --- Frontend build (React/Vite) -------------------------------------------
+# Emits static/ui/ which Flask serves at "/". Kept in its own stage so a
+# python-only change does not reinstall node modules.
+FROM node:20-slim AS frontend
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+# -> /build/static/ui  (vite base '/static/ui/', outDir '../static/ui')
+
 FROM python:3.12-slim-bookworm
 
 # --- External scanning tools --------------------------------------------------
@@ -75,6 +86,8 @@ RUN pip install --no-cache-dir \
 
 # --- Application code + package install -------------------------------------
 COPY . .
+# Built SPA from the frontend stage (host static/ui/ is .dockerignore'd).
+COPY --from=frontend /build/static/ui ./static/ui
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends build-essential; \

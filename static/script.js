@@ -319,6 +319,14 @@ document.addEventListener('DOMContentLoaded', function() {
         item.addEventListener('click', function() { navigateTo(this.getAttribute('data-page')); });
     });
 
+    // Deep-link support: /classic#page-<name> opens that page (used by the new React shell).
+    function navigateFromHash() {
+        var m = /^#page-([a-z]+)$/.exec(window.location.hash || '');
+        if (m && document.getElementById('page-' + m[1])) navigateTo(m[1]);
+    }
+    window.addEventListener('hashchange', navigateFromHash);
+    navigateFromHash();
+
     if (hamburger) hamburger.addEventListener('click', function() {
         sidebar.classList.add('open');
         overlay.classList.add('visible');
