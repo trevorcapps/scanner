@@ -68,20 +68,25 @@ def get_assets():
       summary: List scanned assets
       tags: [Assets]
       parameters:
-        - in: query
-          name: device_type
-          schema: {type: string}
-        - in: query
-          name: q
-          schema: {type: string}
-          description: Substring match on IP or hostname
+        - {in: query, name: device_type, schema: {type: string}}
+        - {in: query, name: q, schema: {type: string}, description: Substring match on IP or hostname}
+        - {in: query, name: severity, schema: {type: string}, description: "only assets with >=1 finding at this severity"}
+        - {in: query, name: has_vulns, schema: {type: boolean}}
+        - {in: query, name: sort, schema: {type: string, enum: [ip, hostname, last_scan, port_count, risk]}}
+        - {in: query, name: order, schema: {type: string, enum: [asc, desc]}}
+        - {in: query, name: page, schema: {type: integer}, description: "when set, returns the {data, pagination} envelope"}
+        - {in: query, name: per_page, schema: {type: integer}}
       responses:
         200:
-          description: Assets, most-recently-scanned first
+          description: Assets (bare list, or paginated envelope when page is set)
       security: [{bearerAuth: []}, {apiKeyAuth: []}]
     """
     device_type = request.args.get('device_type')
     q = (request.args.get('q') or '').strip().lower()
+    severity = (request.args.get('severity') or '').strip().lower()
+    has_vulns = request.args.get('has_vulns')
+    sort = (request.args.get('sort') or 'last_scan').strip()
+    order = (request.args.get('order') or 'desc').strip()
 
     try:
         latest = db.session.query(
@@ -99,9 +104,29 @@ def get_assets():
                 continue
             if q and q not in ip.lower() and not (row and row.hostname and q in row.hostname.lower()):
                 continue
-            assets.append(_asset_summary(row, ip, latest_by_ip.get(ip)))
+            summary = _asset_summary(row, ip, latest_by_ip.get(ip))
+            vc = summary.get('vuln_counts') or {}
+            if severity in ('critical', 'high', 'medium', 'low', 'info') and not vc.get(severity):
+                continue
+            if has_vulns is not None:
+                want = has_vulns.lower() in ('1', 'true', 'yes')
+                if bool(vc.get('total')) != want:
+                    continue
+            assets.append(summary)
 
-        assets.sort(key=lambda a: (a['last_scan'] or ''), reverse=True)
+        _RISK_W = {'critical': 10, 'high': 5, 'medium': 2, 'low': 1, 'info': 0}
+        keyers = {
+            'ip': lambda a: a['ip'],
+            'hostname': lambda a: (a.get('hostname') or '').lower(),
+            'last_scan': lambda a: a.get('last_scan') or '',
+            'port_count': lambda a: a.get('port_count') or 0,
+            'risk': lambda a: sum(_RISK_W[s] * (a.get('vuln_counts') or {}).get(s, 0) for s in _RISK_W),
+        }
+        assets.sort(key=keyers.get(sort, keyers['last_scan']), reverse=(order != 'asc'))
+
+        if request.args.get('page') is not None:
+            from artemis.api._pagination import paginate_list
+            return paginate_list(assets, key='assets')
         return {'assets': assets}
     except Exception as e:
         logger.error(f"Database error in get_assets: {e}")
