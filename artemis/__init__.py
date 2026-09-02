@@ -59,8 +59,10 @@ def create_app(config_name=None, start_background_services=True):
     # ---- Frontend serving ----
     _ui_dir = os.path.join(_scanner_dir, 'static', 'ui')
     _ui_index = os.path.join(_ui_dir, 'index.html')
-    # Paths owned by the backend / classic app — never SPA-fallback these.
-    _spa_reserved = ('api/', 'agent/', 'static/', 'socket.io/', 'report/', 'scan',
+    # Path prefixes owned by the backend / classic app — never SPA-fallback these.
+    # ('scan' is POST-only for the legacy report form and matches its exact rule
+    #  first, so GET /scan still reaches the SPA.)
+    _spa_reserved = ('api/', 'agent/', 'static/', 'socket.io/', 'report/',
                      'classic', 'favicon')
 
     def _serve_spa():

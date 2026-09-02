@@ -64,9 +64,14 @@ try {
   console.log('asset rows:', rows);
   await shot('assets');
 
-  await page.goto(BASE + '/vulnerabilities', { waitUntil: 'networkidle2', timeout: 20000 });
-  await page.waitForSelector('h1', { timeout: 15000 });
-  await shot('vulns');
+  for (const route of ['vulnerabilities', 'scan', 'sites', 'schedules', 'agents', 'settings', 'data-query']) {
+    await page.goto(BASE + '/' + route, { waitUntil: 'networkidle2', timeout: 20000 });
+    await page.waitForSelector('h1', { timeout: 15000 });
+    await page.waitForNetworkIdle({ timeout: 8000 }).catch(() => {});
+    const h1 = await page.$eval('h1', (el) => el.textContent);
+    console.log(`/${route} -> "${h1}"`);
+    await shot(route);
+  }
 
   // tablet width
   await page.setViewport({ width: 768, height: 1024 });
