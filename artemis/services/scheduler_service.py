@@ -83,10 +83,12 @@ def _check_and_run(app):
 
     for site in due_sites:
         try:
-            from artemis.services.site_service import execute_site_scan
-            execute_site_scan(app, site)
+            from artemis.services.job_service import dispatch_site_scan
+            dispatch_site_scan(site)
+            site.last_status = 'queued'
         except Exception:
-            logger.exception(f"Failed to execute site scan {site.id}")
+            logger.exception(f"Failed to queue site scan {site.id}")
+            site.last_status = 'failed'
         finally:
             site.next_run = calculate_next_run_for_site(site)
             site.updated_at = _now_iso()

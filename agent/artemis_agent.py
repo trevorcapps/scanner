@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -23,7 +24,8 @@ import time
 import urllib.request
 import urllib.error
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
+TELEMETRY_SCHEMA_VERSION = 2
 
 DEFAULT_INTERVAL = 21600  # 6 hours
 CONFIG_PATHS = ['/etc/artemis/agent.conf', os.path.expanduser('~/.artemis/agent.conf')]
@@ -191,15 +193,21 @@ def get_open_ports():
     # Try ss
     try:
         out = subprocess.check_output(
-            ['ss', '-tlnp'],
+            ['ss', '-H', '-tulnp'],
             stderr=subprocess.DEVNULL, timeout=10
         ).decode('utf-8', errors='replace')
-        for line in out.strip().split('\n')[1:]:  # skip header
+        for line in out.strip().split('\n'):
             parts = line.split()
-            if len(parts) >= 4:
-                local = parts[3]
+            if len(parts) >= 5:
+                protocol = parts[0].lower()
+                local = parts[4]
                 proc = parts[-1] if 'users:' in parts[-1] else ''
-                ports.append({'listen': local, 'process': proc})
+                port_text = local.rsplit(':', 1)[-1]
+                if port_text.isdigit():
+                    ports.append({
+                        'port': int(port_text), 'listen': local,
+                        'protocol': protocol, 'state': 'open', 'process': proc,
+                    })
         return ports
     except (FileNotFoundError, subprocess.SubprocessError):
         pass
@@ -215,7 +223,12 @@ def get_open_ports():
             if len(parts) >= 4:
                 local = parts[3]
                 proc = parts[-1] if len(parts) > 6 else ''
-                ports.append({'listen': local, 'process': proc})
+                port_text = local.rsplit(':', 1)[-1]
+                if port_text.isdigit():
+                    ports.append({
+                        'port': int(port_text), 'listen': local,
+                        'protocol': parts[0].lower(), 'state': 'open', 'process': proc,
+                    })
         return ports
     except (FileNotFoundError, subprocess.SubprocessError):
         pass
@@ -271,6 +284,144 @@ def get_system_info():
     return info
 
 
+def _read_cpu_sample():
+    with open('/proc/stat') as f:
+        values = [int(value) for value in f.readline().split()[1:]]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return sum(values), idle
+
+
+def get_performance_telemetry():
+    """Collect a short CPU sample and current memory pressure."""
+    cpu = {'logical_count': os.cpu_count() or 1}
+    try:
+        total_a, idle_a = _read_cpu_sample()
+        time.sleep(0.12)
+        total_b, idle_b = _read_cpu_sample()
+        delta = total_b - total_a
+        cpu['usage_percent'] = round(100.0 * (1 - ((idle_b - idle_a) / delta)), 1) if delta else 0.0
+    except (OSError, ValueError):
+        pass
+
+    memory = {}
+    try:
+        with open('/proc/meminfo') as f:
+            values = {}
+            for line in f:
+                key, value = line.split(':', 1)
+                values[key] = int(value.strip().split()[0]) * 1024
+        total = values.get('MemTotal', 0)
+        available = values.get('MemAvailable', values.get('MemFree', 0))
+        used = max(0, total - available)
+        memory = {
+            'total_bytes': total,
+            'available_bytes': available,
+            'used_bytes': used,
+            'used_percent': round((used / total) * 100, 1) if total else 0.0,
+            'swap_total_bytes': values.get('SwapTotal', 0),
+            'swap_free_bytes': values.get('SwapFree', 0),
+        }
+    except (OSError, ValueError):
+        pass
+    return {'cpu': cpu, 'memory': memory}
+
+
+def get_process_telemetry():
+    """Collect process-state totals and a bounded list of resource leaders."""
+    summary = {'total': 0, 'running': 0, 'sleeping': 0, 'zombie': 0, 'threads': 0, 'top': []}
+    try:
+        out = subprocess.check_output(
+            ['ps', '-eo', 'pid=,user=,stat=,comm=,%cpu=,%mem=,rss=,nlwp=', '--sort=-%cpu'],
+            stderr=subprocess.DEVNULL, timeout=10,
+        ).decode('utf-8', errors='replace')
+        for line in out.splitlines():
+            parts = line.split(None, 7)
+            if len(parts) != 8:
+                continue
+            pid, user, state, command, cpu, memory, rss, threads = parts
+            summary['total'] += 1
+            summary['threads'] += int(threads) if threads.isdigit() else 0
+            if state.startswith('R'):
+                summary['running'] += 1
+            elif state.startswith('Z'):
+                summary['zombie'] += 1
+            else:
+                summary['sleeping'] += 1
+            if len(summary['top']) < 12:
+                summary['top'].append({
+                    'pid': int(pid), 'user': user, 'state': state,
+                    'command': command, 'cpu_percent': float(cpu),
+                    'memory_percent': float(memory), 'rss_bytes': int(rss) * 1024,
+                    'threads': int(threads) if threads.isdigit() else 0,
+                })
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        pass
+    return summary
+
+
+def get_network_telemetry():
+    """Collect interface byte/packet counters and socket state totals."""
+    interfaces = []
+    try:
+        with open('/proc/net/dev') as f:
+            for line in f.readlines()[2:]:
+                name, counters = line.split(':', 1)
+                values = counters.split()
+                interfaces.append({
+                    'name': name.strip(),
+                    'rx_bytes': int(values[0]), 'rx_packets': int(values[1]),
+                    'rx_errors': int(values[2]), 'rx_dropped': int(values[3]),
+                    'tx_bytes': int(values[8]), 'tx_packets': int(values[9]),
+                    'tx_errors': int(values[10]), 'tx_dropped': int(values[11]),
+                })
+    except (OSError, ValueError, IndexError):
+        pass
+
+    sockets = {'tcp_established': 0, 'tcp_listening': 0, 'tcp_total': 0, 'udp_total': 0}
+    for path, protocol in (('/proc/net/tcp', 'tcp'), ('/proc/net/tcp6', 'tcp'),
+                           ('/proc/net/udp', 'udp'), ('/proc/net/udp6', 'udp')):
+        try:
+            with open(path) as f:
+                rows = f.readlines()[1:]
+            sockets[protocol + '_total'] += len(rows)
+            if protocol == 'tcp':
+                states = [row.split()[3] for row in rows if len(row.split()) > 3]
+                sockets['tcp_established'] += states.count('01')
+                sockets['tcp_listening'] += states.count('0A')
+        except OSError:
+            pass
+    return {'interfaces': interfaces, 'sockets': sockets}
+
+
+def get_storage_telemetry():
+    """Collect root capacity and kernel block-device I/O counters."""
+    storage = {'filesystems': [], 'io': []}
+    try:
+        usage = shutil.disk_usage('/')
+        storage['filesystems'].append({
+            'mount': '/', 'total_bytes': usage.total, 'used_bytes': usage.used,
+            'free_bytes': usage.free,
+            'used_percent': round((usage.used / usage.total) * 100, 1) if usage.total else 0.0,
+        })
+    except OSError:
+        pass
+    try:
+        with open('/proc/diskstats') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 14 or parts[2].startswith(('loop', 'ram')):
+                    continue
+                storage['io'].append({
+                    'device': parts[2], 'reads_completed': int(parts[3]),
+                    'bytes_read': int(parts[5]) * 512,
+                    'writes_completed': int(parts[7]), 'bytes_written': int(parts[9]) * 512,
+                    'io_time_ms': int(parts[12]),
+                })
+    except (OSError, ValueError):
+        pass
+    return storage
+
+
 def get_service_status():
     """Check status of common services."""
     services = ['sshd', 'ssh', 'nginx', 'apache2', 'httpd', 'docker', 'postgresql', 'mysql', 'mariadb', 'redis-server', 'redis', 'cron', 'fail2ban']
@@ -298,19 +449,52 @@ def get_service_status():
 
 def collect_report():
     """Collect full system report."""
-    return {
+    started = time.monotonic()
+    collectors = {}
+
+    def collect(name, callback, fallback):
+        collector_started = time.monotonic()
+        try:
+            value = callback()
+            collectors[name] = {
+                'status': 'ok',
+                'duration_ms': round((time.monotonic() - collector_started) * 1000, 1),
+                'records': len(value) if isinstance(value, list) else None,
+            }
+            return value
+        except Exception as exc:
+            collectors[name] = {
+                'status': 'error',
+                'duration_ms': round((time.monotonic() - collector_started) * 1000, 1),
+                'error': type(exc).__name__,
+            }
+            return fallback
+
+    report = {
+        'telemetry_schema_version': TELEMETRY_SCHEMA_VERSION,
         'agent_version': __version__,
         'report_type': 'full',
         'hostname': get_hostname(),
         'ip': get_primary_ip(),
-        'os_info': get_os_info(),
-        'ips': get_ips(),
-        'packages': get_packages(),
-        'ports': get_open_ports(),
-        'system_info': get_system_info(),
-        'services': get_service_status(),
+        'os_info': collect('os', get_os_info, {}),
+        'ips': collect('interfaces', get_ips, []),
+        'packages': collect('packages', get_packages, []),
+        'ports': collect('ports', get_open_ports, []),
+        'system_info': collect('system', get_system_info, {}),
+        'services': collect('services', get_service_status, []),
+        'performance': collect('performance', get_performance_telemetry, {}),
+        'processes': collect('processes', get_process_telemetry, {}),
+        'network': collect('network', get_network_telemetry, {}),
+        'storage': collect('storage', get_storage_telemetry, {}),
+    }
+    report['package_count'] = len(report['packages'])
+    report['telemetry'] = {
+        'collectors': collectors,
+        'duration_ms': round((time.monotonic() - started) * 1000, 1),
         'collected_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     }
+    report['collected_at'] = report['telemetry']['collected_at']
+    return report
 
 
 def api_call(server, endpoint, data=None, key=None):

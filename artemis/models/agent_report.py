@@ -1,5 +1,7 @@
 """AgentReport model — reports submitted by remote agents."""
 
+import json
+
 from artemis.extensions import db
 
 
@@ -16,13 +18,20 @@ class AgentReport(db.Model):
     received_at = db.Column(db.Text)
 
     def to_dict(self):
+        try:
+            payload = json.loads(self.report_json or '{}')
+        except (TypeError, ValueError):
+            payload = {}
         return {
             'id': self.id,
             'agent_id': self.agent_id,
             'report_type': self.report_type,
-            'report_json': self.report_json,
+            'report': payload,
             'packages_count': self.packages_count,
+            'package_count': self.packages_count,
             'ports_count': self.ports_count,
+            'port_count': self.ports_count,
             'vulns_matched': self.vulns_matched,
             'received_at': self.received_at,
+            'created_at': self.received_at,
         }

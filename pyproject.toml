@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "Enterprise network vulnerability scanner and asset fingerprinting platform"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Trevor Capps", email = "trevor@chronos.host"},
 ]
@@ -19,27 +19,27 @@ dependencies = [
     "mac-vendor-lookup>=0.1.12",
     "python-dotenv>=1.0",
     "croniter>=1.4",
+    "celery[redis]>=5.4",
+    "Flask-Migrate>=4.0",
 ]
 
 [project.optional-dependencies]
-celery = [
-    "celery[redis]>=5.3",
-]
 postgres = [
-    "psycopg2-binary>=2.9",
+    "psycopg[binary]>=3.2",
 ]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "ruff>=0.3",
+    "build>=1.2",
 ]
 all = [
-    "artemis-scanner[celery,postgres,dev]",
+    "artemis-scanner[postgres,dev]",
 ]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["artemis*"]

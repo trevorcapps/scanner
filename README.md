@@ -21,7 +21,8 @@ A web-based network vulnerability scanner and asset fingerprinting platform powe
 - **Backend:** Python, Flask, Flask-SocketIO
 - **Scanning:** Nmap (python-nmap), Nuclei
 - **Fingerprinting:** Custom engine with JSON signature database
-- **Database:** SQLite
+- **Database:** SQLAlchemy with Alembic migrations; SQLite for local development
+- **Jobs:** Celery with Redis-backed durable execution in production
 - **Frontend:** Vanilla JS, Socket.IO
 
 ## Quick Start
@@ -29,10 +30,28 @@ A web-based network vulnerability scanner and asset fingerprinting platform powe
 ```bash
 python -m venv env
 . env/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -e '.[dev]'
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-python app.py
+python run.py
 ```
+
+Local development executes queued jobs eagerly. Production requires PostgreSQL,
+Redis, migrated schemas, and separate web and worker processes:
+
+```bash
+export FLASK_CONFIG=production
+export DATABASE_URL=postgresql+psycopg://artemis:password@localhost/artemis
+export CELERY_BROKER_URL=redis://localhost:6379/0
+export CELERY_RESULT_BACKEND=redis://localhost:6379/1
+
+python -m pip install -e '.[postgres]'
+flask --app run.py db upgrade
+celery -A artemis.celery_app:celery_app worker --loglevel=INFO
+python run.py
+```
+
+Site scans are the first workload on the durable queue. Their state is exposed at
+`/api/v1/scan-jobs`; remaining interactive scan types are being migrated incrementally.
 
 ## Fingerprint Signatures
 

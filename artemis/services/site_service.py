@@ -59,12 +59,14 @@ def resolve_site_targets(site):
     return ips
 
 
-def execute_site_scan(app, site):
+def execute_site_scan(app, site, job=None):
     """Run a full site scan across all targets. Called by scheduler or manual trigger."""
     start_time = datetime.utcnow()
     start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%SZ')
 
     targets = resolve_site_targets(site)
+    scan_options = json.loads(site.scan_options_json) if site.scan_options_json else {}
+    scan_type = site.scan_type or 'full'
 
     site_scan = SiteScan(
         site_id=site.id,
@@ -88,19 +90,25 @@ def execute_site_scan(app, site):
     })
     socketio.emit('scan_log', {'message': f'[{site.name}] Site scan started — {len(targets)} target(s), mode: {scan_type}', 'level': 'info'})
 
-    scan_options = json.loads(site.scan_options_json) if site.scan_options_json else {}
-    scan_type = site.scan_type or 'full'
     per_target_results = []
     total_ports = 0
     total_vulns = 0
     targets_ok = 0
     targets_fail = 0
+    cancelled = False
 
     def _site_log(message, level='info'):
         """Emit a scan_log event so the UI log panel picks it up."""
         socketio.emit('scan_log', {'message': f'[{site.name}] {message}', 'level': level})
 
     for idx, target in enumerate(targets):
+        if job:
+            db.session.refresh(job)
+            if job.status == 'cancel_requested':
+                cancelled = True
+                _site_log('Cancellation acknowledged; no additional targets will start', 'warning')
+                break
+
         target_result = {'target': target, 'ports': 0, 'vulns': 0, 'status': 'pending', 'error': None}
 
         try:
@@ -163,7 +171,10 @@ def execute_site_scan(app, site):
         new_vulns = delta.get('new_vulns', 0)
         removed_vulns = delta.get('removed_vulns', 0)
 
-    final_status = 'success' if targets_fail == 0 else ('partial' if targets_ok > 0 else 'failed')
+    if cancelled:
+        final_status = 'cancelled'
+    else:
+        final_status = 'success' if targets_fail == 0 else ('partial' if targets_ok > 0 else 'failed')
 
     site_scan.status = final_status
     site_scan.completed_at = end_time.strftime('%Y-%m-%dT%H:%M:%SZ')

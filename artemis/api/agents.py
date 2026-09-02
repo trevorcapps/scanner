@@ -2,14 +2,21 @@
 
 import json
 import logging
+import os
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, Response
+from flask import Blueprint, request, jsonify, Response, send_file
 
 from artemis.extensions import db
 from artemis.models.agent import Agent
 from artemis.models.agent_report import AgentReport
-from artemis.services.agent_service import register_agent, process_report, generate_agent_key
+from artemis.services.agent_service import (
+    aggregate_agent_telemetry,
+    generate_agent_key,
+    process_report,
+    register_agent,
+    summarize_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -279,8 +286,15 @@ echo "=== Artemis Agent Uninstalled ==="
 @agents_bp.route('/install.sh', methods=['GET'])
 def agent_install_script():
     """Serve the agent install shell script."""
-    return Response(INSTALL_SCRIPT, mimetype='text/plain',
-                    headers={'Content-Disposition': 'inline; filename="install.sh"'})
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'agent', 'install.sh')
+    return send_file(path, mimetype='text/plain', download_name='install.sh')
+
+
+@agents_bp.route('/artemis_agent.py', methods=['GET'])
+def agent_python_script():
+    """Serve the dependency-free agent used by the installer."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'agent', 'artemis_agent.py')
+    return send_file(path, mimetype='text/x-python', download_name='artemis_agent.py')
 
 
 @agents_bp.route('/uninstall.sh', methods=['GET'])
@@ -335,15 +349,28 @@ def list_agents():
     update_stale_agents()
 
     agents = Agent.query.order_by(Agent.id.desc()).all()
-    return jsonify([a.to_dict() for a in agents])
+    result = []
+    for agent in agents:
+        latest = AgentReport.query.filter_by(agent_id=agent.id).order_by(AgentReport.id.desc()).first()
+        result.append(summarize_agent(agent, latest))
+    return jsonify(result)
+
+
+@agents_bp.route('/agents/telemetry', methods=['GET'])
+def agent_telemetry():
+    """Return fleet-level telemetry from each agent's latest collection."""
+    from artemis.services.agent_service import update_stale_agents
+    update_stale_agents()
+    agents = Agent.query.order_by(Agent.id.desc()).all()
+    return jsonify(aggregate_agent_telemetry(agents))
 
 
 @agents_bp.route('/agents/<int:aid>', methods=['GET'])
 def get_agent(aid):
     """Get agent details plus latest report."""
     agent = Agent.query.get_or_404(aid)
-    result = agent.to_dict()
     latest = AgentReport.query.filter_by(agent_id=aid).order_by(AgentReport.id.desc()).first()
+    result = summarize_agent(agent, latest)
     if latest:
         result['latest_report'] = latest.to_dict()
     return jsonify(result)

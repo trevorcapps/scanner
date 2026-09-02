@@ -2,15 +2,15 @@
 
 import json
 import logging
-import threading
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, g
 
 from artemis.extensions import db
 from artemis.models.site import Site
 from artemis.models.site_scan import SiteScan
-from artemis.services.site_service import resolve_site_targets, execute_site_scan
+from artemis.services.site_service import resolve_site_targets
+from artemis.services.job_service import QueueDispatchError, dispatch_site_scan
 from artemis.services.scheduler_service import calculate_next_run_for_site
 
 logger = logging.getLogger(__name__)
@@ -138,30 +138,26 @@ def delete_site(site_id):
 
 @sites_bp.route('/sites/<int:site_id>/scan', methods=['POST'])
 def trigger_site_scan(site_id):
-    """Trigger an immediate scan of the site."""
+    """Persist and enqueue an immediate site scan."""
     site = Site.query.get_or_404(site_id)
 
-    if site.last_status == 'running':
-        return jsonify({'error': 'Site scan already running'}), 409
+    if site.last_status in ('queued', 'running'):
+        return jsonify({'error': 'Site scan already queued or running'}), 409
 
-    app = current_app._get_current_object()
-
-    def run_scan():
-        with app.app_context():
-            try:
-                execute_site_scan(app, site)
-            except Exception as e:
-                logger.error(f"Site scan {site.id} failed: {e}")
-
-    thread = threading.Thread(target=run_scan, daemon=True, name=f'site-scan-{site.id}')
-    thread.start()
+    requested_by = getattr(getattr(g, 'current_user', None), 'id', None)
+    targets = resolve_site_targets(site)
+    try:
+        job = dispatch_site_scan(site, requested_by=requested_by)
+    except QueueDispatchError as exc:
+        return jsonify({'error': str(exc), 'job': exc.job.to_dict()}), 503
 
     return jsonify({
-        'status': 'triggered',
+        'status': job.status,
+        'job': job.to_dict(),
         'site_id': site_id,
-        'targets': resolve_site_targets(site),
-        'target_count': len(resolve_site_targets(site)),
-    })
+        'targets': targets,
+        'target_count': len(targets),
+    }), 202
 
 
 @sites_bp.route('/sites/<int:site_id>/toggle', methods=['POST'])

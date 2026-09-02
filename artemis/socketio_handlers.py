@@ -44,6 +44,30 @@ _nvd_module = None
 _exploit_module = None
 
 
+@socketio.on('connect')
+def handle_connect(auth=None):
+    """Reject Socket.IO clients that did not pass the normal auth checks."""
+    from artemis.models.user import User
+    from artemis.services.auth_service import _get_current_user
+
+    if User.query.count() == 0:
+        return True
+    return _get_current_user() is not None
+
+
+def _require_socket_role(min_role='analyst'):
+    from artemis.models.user import User
+    from artemis.services.auth_service import ROLE_HIERARCHY, _get_current_user, get_effective_role
+
+    if User.query.count() == 0:
+        return True
+    user = _get_current_user()
+    if not user or ROLE_HIERARCHY.get(get_effective_role(user), 0) < ROLE_HIERARCHY[min_role]:
+        emit('scan_error', {'error': 'Insufficient permissions'})
+        return False
+    return True
+
+
 def _lazy_imports():
     """Import scanner-level modules lazily."""
     global _fpx_imported, _fpx_scan_host, _fpx_check_installed
@@ -397,6 +421,8 @@ def scan_target(target, sid, scan_options=None):
 
 @socketio.on('start_scan')
 def handle_start_scan(data):
+    if not _require_socket_role():
+        return
     target = data.get('ip', '').strip()
     sid = request.sid
 
@@ -424,6 +450,8 @@ def handle_start_scan(data):
 
 @socketio.on('stop_scan')
 def handle_stop_scan():
+    if not _require_socket_role():
+        return
     sid = request.sid
     with scan_lock:
         if sid in active_scans:
@@ -539,6 +567,8 @@ def vuln_scan_target(target, sid, scan_options=None):
 
 @socketio.on('start_vuln_scan')
 def handle_start_vuln_scan(data):
+    if not _require_socket_role():
+        return
     target = data.get('ip', '').strip()
     sid = request.sid
 
@@ -592,6 +622,8 @@ def handle_start_vuln_scan(data):
 
 @socketio.on('start_fingerprint_scan')
 def handle_start_fingerprint_scan(data):
+    if not _require_socket_role():
+        return
     target = data.get('ip', '').strip()
     sid = request.sid
 
@@ -686,6 +718,8 @@ def handle_start_fingerprint_scan(data):
 
 @socketio.on('start_auth_scan')
 def handle_start_auth_scan(data):
+    if not _require_socket_role():
+        return
     target = data.get('ip', '').strip()
     sid = request.sid
 
@@ -836,6 +870,8 @@ def handle_start_auth_scan(data):
 
 @socketio.on('start_nvd_sync')
 def handle_start_nvd_sync(data):
+    if not _require_socket_role('admin'):
+        return
     _lazy_imports()
     sid = request.sid
     full_sync = data.get('full', False)
@@ -860,3 +896,18 @@ def handle_start_nvd_sync(data):
     emit_log(sid, f'Starting NVD database sync ({"full" if full_sync else "incremental"})...', 'info')
     thread = threading.Thread(target=run_sync, daemon=True)
     thread.start()
+
+
+def register_socketio_handlers():
+    """Register all events on the current Socket.IO server instance."""
+    handlers = {
+        'connect': handle_connect,
+        'start_scan': handle_start_scan,
+        'stop_scan': handle_stop_scan,
+        'start_vuln_scan': handle_start_vuln_scan,
+        'start_fingerprint_scan': handle_start_fingerprint_scan,
+        'start_auth_scan': handle_start_auth_scan,
+        'start_nvd_sync': handle_start_nvd_sync,
+    }
+    for event, handler in handlers.items():
+        socketio.on_event(event, handler)

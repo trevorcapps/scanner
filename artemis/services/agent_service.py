@@ -12,6 +12,85 @@ from artemis.models.agent_report import AgentReport
 logger = logging.getLogger(__name__)
 
 
+def _report_payload(report):
+    if not report or not report.report_json:
+        return {}
+    try:
+        return json.loads(report.report_json)
+    except (TypeError, ValueError):
+        return {}
+
+
+def summarize_agent(agent, latest_report=None):
+    """Return the stable UI contract for an agent without exposing its key."""
+    result = agent.to_dict()
+    payload = _report_payload(latest_report)
+    performance = payload.get('performance', {})
+    processes = payload.get('processes', {})
+    network = payload.get('network', {})
+    telemetry = payload.get('telemetry', {})
+    collectors = telemetry.get('collectors', {})
+    result.update({
+        'package_count': latest_report.packages_count if latest_report else 0,
+        'port_count': latest_report.ports_count if latest_report else 0,
+        'vulns_matched': latest_report.vulns_matched if latest_report else 0,
+        'latest_report_at': latest_report.received_at if latest_report else None,
+        'telemetry': {
+            'schema_version': payload.get('telemetry_schema_version', 1),
+            'collection_ms': telemetry.get('duration_ms'),
+            'cpu_percent': performance.get('cpu', {}).get('usage_percent'),
+            'memory_percent': performance.get('memory', {}).get('used_percent'),
+            'process_count': processes.get('total'),
+            'thread_count': processes.get('threads'),
+            'established_connections': network.get('sockets', {}).get('tcp_established'),
+            'collector_count': len(collectors),
+            'degraded_collectors': sum(
+                1 for value in collectors.values()
+                if isinstance(value, dict) and value.get('status') != 'ok'
+            ),
+        },
+    })
+    return result
+
+
+def aggregate_agent_telemetry(agents):
+    """Aggregate the latest reports into fleet-level collection telemetry."""
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    summaries = []
+    for agent in agents:
+        latest = AgentReport.query.filter_by(agent_id=agent.id).order_by(AgentReport.id.desc()).first()
+        summaries.append(summarize_agent(agent, latest))
+    reports_24h = AgentReport.query.filter(
+        AgentReport.received_at >= cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')
+    ).count()
+
+    def average(field):
+        values = [item['telemetry'].get(field) for item in summaries]
+        values = [float(value) for value in values if isinstance(value, (int, float))]
+        return round(sum(values) / len(values), 1) if values else None
+
+    statuses = {'active': 0, 'stale': 0, 'offline': 0}
+    for item in summaries:
+        status = item.get('status') or 'offline'
+        statuses[status] = statuses.get(status, 0) + 1
+    return {
+        'agents_total': len(summaries),
+        'statuses': statuses,
+        'reports_24h': reports_24h,
+        'packages_observed': sum(item.get('package_count', 0) for item in summaries),
+        'ports_observed': sum(item.get('port_count', 0) for item in summaries),
+        'average_cpu_percent': average('cpu_percent'),
+        'average_memory_percent': average('memory_percent'),
+        'average_collection_ms': average('collection_ms'),
+        'degraded_collectors': sum(item['telemetry'].get('degraded_collectors', 0) for item in summaries),
+        'latest_report_at': max(
+            (item['latest_report_at'] for item in summaries if item.get('latest_report_at')),
+            default=None,
+        ),
+        'agents': summaries,
+    }
+
+
 def generate_agent_key():
     """Generate a secure agent API key."""
     return secrets.token_urlsafe(32)
@@ -168,36 +247,13 @@ def _store_agent_system_data(ip, data):
 
 
 def _match_package_cves(agent, packages):
-    """Match installed packages against NVD local DB for known CVEs."""
-    if not packages:
-        return 0
-    matched = 0
-    try:
-        from flask import current_app
-        import sqlite3
-        db_path = current_app.config['DB_PATH']
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        # Check if nvd_cves table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cves'")
-        if not cursor.fetchone():
-            conn.close()
-            return 0
-        for pkg in packages:
-            name = pkg.get('name', '').lower()
-            version = pkg.get('version', '')
-            if not name:
-                continue
-            cursor.execute(
-                "SELECT COUNT(*) FROM nvd_cves WHERE LOWER(affected_product) LIKE ? AND affected_version = ?",
-                (f'%{name}%', version)
-            )
-            count = cursor.fetchone()[0]
-            matched += count
-        conn.close()
-    except Exception as e:
-        logger.warning(f"CVE matching failed: {e}")
-    return matched
+    """Return matches only when package data has been normalized to CPEs.
+
+    Distribution package names are not reliable CPE product identifiers. The
+    authenticated scan pipeline performs CPE-aware matching; agent inventory is
+    retained as evidence until that same normalization is available here.
+    """
+    return 0
 
 
 def update_stale_agents():

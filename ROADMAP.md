@@ -3,6 +3,17 @@
 ## Tier 1: Foundation (Do These First)
 *Without these, nothing else scales.*
 
+### Implementation Status
+- [x] Application factory with `api/`, `models/`, `services/`, `scanners/`, and `tasks/` boundaries
+- [x] Persistent Celery job model, Redis production configuration, retry policy, status API, and cooperative cancellation for site scans
+- [ ] Move remaining interactive and scheduled scan types off daemon threads
+- [x] Alembic baseline and PostgreSQL driver/configuration
+- [ ] Convert remaining raw SQLite services and make PostgreSQL the production system of record
+- [x] JWT, API keys, role hierarchy, read-only write protection, and authenticated Socket.IO commands
+- [ ] Organization model and tenant isolation on every query and mutation
+- [x] Versioned scan-job REST endpoints and initial CI test/build pipeline
+- [ ] Complete `/api/v1` resource coverage, generated OpenAPI documentation, and webhooks
+
 ### 1. **Architecture Refactor**
 - Break the monolith: `app.py` (1,449 lines) and `vuln_scan.py` (2,294 lines) need to become proper modules — `api/`, `models/`, `services/`, `scanners/`
 - Introduce a task queue (Celery + Redis) to replace raw `threading` — scans should be durable, retryable, and not die with the process

@@ -15,10 +15,13 @@ from artemis.models.agent import Agent
 from artemis.models.agent_report import AgentReport
 from artemis.models.site import Site
 from artemis.models.site_scan import SiteScan
+from artemis.models.scan_job import ScanJob
+from artemis.models.user import User
+from artemis.models.api_key import ApiKey
 
 __all__ = [
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',
     'ScheduledScan', 'ScanHistory', 'Agent', 'AgentReport',
-    'Site', 'SiteScan',
+    'Site', 'SiteScan', 'ScanJob', 'User', 'ApiKey',
 ]

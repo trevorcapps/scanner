@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MPLCONFIGDIR: /tmp/matplotlib
+      FLASK_APP: run.py
+      DATABASE_URL: sqlite:////tmp/artemis-ci.db
+      DB_PATH: /tmp/artemis-ci.db
+      AUTO_CREATE_SCHEMA: "false"
+      INITIALIZE_LEGACY_SCHEMA: "false"
+      START_BACKGROUND_SERVICES: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Lint
+        run: ruff check artemis agent tests --select E9,F63,F7,F82
+      - name: Test
+        run: pytest --cov=artemis --cov=agent --cov-report=term-missing --cov-report=xml
+      - name: Verify migrations
+        run: flask db upgrade
+      - name: Build
+        run: python -m build

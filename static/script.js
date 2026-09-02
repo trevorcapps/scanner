@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (name) name.textContent = user.display_name || user.username;
             if (role) role.textContent = user.role;
         }
+        if (typeof loadDashboard === 'function') loadDashboard();
     }
 
     function checkAuth() {
@@ -199,8 +200,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Source badge helpers
     var sourceLabels = {
-        'nuclei': '🔬 Nuclei', 'nvd-local': '📦 NVD', 'nmap-vulscan': '🔍 Nmap',
-        'auth-scan': '🔑 Auth', 'exploit-db': '💥 Exploit'
+        'nuclei': 'NUCLEI', 'nvd-local': 'NVD', 'nmap-vulscan': 'NMAP',
+        'auth-scan': 'AUTH', 'exploit-db': 'EXPLOIT DB'
     };
 
     function renderSourceBadges(sources) {
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==================== Theme Management ====================
 
     var themeOptions = document.querySelectorAll('.theme-option');
-    var currentTheme = localStorage.getItem('theme') || 'light';
+    var currentTheme = localStorage.getItem('theme') || 'dark';
 
     function applyTheme(theme) {
         document.body.className = 'theme-' + theme;
@@ -235,7 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('theme', theme);
         // Update theme toggle icon
         var toggleIcon = document.querySelector('.theme-toggle-icon');
-        if (toggleIcon) toggleIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+        if (toggleIcon) toggleIcon.textContent = theme === 'dark' ? 'LIGHT' : 'DARK';
         // Update active state on theme options
         themeOptions.forEach(function(option) {
             option.classList.toggle('active', option.getAttribute('data-theme') === theme);
@@ -273,6 +274,19 @@ document.addEventListener('DOMContentLoaded', function() {
         navItems.forEach(function(n) { n.classList.toggle('active', n.getAttribute('data-page') === pageName); });
         pages.forEach(function(p) { p.classList.toggle('active', p.id === 'page-' + pageName); });
 
+        var labels = {
+            dashboard: ['OVERVIEW', 'LIVE POSTURE'], scan: ['NEW TRACE', 'TARGET ACQUISITION'],
+            assets: ['ASSETS', 'DISCOVERED INVENTORY'], vulns: ['FINDINGS', 'CORRELATED EXPOSURE'],
+            sites: ['SITES', 'SCAN BOUNDARIES'], schedules: ['SCHEDULES', 'AUTOMATED TRACES'],
+            agents: ['AGENTS', 'ENDPOINT TELEMETRY'], settings: ['CONTROL', 'ENGINE POLICY'],
+            sql: ['DATA QUERY', 'DIRECT EVIDENCE ACCESS']
+        };
+        var workspace = labels[pageName] || [pageName.toUpperCase(), ''];
+        var title = document.getElementById('workspace-title');
+        var kicker = document.getElementById('workspace-kicker');
+        if (title) title.textContent = workspace[0];
+        if (kicker) kicker.textContent = workspace[1];
+
         // Close mobile sidebar
         sidebar.classList.remove('open');
         overlay.classList.remove('visible');
@@ -304,6 +318,14 @@ document.addEventListener('DOMContentLoaded', function() {
         overlay.classList.remove('visible');
     });
 
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            navigateTo('scan');
+            setTimeout(function() { document.getElementById('ip').focus(); }, 0);
+        }
+    });
+
     // ==================== Log Panel ====================
 
     var logContent = document.getElementById('log-content');
@@ -312,7 +334,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var logPanel = document.getElementById('log-panel');
     var logPanelHeader = document.getElementById('log-panel-header');
     var maxLogEntries = 500;
-    var logExpanded = localStorage.getItem('logExpanded') !== 'false';
+    var logExpanded = localStorage.getItem('logExpanded') === 'true';
 
     function updateLogPanel() {
         logPanel.classList.toggle('collapsed', !logExpanded);
@@ -1860,77 +1882,182 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ==================== Agents Page ====================
 
+    var selectedAgentId = null;
+
+    function formatBytes(value) {
+        value = Number(value);
+        if (!isFinite(value) || value < 0) return '—';
+        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+        var index = 0;
+        while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
+        return (index === 0 ? Math.round(value) : value.toFixed(value >= 10 ? 1 : 2)) + ' ' + units[index];
+    }
+
+    function metric(value, suffix) {
+        return typeof value === 'number' && isFinite(value) ? value.toFixed(1) + (suffix || '') : '—';
+    }
+
+    function renderFleetTelemetry(data) {
+        var statuses = data.statuses || {};
+        document.getElementById('agents-active').textContent = (statuses.active || 0) + '/' + (data.agents_total || 0);
+        document.getElementById('agents-reports').textContent = data.reports_24h || 0;
+        document.getElementById('agents-cpu').textContent = metric(data.average_cpu_percent, '%');
+        document.getElementById('agents-memory').textContent = metric(data.average_memory_percent, '%');
+        document.getElementById('agents-collection').textContent = data.average_collection_ms == null ? '—' : Math.round(data.average_collection_ms) + ' ms';
+        var collectorTotal = 0;
+        (data.agents || []).forEach(function(agent) { collectorTotal += (agent.telemetry || {}).collector_count || 0; });
+        var healthy = Math.max(0, collectorTotal - (data.degraded_collectors || 0));
+        document.getElementById('agents-coverage').textContent = collectorTotal ? Math.round((healthy / collectorTotal) * 100) + '%' : '—';
+    }
+
     function loadAgents() {
         var container = document.getElementById('agents-list');
-        container.innerHTML = '<div style="text-align:center;padding:48px"><div class="spinner"></div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
 
-        fetch('/api/v1/agents').then(function(r) { return r.json(); }).then(function(agents) {
+        fetch('/api/v1/agents/telemetry').then(function(r) {
+            if (!r.ok) throw new Error('Telemetry request failed');
+            return r.json();
+        }).then(function(data) {
+            var agents = data.agents || [];
+            renderFleetTelemetry(data);
+            document.getElementById('agents-catalog-count').textContent = agents.length + ' TARGET' + (agents.length === 1 ? '' : 'S');
             if (!agents || agents.length === 0) {
-                container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🤖</span>No agents registered yet. Install an agent on a host to get started.</div>';
+                container.innerHTML = '<div class="empty-state">No endpoint agents registered.</div>';
+                document.getElementById('agent-inspector').innerHTML = '<div class="empty-state">Deploy an agent to begin endpoint inspection.</div>';
                 return;
             }
-            var html = '<div class="entity-cards">';
+            if (!selectedAgentId || !agents.some(function(agent) { return agent.id === selectedAgentId; })) selectedAgentId = agents[0].id;
+            var html = '';
             agents.forEach(function(a) {
-                html += '<div class="entity-card"><div class="entity-card-header"><div>';
-                html += '<div class="entity-card-title"><span class="status-dot ' + (a.status || 'offline') + '"></span>' + escapeHtml(a.hostname || a.ip || 'Unknown') + '</div>';
-                html += '<div class="entity-card-meta">' + escapeHtml(a.ip || '—') + ' · ' + escapeHtml(a.os || '—') + '</div>';
-                html += '</div></div>';
-                html += '<div class="entity-card-meta">Last checkin: ' + formatDate(a.last_checkin) + '</div>';
-                if (a.version) html += '<div class="entity-card-meta">Version: ' + escapeHtml(a.version) + '</div>';
-                if (a.package_count) html += '<div class="entity-card-meta">' + a.package_count + ' packages · ' + (a.port_count || 0) + ' ports</div>';
-                html += '<div class="entity-card-actions">';
-                html += '<button class="btn-small btn-details" onclick="showAgentDetail(' + a.id + ')">Details</button>';
-                html += '<button class="btn-small btn-secondary" onclick="regenAgentKey(' + a.id + ')">Regen Key</button>';
-                html += '<button class="btn-small btn-stop" onclick="deleteAgent(' + a.id + ', \'' + escapeHtml(a.hostname || '') + '\')">Delete</button>';
-                html += '</div></div>';
+                var t = a.telemetry || {};
+                html += '<div class="agent-row' + (a.id === selectedAgentId ? ' selected' : '') + '" data-agent-id="' + a.id + '">';
+                html += '<div class="agent-row-title"><span class="status-dot ' + escapeHtml(a.status || 'offline') + '"></span>' + escapeHtml(a.hostname || a.ip || 'Unknown') + '</div>';
+                html += '<div class="agent-row-state">' + escapeHtml(a.status || 'offline') + '</div>';
+                html += '<div class="agent-row-meta">' + escapeHtml(a.ip || 'NO ADDRESS') + ' / ' + (a.port_count || 0) + ' PORTS</div>';
+                html += '<div class="agent-row-meta">CPU ' + metric(t.cpu_percent, '%') + ' / MEM ' + metric(t.memory_percent, '%') + '</div></div>';
             });
-            html += '</div>';
             container.innerHTML = html;
+            container.querySelectorAll('.agent-row').forEach(function(row) {
+                row.addEventListener('click', function() {
+                    selectedAgentId = parseInt(this.getAttribute('data-agent-id'));
+                    container.querySelectorAll('.agent-row').forEach(function(item) { item.classList.remove('selected'); });
+                    this.classList.add('selected');
+                    loadAgentInspector(selectedAgentId);
+                });
+            });
+            loadAgentInspector(selectedAgentId);
         }).catch(function(err) { container.innerHTML = '<p class="error">Failed to load agents: ' + err.message + '</p>'; });
     }
 
-    window.showAgentDetail = function(id) {
-        fetch('/api/v1/agents/' + id).then(function(r) { return r.json(); }).then(function(agent) {
-            var html = '<h2>Agent: ' + escapeHtml(agent.hostname || agent.ip || 'Unknown') + '</h2>';
-            html += '<div class="asset-modal-grid">';
-            html += '<div class="asset-modal-section"><div class="asset-section-title">System Info</div><ul class="asset-info-list">';
-            html += '<li><span class="asset-info-label">Hostname</span><span class="asset-info-value">' + escapeHtml(agent.hostname || '—') + '</span></li>';
-            html += '<li><span class="asset-info-label">IP</span><span class="asset-info-value">' + escapeHtml(agent.ip || '—') + '</span></li>';
-            html += '<li><span class="asset-info-label">OS</span><span class="asset-info-value">' + escapeHtml(agent.os || '—') + '</span></li>';
-            html += '<li><span class="asset-info-label">Status</span><span class="asset-info-value"><span class="status-dot ' + (agent.status || 'offline') + '"></span>' + escapeHtml(agent.status || '—') + '</span></li>';
-            html += '<li><span class="asset-info-label">Version</span><span class="asset-info-value">' + escapeHtml(agent.version || '—') + '</span></li>';
-            html += '<li><span class="asset-info-label">Last Checkin</span><span class="asset-info-value">' + formatDate(agent.last_checkin) + '</span></li>';
-            html += '<li><span class="asset-info-label">Registered</span><span class="asset-info-value">' + formatDate(agent.created_at) + '</span></li>';
-            html += '</ul></div>';
+    function renderEvidenceList(rows) {
+        var html = '<ul class="evidence-list">';
+        rows.forEach(function(row) {
+            var value = row[1] == null || row[1] === '' ? '—' : row[1];
+            html += '<li><span>' + escapeHtml(row[0]) + '</span><b>' + escapeHtml(String(value)) + '</b></li>';
+        });
+        return html + '</ul>';
+    }
 
-            if (agent.latest_report) {
-                var r = agent.latest_report;
-                html += '<div class="asset-modal-section"><div class="asset-section-title">Latest Report</div><ul class="asset-info-list">';
-                html += '<li><span class="asset-info-label">Date</span><span class="asset-info-value">' + formatDate(r.created_at) + '</span></li>';
-                html += '<li><span class="asset-info-label">Packages</span><span class="asset-info-value">' + (r.package_count || 0) + '</span></li>';
-                html += '<li><span class="asset-info-label">Ports</span><span class="asset-info-value">' + (r.port_count || 0) + '</span></li>';
-                html += '<li><span class="asset-info-label">CVE Matches</span><span class="asset-info-value">' + (r.vulns_matched || 0) + '</span></li>';
-                html += '</ul></div>';
-            }
-            html += '</div>';
-            showGenericModal(html);
-        }).catch(function(err) { showToast('Error: ' + err.message, 'error'); });
+    function loadAgentInspector(id) {
+        var inspector = document.getElementById('agent-inspector');
+        inspector.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+        fetch('/api/v1/agents/' + id).then(function(r) {
+            if (!r.ok) throw new Error('Agent request failed');
+            return r.json();
+        }).then(function(agent) {
+            var report = agent.latest_report || {};
+            var payload = report.report || {};
+            var performance = payload.performance || {};
+            var cpu = performance.cpu || {};
+            var memory = performance.memory || {};
+            var processes = payload.processes || {};
+            var network = payload.network || {};
+            var sockets = network.sockets || {};
+            var telemetry = payload.telemetry || {};
+            var system = payload.system_info || agent.system_info || {};
+            var storage = payload.storage || {};
+            var rootFs = (storage.filesystems || [])[0] || {};
+
+            var html = '<h3>SELECTED ENDPOINT <span>REPORT ' + escapeHtml(String(report.id || '—')) + '</span></h3>';
+            html += '<div class="agent-detail-header">';
+            html += '<div class="target"><span>SELECTED TARGET</span><strong><span class="status-dot ' + escapeHtml(agent.status || 'offline') + '"></span>' + escapeHtml(agent.hostname || agent.ip || 'Unknown') + '</strong></div>';
+            html += '<div><span>CPU</span><strong>' + metric(cpu.usage_percent, '%') + '</strong></div>';
+            html += '<div><span>MEMORY</span><strong>' + metric(memory.used_percent, '%') + '</strong></div>';
+            html += '<div><span>PROCESSES</span><strong>' + escapeHtml(String(processes.total == null ? '—' : processes.total)) + '</strong></div>';
+            html += '<div><span>SOCKETS</span><strong>' + escapeHtml(String((sockets.tcp_total || 0) + (sockets.udp_total || 0))) + '</strong></div>';
+            html += '<div><span>COLLECTION</span><strong>' + (telemetry.duration_ms == null ? '—' : Math.round(telemetry.duration_ms) + ' ms') + '</strong></div></div>';
+
+            html += '<div class="agent-evidence-grid">';
+            html += '<div class="evidence-block"><h4>IDENTITY & RUNTIME</h4>' + renderEvidenceList([
+                ['IP ADDRESS', agent.ip], ['MAC ADDRESS', agent.mac_address], ['OPERATING SYSTEM', agent.os],
+                ['KERNEL', (agent.os_info || {}).kernel || system.kernel], ['ARCHITECTURE', (agent.os_info || {}).arch || system.arch],
+                ['AGENT VERSION', agent.version], ['LAST CHECK-IN', formatDate(agent.last_checkin)],
+                ['UPTIME', system.uptime_seconds == null ? null : Math.floor(system.uptime_seconds / 3600) + 'h']
+            ]) + '</div>';
+            html += '<div class="evidence-block"><h4>RESOURCE EVIDENCE</h4>' + renderEvidenceList([
+                ['CPU LOGICAL', cpu.logical_count], ['CPU UTILIZATION', metric(cpu.usage_percent, '%')],
+                ['MEMORY USED', formatBytes(memory.used_bytes)], ['MEMORY AVAILABLE', formatBytes(memory.available_bytes)],
+                ['ROOT USED', formatBytes(rootFs.used_bytes)], ['ROOT CAPACITY', metric(rootFs.used_percent, '%')],
+                ['THREADS', processes.threads], ['ZOMBIES', processes.zombie]
+            ]) + '</div>';
+            html += '<div class="evidence-block"><h4>NETWORK & INVENTORY</h4>' + renderEvidenceList([
+                ['TCP ESTABLISHED', sockets.tcp_established], ['TCP LISTENING', sockets.tcp_listening],
+                ['TCP SOCKETS', sockets.tcp_total], ['UDP SOCKETS', sockets.udp_total],
+                ['INTERFACES', (network.interfaces || []).length], ['OPEN PORTS', report.port_count || 0],
+                ['PACKAGES', report.package_count || 0], ['CVE MATCHES', report.vulns_matched || 0]
+            ]) + '</div>';
+
+            var collectors = telemetry.collectors || {};
+            var collectorRows = Object.keys(collectors).sort().map(function(name) {
+                var collector = collectors[name] || {};
+                return [name.toUpperCase(), (collector.status || 'unknown').toUpperCase() + ' / ' + Math.round(collector.duration_ms || 0) + ' ms'];
+            });
+            html += '<div class="evidence-block"><h4>COLLECTOR COVERAGE</h4>' + renderEvidenceList(collectorRows.length ? collectorRows : [['SCHEMA', 'LEGACY REPORT']]) + '</div>';
+
+            var top = processes.top || [];
+            html += '<div class="evidence-block wide"><h4>PROCESS TABLE / RESOURCE LEADERS</h4><div class="software-table-wrapper"><table><thead><tr><th>PID</th><th>COMMAND</th><th>USER</th><th>STATE</th><th>CPU</th><th>MEM</th><th>RSS</th><th>THR</th></tr></thead><tbody>';
+            if (!top.length) html += '<tr><td colspan="8" class="text-muted">Process telemetry unavailable</td></tr>';
+            top.forEach(function(proc) {
+                html += '<tr><td>' + escapeHtml(String(proc.pid)) + '</td><td>' + escapeHtml(proc.command || '') + '</td><td>' + escapeHtml(proc.user || '') + '</td><td>' + escapeHtml(proc.state || '') + '</td><td>' + metric(proc.cpu_percent, '%') + '</td><td>' + metric(proc.memory_percent, '%') + '</td><td>' + formatBytes(proc.rss_bytes) + '</td><td>' + escapeHtml(String(proc.threads || 0)) + '</td></tr>';
+            });
+            html += '</tbody></table></div></div></div>';
+            html += '<div class="agent-inspector-actions"><button class="btn-small btn-secondary" id="agent-refresh">REFRESH EVIDENCE</button><button class="btn-small btn-secondary" id="agent-regen">REGENERATE KEY</button><button class="btn-small btn-stop" id="agent-delete">DELETE AGENT</button></div>';
+            inspector.innerHTML = html;
+            document.getElementById('agent-refresh').addEventListener('click', function() { loadAgentInspector(agent.id); });
+            document.getElementById('agent-regen').addEventListener('click', function() { window.regenAgentKey(agent.id); });
+            document.getElementById('agent-delete').addEventListener('click', function() { window.deleteAgent(agent.id, agent.hostname || agent.ip || 'Unknown'); });
+        }).catch(function(err) {
+            inspector.innerHTML = '<div class="empty-state">Failed to load endpoint evidence: ' + escapeHtml(err.message) + '</div>';
+        });
+    }
+
+    window.showAgentDetail = function(id) {
+        selectedAgentId = id;
+        loadAgentInspector(id);
+        var inspector = document.getElementById('agent-inspector');
+        if (inspector) inspector.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     window.regenAgentKey = function(id) {
-        if (!confirm('Regenerate agent key? The agent will need to be reconfigured.')) return;
+        if (!confirm('Regenerate agent key? The endpoint must be reconfigured with the new key.')) return;
         fetch('/api/v1/agents/' + id + '/generate-key', { method: 'POST' }).then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.agent_key) showToast('New key: ' + data.agent_key, 'info');
-                else showToast('Key regenerated', 'success');
+                if (data.agent_key) {
+                    showGenericModal('<h2>NEW AGENT KEY</h2><p class="text-muted">This key is shown once. Update the endpoint configuration before closing.</p><pre class="install-cmd">' + escapeHtml(data.agent_key) + '</pre>');
+                } else {
+                    showToast('Key regenerated', 'success');
+                }
             })
             .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
     };
 
     window.deleteAgent = function(id, name) {
         if (!confirm('Delete agent "' + name + '"?')) return;
-        fetch('/api/v1/agents/' + id, { method: 'DELETE' }).then(function(r) { return r.json(); })
-            .then(function() { showToast('Agent deleted', 'success'); loadAgents(); })
+        fetch('/api/v1/agents/' + id, { method: 'DELETE' }).then(function(r) {
+            if (!r.ok) throw new Error('Delete failed');
+            return r.json();
+        })
+            .then(function() { selectedAgentId = null; showToast('Agent deleted', 'success'); loadAgents(); })
             .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
     };
 

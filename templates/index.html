@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Artemis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
@@ -9,30 +10,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 </head>
-<body class="theme-light">
+<body class="theme-dark">
     <!-- Login / Setup Screen -->
     <div id="auth-screen" class="auth-screen" style="display:none;">
         <div class="auth-card">
-            <img src="/static/logo.svg" alt="Artemis" class="auth-logo">
-            <h1 class="auth-title">Artemis</h1>
+            <div class="auth-brand">
+                <div><h1 class="auth-title">ARTEMIS</h1><p class="auth-subtitle">TRACE / ASSESS / CONTROL</p></div>
+            </div>
 
             <!-- Login Form -->
             <div id="auth-login-form">
                 <div class="form-group"><label>Username</label><input type="text" id="auth-username" placeholder="Username" autocomplete="username"></div>
                 <div class="form-group"><label>Password</label><input type="password" id="auth-password" placeholder="Password" autocomplete="current-password"></div>
                 <div id="auth-error" class="auth-error" style="display:none;"></div>
-                <button class="btn-primary auth-btn" id="auth-login-btn">Sign In</button>
+                <button class="btn-primary auth-btn" id="auth-login-btn">AUTHENTICATE</button>
             </div>
 
             <!-- Setup Form (first run) -->
             <div id="auth-setup-form" style="display:none;">
-                <p class="auth-subtitle">Welcome! Create your admin account to get started.</p>
+                <p class="auth-intro">Initialize the first operator account.</p>
                 <div class="form-group"><label>Username</label><input type="text" id="setup-username" placeholder="admin" autocomplete="username"></div>
                 <div class="form-group"><label>Email (optional)</label><input type="email" id="setup-email" placeholder="admin@example.com"></div>
                 <div class="form-group"><label>Password (8+ characters)</label><input type="password" id="setup-password" placeholder="Password" autocomplete="new-password"></div>
                 <div class="form-group"><label>Confirm Password</label><input type="password" id="setup-password-confirm" placeholder="Confirm password" autocomplete="new-password"></div>
                 <div id="setup-error" class="auth-error" style="display:none;"></div>
-                <button class="btn-primary auth-btn" id="auth-setup-btn">Create Admin Account</button>
+                <button class="btn-primary auth-btn" id="auth-setup-btn">INITIALIZE OPERATOR</button>
             </div>
         </div>
     </div>
@@ -41,20 +43,20 @@
         <!-- Sidebar -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <img src="/static/logo.svg" alt="Artemis" class="sidebar-logo">
-                <span class="sidebar-title">Artemis</span>
+                <span class="sidebar-title">ARTEMIS</span>
                 <button class="sidebar-close" id="sidebar-close">&times;</button>
             </div>
+            <div class="sidebar-kicker">TARGET CATALOG</div>
             <ul class="sidebar-nav">
-                <li class="nav-item active" data-page="dashboard"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></li>
-                <li class="nav-item" data-page="scan"><span class="nav-icon">🔍</span><span class="nav-label">Scan</span></li>
-                <li class="nav-item" data-page="assets"><span class="nav-icon">💻</span><span class="nav-label">Assets</span></li>
-                <li class="nav-item" data-page="vulns"><span class="nav-icon">⚠️</span><span class="nav-label">Vulnerabilities</span></li>
-                <li class="nav-item" data-page="sites"><span class="nav-icon">🌐</span><span class="nav-label">Sites</span></li>
-                <li class="nav-item" data-page="schedules"><span class="nav-icon">📅</span><span class="nav-label">Schedules</span></li>
-                <li class="nav-item" data-page="agents"><span class="nav-icon">🤖</span><span class="nav-label">Agents</span></li>
-                <li class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></li>
-                <li class="nav-item" data-page="sql"><span class="nav-icon">🗄️</span><span class="nav-label">SQL</span></li>
+                <li class="nav-item active" data-page="dashboard"><span class="nav-icon">01</span><span class="nav-label">Overview</span><span class="nav-meta">LIVE</span></li>
+                <li class="nav-item" data-page="scan"><span class="nav-icon">02</span><span class="nav-label">New trace</span><span class="nav-meta">RUN</span></li>
+                <li class="nav-item" data-page="assets"><span class="nav-icon">03</span><span class="nav-label">Assets</span><span class="nav-meta">HOST</span></li>
+                <li class="nav-item" data-page="vulns"><span class="nav-icon">04</span><span class="nav-label">Findings</span><span class="nav-meta">CVE</span></li>
+                <li class="nav-item" data-page="sites"><span class="nav-icon">05</span><span class="nav-label">Sites</span><span class="nav-meta">SCOPE</span></li>
+                <li class="nav-item" data-page="schedules"><span class="nav-icon">06</span><span class="nav-label">Schedules</span><span class="nav-meta">AUTO</span></li>
+                <li class="nav-item" data-page="agents"><span class="nav-icon">07</span><span class="nav-label">Agents</span><span class="nav-meta">EDR</span></li>
+                <li class="nav-item" data-page="settings"><span class="nav-icon">08</span><span class="nav-label">Control</span><span class="nav-meta">CFG</span></li>
+                <li class="nav-item" data-page="sql"><span class="nav-icon">09</span><span class="nav-label">Data query</span><span class="nav-meta">SQL</span></li>
             </ul>
             <div class="sidebar-footer">
                 <div class="sidebar-user" id="sidebar-user">
@@ -64,22 +66,32 @@
                 </div>
                 <div class="sidebar-footer-actions">
                     <div class="theme-toggle" id="theme-toggle" title="Toggle theme">
-                        <span class="theme-toggle-icon">🌙</span>
+                        <span class="theme-toggle-icon">DARK</span>
                     </div>
-                    <button class="btn-small btn-logout" id="btn-logout" title="Sign out">↩</button>
+                    <button class="btn-small btn-logout" id="btn-logout" title="Sign out">EXIT</button>
                 </div>
             </div>
         </nav>
 
         <!-- Mobile hamburger -->
-        <button class="hamburger" id="hamburger">☰</button>
+        <button class="hamburger" id="hamburger" aria-label="Open target catalog">CATALOG</button>
 
         <!-- Main Content -->
         <main class="main-content" id="main-content">
+            <header class="workspace-header">
+                <div>
+                    <div class="workspace-brand"><span class="live-pulse"></span><span id="workspace-title">OVERVIEW</span></div>
+                    <div class="workspace-path">ARTEMIS <span>/</span> <span id="workspace-kicker">LIVE POSTURE</span></div>
+                </div>
+                <div class="workspace-health">
+                    <span><b>ENGINE</b> ONLINE</span>
+                    <span><b>STREAM</b> ACTIVE</span>
+                </div>
+            </header>
 
             <!-- Dashboard Page -->
             <div class="page active" id="page-dashboard">
-                <h2>Dashboard</h2>
+                <div class="page-heading"><div><span class="eyebrow">LIVE POSTURE</span><h2>Environment overview</h2></div><span class="page-state"><i></i> CONTINUOUS</span></div>
                 <div class="dashboard-cards" id="dashboard-cards">
                     <div class="dash-card"><div class="dash-card-value" id="dash-assets">—</div><div class="dash-card-label">Total Assets</div></div>
                     <div class="dash-card dash-card-critical"><div class="dash-card-value" id="dash-critical">—</div><div class="dash-card-label">Critical Vulns</div></div>
@@ -91,11 +103,11 @@
                 </div>
                 <div class="dashboard-grid">
                     <div class="dash-section">
-                        <h3>Recent Scan Activity</h3>
+                        <h3>RECENT SCAN ACTIVITY <span>TRACE</span></h3>
                         <div id="dash-recent-scans"><p class="empty-state">Loading...</p></div>
                     </div>
                     <div class="dash-section">
-                        <h3>Agent Status</h3>
+                        <h3>AGENT STATUS <span>TELEMETRY</span></h3>
                         <div id="dash-agent-status"><p class="empty-state">Loading...</p></div>
                     </div>
                 </div>
@@ -103,7 +115,7 @@
 
             <!-- Scan Page -->
             <div class="page" id="page-scan">
-                <h2>New Scan</h2>
+                <div class="page-heading"><div><span class="eyebrow">TARGET ACQUISITION</span><h2>New trace</h2></div><span class="page-state">MANUAL</span></div>
                 <form id="scan-form">
                     <div class="form-group">
                         <label for="ip">IP Address or CIDR:</label>
@@ -122,7 +134,7 @@
                         <label>Scan Profile:</label>
                         <div class="profile-selector" id="profile-selector">
                             <select id="profile-dropdown" class="profile-dropdown">
-                                <option value="">⚙️ Custom</option>
+                                <option value="">Custom</option>
                             </select>
                         </div>
                     </div>
@@ -146,7 +158,7 @@
 
             <!-- Assets Page -->
             <div class="page" id="page-assets">
-                <h2>Scanned Assets</h2>
+                <div class="page-heading"><div><span class="eyebrow">DISCOVERED INVENTORY</span><h2>Assets</h2></div><span class="page-state">HOST EVIDENCE</span></div>
                 <div id="assets-toolbar">
                     <button id="refresh-assets" class="btn-secondary">Refresh</button>
                     <div class="view-toggle">
@@ -176,7 +188,7 @@
 
             <!-- Vulnerabilities Page -->
             <div class="page" id="page-vulns">
-                <h2>Vulnerabilities</h2>
+                <div class="page-heading"><div><span class="eyebrow">CORRELATED EXPOSURE</span><h2>Findings</h2></div><span class="page-state danger">ATTENTION</span></div>
                 <div id="vulns-toolbar">
                     <button id="refresh-vulns" class="btn-secondary">Refresh</button>
                     <div class="view-toggle">
@@ -218,8 +230,8 @@
             <!-- Sites Page -->
             <div class="page" id="page-sites">
                 <div class="page-header-row">
-                    <h2>Sites</h2>
-                    <button class="btn-primary" id="btn-create-site">+ New Site</button>
+                    <div><span class="eyebrow">SCAN BOUNDARIES</span><h2>Sites</h2></div>
+                    <button class="btn-primary" id="btn-create-site">NEW SITE</button>
                 </div>
                 <div id="sites-list"><p class="empty-state">Loading sites...</p></div>
             </div>
@@ -227,27 +239,38 @@
             <!-- Schedules Page -->
             <div class="page" id="page-schedules">
                 <div class="page-header-row">
-                    <h2>Schedules</h2>
-                    <button class="btn-primary" id="btn-create-schedule">+ New Schedule</button>
+                    <div><span class="eyebrow">AUTOMATED TRACES</span><h2>Schedules</h2></div>
+                    <button class="btn-primary" id="btn-create-schedule">NEW SCHEDULE</button>
                 </div>
                 <div id="schedules-list"><p class="empty-state">Loading schedules...</p></div>
             </div>
 
             <!-- Agents Page -->
             <div class="page" id="page-agents">
-                <h2>Agents</h2>
-                <div id="agents-list"><p class="empty-state">Loading agents...</p></div>
-                <div class="agents-install-section" id="agents-install-section" style="margin-top:24px;">
-                    <h3>Install Agent</h3>
-                    <p class="setting-hint">Run this on the target host to register an agent:</p>
+                <div class="page-heading"><div><span class="eyebrow">ENDPOINT TELEMETRY</span><h2>Agent inspector</h2></div><span class="page-state"><i></i> INGEST</span></div>
+                <div class="agent-metrics" id="agent-telemetry-strip">
+                    <div><span>ACTIVE</span><strong id="agents-active">—</strong></div>
+                    <div><span>REPORTS / 24H</span><strong id="agents-reports">—</strong></div>
+                    <div><span>AVG CPU</span><strong id="agents-cpu">—</strong></div>
+                    <div><span>AVG MEMORY</span><strong id="agents-memory">—</strong></div>
+                    <div><span>COLLECTION</span><strong id="agents-collection">—</strong></div>
+                    <div><span>COVERAGE</span><strong id="agents-coverage">—</strong></div>
+                </div>
+                <div class="agent-workspace">
+                    <section class="agent-catalog panel-frame"><h3>ENDPOINT CATALOG <span id="agents-catalog-count">0 TARGETS</span></h3><div id="agents-list"><p class="empty-state">Loading agents...</p></div></section>
+                    <section class="agent-inspector panel-frame" id="agent-inspector"><div class="empty-state">Select an endpoint to inspect the latest report.</div></section>
+                </div>
+                <div class="agents-install-section panel-frame" id="agents-install-section">
+                    <h3>DEPLOY AGENT <span>PYTHON / SYSTEMD</span></h3>
+                    <p class="setting-hint">Run on a Linux endpoint with sudo access.</p>
                     <pre class="install-cmd" id="agent-install-cmd"></pre>
-                    <script>document.getElementById('agent-install-cmd').textContent = 'curl -sSL ' + window.location.origin + '/agent/install.sh | bash -s -- --server ' + window.location.origin;</script>
+                    <script>document.getElementById('agent-install-cmd').textContent = 'curl -fsSL ' + window.location.origin + '/agent/install.sh | bash -s -- --server ' + window.location.origin;</script>
                 </div>
             </div>
 
             <!-- Settings Page -->
             <div class="page" id="page-settings">
-                <h2>Settings</h2>
+                <div class="page-heading"><div><span class="eyebrow">ENGINE POLICY</span><h2>Control</h2></div><span class="page-state">CONFIGURATION</span></div>
 
                 <div class="settings-section">
                     <h3>Theme</h3>
@@ -428,14 +451,14 @@
 
             <!-- SQL Page -->
             <div class="page" id="page-sql">
-                <h2>SQL Query</h2>
+                <div class="page-heading"><div><span class="eyebrow">DIRECT EVIDENCE ACCESS</span><h2>Data query</h2></div><span class="page-state">READ / WRITE</span></div>
                 <div class="sql-layout">
                     <div class="sql-main">
                         <div class="sql-editor-container">
                             <textarea id="sql-editor">SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;</textarea>
                         </div>
                         <div class="sql-toolbar">
-                            <button id="sql-run-btn" class="btn-primary">▶ Run Query</button>
+                            <button id="sql-run-btn" class="btn-primary">RUN QUERY</button>
                             <button id="sql-export-csv" class="btn-secondary" disabled>Export CSV</button>
                             <button id="sql-export-json" class="btn-secondary" disabled>Export JSON</button>
                             <span id="sql-status" class="sql-status"></span>
@@ -458,7 +481,7 @@
         <!-- Log Panel (collapsible bottom panel) -->
         <div class="log-panel" id="log-panel">
             <div class="log-panel-header" id="log-panel-header">
-                <span class="log-panel-title">📋 Logs</span>
+                <span class="log-panel-title"><i></i> LIVE TRACE</span>
                 <div class="log-panel-controls">
                     <button id="log-clear" class="btn-small btn-secondary" title="Clear logs">Clear</button>
                     <button id="log-toggle" class="btn-small btn-secondary" title="Toggle logs">▼</button>

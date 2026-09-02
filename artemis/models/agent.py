@@ -1,5 +1,7 @@
 """Agent model — registered remote agents."""
 
+import json
+
 from artemis.extensions import db
 
 
@@ -21,19 +23,36 @@ class Agent(db.Model):
     created_at = db.Column(db.Text)
     enabled = db.Column(db.Integer, default=1)
 
-    def to_dict(self):
-        return {
+    @staticmethod
+    def _decode(value):
+        if not value:
+            return {}
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+
+    def to_dict(self, include_key=False):
+        os_info = self._decode(self.os_info_json)
+        system_info = self._decode(self.system_info_json)
+        result = {
             'id': self.id,
-            'agent_key': self.agent_key,
             'name': self.name,
             'hostname': self.hostname,
             'ip': self.ip,
-            'os_info_json': self.os_info_json,
+            'mac_address': self.mac_address,
+            'os': (os_info.get('pretty_name') or os_info.get('os_name') or
+                   os_info.get('name') or os_info.get('platform') or ''),
+            'os_info': os_info,
             'last_checkin': self.last_checkin,
             'checkin_interval': self.checkin_interval,
             'status': self.status,
+            'version': self.agent_version,
             'agent_version': self.agent_version,
-            'system_info_json': self.system_info_json,
+            'system_info': system_info,
             'created_at': self.created_at,
             'enabled': self.enabled,
         }
+        if include_key:
+            result['agent_key'] = self.agent_key
+        return result

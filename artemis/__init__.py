@@ -8,7 +8,7 @@ import logging
 from flask import Flask, render_template
 
 from artemis.config import config_map
-from artemis.extensions import db, socketio, init_celery
+from artemis.extensions import db, migrate, socketio, init_celery
 from artemis.api import register_blueprints
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ if _scanner_dir not in sys.path:
     sys.path.insert(0, _scanner_dir)
 
 
-def create_app(config_name=None):
+def create_app(config_name=None, start_background_services=True):
     """Application factory."""
     if config_name is None:
         config_name = os.environ.get('FLASK_CONFIG', 'default')
@@ -31,14 +31,20 @@ def create_app(config_name=None):
     )
     app.config.from_object(config_map[config_name])
 
+    if config_name == 'production':
+        if app.config['CELERY_BROKER_URL'] == 'memory://' or app.config['CELERY_TASK_ALWAYS_EAGER']:
+            raise RuntimeError('Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode')
+
     # Initialize extensions
     db.init_app(app)
-    socketio.init_app(app)
+    migrate.init_app(app, db)
+    message_queue = None
+    if not app.config['CELERY_TASK_ALWAYS_EAGER'] and app.config['CELERY_BROKER_URL'].startswith('redis'):
+        message_queue = app.config['CELERY_BROKER_URL']
+    socketio.init_app(app, message_queue=message_queue)
 
-    # Optional Celery
     celery = init_celery(app)
-    if celery:
-        app.celery = celery
+    app.celery = celery
 
     # Register blueprints
     register_blueprints(app)
@@ -52,7 +58,8 @@ def create_app(config_name=None):
     app.register_blueprint(sql_bp, url_prefix='/api', name='sql_legacy')
 
     # Register SocketIO event handlers
-    from artemis import socketio_handlers  # noqa: F401
+    from artemis import socketio_handlers
+    socketio_handlers.register_socketio_handlers()
 
     # Legacy routes (index + report)
     @app.route('/')
@@ -79,9 +86,9 @@ def create_app(config_name=None):
     with app.app_context():
         _init_database(app)
 
-    # Start background scheduler
-    from artemis.services.scheduler_service import start_scheduler
-    start_scheduler(app)
+    if start_background_services and app.config.get('START_BACKGROUND_SERVICES', True):
+        from artemis.services.scheduler_service import start_scheduler
+        start_scheduler(app)
 
     logger.info("Artemis app created successfully")
     return app
@@ -90,28 +97,40 @@ def create_app(config_name=None):
 def _setup_auth_middleware(app):
     """Add before_request auth check for API routes."""
     from flask import g, jsonify
-    from artemis.services.auth_service import _get_current_user
+    from artemis.services.auth_service import _get_current_user, get_effective_role
     from artemis.models.user import User
 
     # Routes that don't require auth
     PUBLIC_PREFIXES = (
         '/api/v1/auth/',
         '/api/auth/',
+        '/static/',
+    )
+    PUBLIC_PATHS = {
         '/api/v1/agents/register',
         '/api/v1/agents/report',
         '/api/agents/register',
         '/api/agents/report',
-        '/agent/',
-        '/static/',
-    )
+        '/agent/install.sh',
+        '/agent/artemis_agent.py',
+        '/agent/uninstall.sh',
+    }
+    READONLY_SELF_SERVICE_PATHS = {
+        '/api/v1/auth/change-password',
+        '/api/auth/change-password',
+    }
+    READONLY_SELF_SERVICE_PREFIXES = ('/api/v1/api-keys', '/api/api-keys')
 
     @app.before_request
     def check_auth():
         from flask import request
         path = request.path
 
-        # Skip auth for non-API routes (index, report, static)
-        if not path.startswith('/api/'):
+        # Protect the API and the administrative routes exposed by the agent shortcut.
+        if not path.startswith(('/api/', '/agent/')):
+            return None
+
+        if path in PUBLIC_PATHS:
             return None
 
         # Skip auth for public endpoints
@@ -134,6 +153,11 @@ def _setup_auth_middleware(app):
             logger.debug(f"Auth failed for {path}: cookie={'yes' if token else 'no'}, header={'yes' if auth_header else 'no'}")
             return jsonify({'error': 'Authentication required'}), 401
 
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            is_self_service = path in READONLY_SELF_SERVICE_PATHS or path.startswith(READONLY_SELF_SERVICE_PREFIXES)
+            if get_effective_role(user) == 'readonly' and not is_self_service:
+                return jsonify({'error': 'Read-only credentials cannot modify resources'}), 403
+
 
 def _auto_migrate(db_path):
     """Add missing columns to existing tables. Safe to run repeatedly."""
@@ -147,6 +171,9 @@ def _auto_migrate(db_path):
     ]
 
     for table, column, col_type, default in migrations:
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,))
+        if not cursor.fetchone():
+            continue
         cursor.execute(f"PRAGMA table_info({table})")
         existing = {row[1] for row in cursor.fetchall()}
         if column not in existing:
@@ -162,8 +189,11 @@ def _init_database(app):
     """Initialize all database tables — mirrors the old vuln_scan.init_db()."""
     db_path = app.config['DB_PATH']
 
-    # Create SQLAlchemy tables (for any new models)
-    db.create_all()
+    if app.config.get('AUTO_CREATE_SCHEMA', True):
+        db.create_all()
+
+    if not app.config.get('INITIALIZE_LEGACY_SCHEMA', True):
+        return
 
     # Auto-migrate: add missing columns to existing tables
     _auto_migrate(db_path)

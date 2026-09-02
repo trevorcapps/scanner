@@ -3,7 +3,7 @@
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import request, jsonify, current_app, g
@@ -19,7 +19,7 @@ ROLE_HIERARCHY = {'admin': 3, 'analyst': 2, 'readonly': 1}
 
 
 def _now_iso():
-    return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 # ==================== JWT Token Management ====================
@@ -42,22 +42,24 @@ def _encode_jwt(payload):
 
 def create_access_token(user, expires_hours=24):
     """Create a JWT access token for a user."""
+    now = datetime.now(timezone.utc)
     return _encode_jwt({
-        'sub': user.id,
+        'sub': str(user.id),
         'username': user.username,
         'role': user.role,
-        'iat': datetime.utcnow(),
-        'exp': datetime.utcnow() + timedelta(hours=expires_hours),
+        'iat': now,
+        'exp': now + timedelta(hours=expires_hours),
         'type': 'access',
     })
 
 
 def create_refresh_token(user, expires_days=30):
     """Create a JWT refresh token."""
+    now = datetime.now(timezone.utc)
     return _encode_jwt({
-        'sub': user.id,
-        'iat': datetime.utcnow(),
-        'exp': datetime.utcnow() + timedelta(days=expires_days),
+        'sub': str(user.id),
+        'iat': now,
+        'exp': now + timedelta(days=expires_days),
         'type': 'refresh',
     })
 
@@ -65,7 +67,13 @@ def create_refresh_token(user, expires_days=30):
 def decode_token(token):
     """Decode and validate a JWT token. Returns payload or None."""
     try:
-        return jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+        # verify_sub=False keeps tokens issued before string-subject migration valid.
+        return jwt.decode(
+            token,
+            current_app.config['SECRET_KEY'],
+            algorithms=['HS256'],
+            options={'verify_sub': False},
+        )
     except jwt.ExpiredSignatureError:
         logger.debug("Token expired")
         return None
@@ -124,7 +132,7 @@ def create_default_admin():
 
 def generate_api_key(user_id, name='default', role=None):
     """Generate a new API key for a user. Returns the raw key (only shown once)."""
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         raise ValueError('User not found')
 
@@ -174,6 +182,10 @@ def authenticate_api_key(raw_key):
 
 def _get_current_user():
     """Extract user from JWT token or API key in the request. Sets g.current_user."""
+    existing = getattr(g, 'current_user', None)
+    if existing is not None:
+        return existing
+
     # Check Authorization header
     auth_header = request.headers.get('Authorization', '')
 
@@ -214,6 +226,19 @@ def _get_current_user():
     return None
 
 
+def get_effective_role(user=None):
+    """Return a role capped by both the user and API-key permissions."""
+    user = user or getattr(g, 'current_user', None)
+    if user is None:
+        return None
+    user_level = ROLE_HIERARCHY.get(user.role, 0)
+    key_role = getattr(g, 'api_key_role', None)
+    if key_role is None:
+        return user.role
+    key_level = min(user_level, ROLE_HIERARCHY.get(key_role, 0))
+    return next((role for role, level in ROLE_HIERARCHY.items() if level == key_level), None)
+
+
 def login_required(f):
     """Decorator: require authentication."""
     @wraps(f)
@@ -241,7 +266,7 @@ def role_required(min_role):
             if user is None:
                 # Setup mode — allow
                 return f(*args, **kwargs)
-            effective_role = getattr(g, 'api_key_role', user.role)
+            effective_role = get_effective_role(user)
             if ROLE_HIERARCHY.get(effective_role, 0) < ROLE_HIERARCHY.get(min_role, 0):
                 return jsonify({'error': 'Insufficient permissions'}), 403
             return f(*args, **kwargs)

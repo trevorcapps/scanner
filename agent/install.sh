@@ -1,124 +1,99 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Artemis Agent Installer
-# Usage: curl -sSL https://your-server/agent/install.sh | bash -s -- --server https://artemis.example.com
-set -e
+# Usage: curl -fsSL https://SERVER/agent/install.sh | bash -s -- --server https://SERVER
+
+set -euo pipefail
 
 AGENT_DIR="/opt/artemis-agent"
-AGENT_URL=""
+CONFIG_DIR="/etc/artemis"
 SERVER=""
 NAME=""
-AGENT_SCRIPT="artemis_agent.py"
+INTERVAL="21600"
 
 usage() {
-    echo "Usage: $0 --server <url> [--name <name>] [--agent-url <url>]"
-    echo ""
-    echo "Options:"
-    echo "  --server     Artemis server URL (required)"
-    echo "  --name       Friendly name for this agent (default: hostname)"
-    echo "  --agent-url  URL to download agent script (default: \$SERVER/agent/artemis_agent.py)"
+    echo "Usage: $0 --server <url> [--name <name>] [--interval <seconds>]"
     exit 1
 }
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --server) SERVER="$2"; shift 2 ;;
-        --name) NAME="$2"; shift 2 ;;
-        --agent-url) AGENT_URL="$2"; shift 2 ;;
+    case "$1" in
+        --server) SERVER="${2:-}"; shift 2 ;;
+        --name) NAME="${2:-}"; shift 2 ;;
+        --interval) INTERVAL="${2:-}"; shift 2 ;;
         *) usage ;;
     esac
 done
 
-if [ -z "$SERVER" ]; then
-    echo "Error: --server is required"
-    usage
-fi
+[[ -n "$SERVER" ]] || usage
+[[ "$INTERVAL" =~ ^[0-9]+$ ]] || { echo "Interval must be an integer"; exit 1; }
 
-if [ -z "$AGENT_URL" ]; then
-    AGENT_URL="${SERVER}/agent/artemis_agent.py"
-fi
-
-echo "=== Artemis Agent Installer ==="
-echo "Server: $SERVER"
-echo "Install dir: $AGENT_DIR"
-echo ""
-
-# Create directories
-mkdir -p "$AGENT_DIR"
-mkdir -p /etc/artemis
-
-# Download agent (or copy if local)
-if [ -f "$AGENT_SCRIPT" ]; then
-    echo "Copying local agent script..."
-    cp "$AGENT_SCRIPT" "$AGENT_DIR/artemis_agent.py"
+if [[ $EUID -eq 0 ]]; then
+    ROOT=()
+elif command -v sudo >/dev/null 2>&1; then
+    ROOT=(sudo)
 else
-    echo "Downloading agent..."
-    if command -v curl &>/dev/null; then
-        curl -sSL "$AGENT_URL" -o "$AGENT_DIR/artemis_agent.py"
-    elif command -v wget &>/dev/null; then
-        wget -q "$AGENT_URL" -O "$AGENT_DIR/artemis_agent.py"
-    else
-        echo "Error: curl or wget required"
-        exit 1
-    fi
-fi
-
-chmod +x "$AGENT_DIR/artemis_agent.py"
-
-# Check Python
-PYTHON=""
-for p in python3 python; do
-    if command -v "$p" &>/dev/null; then
-        PYTHON="$p"
-        break
-    fi
-done
-
-if [ -z "$PYTHON" ]; then
-    echo "Error: Python 3 is required"
+    echo "Root access is required (sudo was not found)."
     exit 1
 fi
 
-echo "Using Python: $($PYTHON --version)"
+PYTHON=""
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        PYTHON="$(command -v "$candidate")"
+        break
+    fi
+done
+[[ -n "$PYTHON" ]] || { echo "Python 3 is required"; exit 1; }
 
-# Register agent
-echo "Registering agent with server..."
-NAME_ARG=""
-if [ -n "$NAME" ]; then
-    NAME_ARG="--name $NAME"
+TMP_AGENT="$(mktemp)"
+SERVICE_FILE=""
+trap 'rm -f "$TMP_AGENT" "$SERVICE_FILE"' EXIT
+
+echo "ARTEMIS / AGENT INSTALL"
+echo "server   $SERVER"
+echo "interval ${INTERVAL}s"
+
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${SERVER%/}/agent/artemis_agent.py" -o "$TMP_AGENT"
+elif command -v wget >/dev/null 2>&1; then
+    wget -q "${SERVER%/}/agent/artemis_agent.py" -O "$TMP_AGENT"
+else
+    echo "curl or wget is required"
+    exit 1
 fi
-$PYTHON "$AGENT_DIR/artemis_agent.py" --server "$SERVER" --register $NAME_ARG
 
-# Create systemd service
-cat > /etc/systemd/system/artemis-agent.service << EOF
+"${ROOT[@]}" install -d -m 0755 "$AGENT_DIR" "$CONFIG_DIR"
+"${ROOT[@]}" install -m 0755 "$TMP_AGENT" "$AGENT_DIR/artemis_agent.py"
+
+register_args=(--server "$SERVER" --register)
+[[ -n "$NAME" ]] && register_args+=(--name "$NAME")
+"${ROOT[@]}" "$PYTHON" "$AGENT_DIR/artemis_agent.py" "${register_args[@]}"
+
+SERVICE_FILE="$(mktemp)"
+cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=Artemis Security Agent
+Description=Artemis Security Telemetry Agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=$PYTHON $AGENT_DIR/artemis_agent.py
+ExecStart=$PYTHON $AGENT_DIR/artemis_agent.py --interval $INTERVAL
 Restart=always
 RestartSec=60
-StandardOutput=journal
-StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Enable and start
-systemctl daemon-reload
-systemctl enable artemis-agent
-systemctl start artemis-agent
+"${ROOT[@]}" install -m 0644 "$SERVICE_FILE" /etc/systemd/system/artemis-agent.service
+"${ROOT[@]}" systemctl daemon-reload
+"${ROOT[@]}" systemctl enable --now artemis-agent.service
 
-echo ""
-echo "=== Installation Complete ==="
-echo "Agent installed to: $AGENT_DIR"
-echo "Service: artemis-agent.service"
-echo "Config: /etc/artemis/agent.conf"
-echo ""
-echo "Commands:"
-echo "  systemctl status artemis-agent"
-echo "  journalctl -u artemis-agent -f"
-echo "  systemctl restart artemis-agent"
+echo "status   $("${ROOT[@]}" systemctl is-active artemis-agent.service)"
+echo "agent    $AGENT_DIR/artemis_agent.py"
+echo "config   $CONFIG_DIR/agent.conf"

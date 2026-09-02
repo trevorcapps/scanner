@@ -1,6 +1,13 @@
 .claude/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+build/
+dist/
+test-results/
 env/
 venv/
 vuln_scan.db
