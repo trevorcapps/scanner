@@ -27,3 +27,6 @@ frontend/dist/
 
 # smoke test output
 frontend/smoke-*.png
+
+# TS incremental build cache
+*.tsbuildinfo
