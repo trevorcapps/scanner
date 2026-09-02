@@ -77,6 +77,9 @@ class Config:
     if LEGACY_SQLITE_PATH is None:
         LEGACY_SQLITE_PATH = DB_PATH
 
+    # API / docs
+    API_VERSION = os.environ.get('API_VERSION', '2.0.0')
+
     # Debug
     DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'
 

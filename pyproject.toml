@@ -23,6 +23,7 @@ dependencies = [
     "croniter>=1.4",
     "celery[redis]>=5.4",
     "Flask-Migrate>=4.0",
+    "apispec[yaml]>=6.3",
 ]
 
 [project.optional-dependencies]

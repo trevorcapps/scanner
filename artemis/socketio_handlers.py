@@ -401,6 +401,15 @@ def scan_target(target, sid, scan_options=None):
             'successful_count': len(successful), 'failed_count': len(failed),
             'total': total, 'cancelled': False
         }, room=sid)
+        try:
+            from artemis.services.webhook_service import emit as _emit_wh
+            _emit_wh('scan.completed', {
+                'target': target, 'scan_type': 'port', 'total': total,
+                'successful': len(successful), 'failed': len(failed),
+                'hosts': [r.get('ip') for r in successful],
+            })
+        except Exception:
+            logger.debug('webhook emit failed', exc_info=True)
     finally:
         with scan_lock:
             active_scans.pop(sid, None)

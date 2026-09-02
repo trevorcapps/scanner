@@ -1315,6 +1315,81 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCredentials();
     loadNvdKey();
 
+    // ==================== Webhooks ====================
+
+    var webhookAddBtn = document.getElementById('webhook-add');
+
+    function webhookStatus(msg, ok) {
+        var el = document.getElementById('webhook-status');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.color = ok === false ? 'var(--danger, #c33)' : '';
+        el.classList.add('visible');
+        setTimeout(function() { el.classList.remove('visible'); }, 3500);
+    }
+
+    function loadWebhooks() {
+        var box = document.getElementById('webhooks-list');
+        var events = document.getElementById('webhook-events');
+        if (!box) return;
+        fetch('/api/v1/webhooks').then(function(r) { return r.json(); }).then(function(data) {
+            if (events && !events.dataset.built) {
+                events.innerHTML = (data.available_events || []).filter(function(e) { return e !== 'ping'; })
+                    .map(function(e) {
+                        return '<label class="webhook-event-opt"><input type="checkbox" value="' + escapeHtml(e) + '"> ' + escapeHtml(e) + '</label>';
+                    }).join('');
+                events.dataset.built = '1';
+            }
+            var hooks = data.webhooks || [];
+            if (!hooks.length) { box.innerHTML = '<p class="text-muted">No webhooks configured.</p>'; return; }
+            box.innerHTML = '<table class="assets-table"><thead><tr><th>URL</th><th>Events</th><th>Enabled</th><th>Last</th><th></th></tr></thead><tbody>' +
+                hooks.map(function(h) {
+                    return '<tr><td style="word-break:break-all">' + escapeHtml(h.url) + '</td>' +
+                        '<td>' + escapeHtml((h.events && h.events.length) ? h.events.join(', ') : 'all') + '</td>' +
+                        '<td>' + (h.enabled ? 'yes' : 'no') + '</td>' +
+                        '<td>' + escapeHtml(h.last_status || '—') + '</td>' +
+                        '<td style="white-space:nowrap">' +
+                          '<button class="btn-small btn-secondary" data-wh-test="' + h.id + '">Test</button> ' +
+                          '<button class="btn-small btn-stop" data-wh-del="' + h.id + '">Delete</button></td></tr>';
+                }).join('') + '</tbody></table>';
+            box.querySelectorAll('[data-wh-test]').forEach(function(b) {
+                b.addEventListener('click', function() {
+                    fetch('/api/v1/webhooks/' + this.dataset.whTest + '/test', { method: 'POST' })
+                        .then(function(r) { return r.json(); })
+                        .then(function() { webhookStatus('Test event queued'); setTimeout(loadWebhooks, 1500); });
+                });
+            });
+            box.querySelectorAll('[data-wh-del]').forEach(function(b) {
+                b.addEventListener('click', function() {
+                    if (!confirm('Delete this webhook?')) return;
+                    fetch('/api/v1/webhooks/' + this.dataset.whDel, { method: 'DELETE' })
+                        .then(function() { loadWebhooks(); });
+                });
+            });
+        }).catch(function() { box.innerHTML = '<p class="error">Failed to load webhooks.</p>'; });
+    }
+
+    if (webhookAddBtn) {
+        webhookAddBtn.addEventListener('click', function() {
+            var url = (document.getElementById('webhook-url').value || '').trim();
+            var events = Array.prototype.map.call(
+                document.querySelectorAll('#webhook-events input:checked'), function(i) { return i.value; });
+            fetch('/api/v1/webhooks', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url, events: events }),
+            }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+              .then(function(res) {
+                if (!res.ok) { webhookStatus(res.d.error || 'Error', false); return; }
+                document.getElementById('webhook-url').value = '';
+                document.querySelectorAll('#webhook-events input:checked').forEach(function(i) { i.checked = false; });
+                showGenericModal('<h2>WEBHOOK SECRET</h2><p class="text-muted">Shown once. Store it — deliveries are signed with this key.</p><pre class="install-cmd">' + escapeHtml(res.d.secret) + '</pre>');
+                loadWebhooks();
+              }).catch(function() { webhookStatus('Error', false); });
+        });
+    }
+
+    loadWebhooks();
+
     // ==================== Device Type Filter ====================
 
     var deviceTypeFilter = document.getElementById('device-type-filter');

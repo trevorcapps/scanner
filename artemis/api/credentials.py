@@ -61,6 +61,27 @@ def api_save_credential():
         return {'error': str(e)}, 400
 
 
+@credentials_bp.route('/credentials/<int:cred_id>', methods=['GET'])
+def api_get_credential(cred_id):
+    """
+    ---
+    get:
+      summary: One credential (password redacted)
+      tags: [Credentials]
+      parameters:
+        - {in: path, name: cred_id, required: true, schema: {type: integer}}
+      responses:
+        200: {description: The credential}
+        404: {description: Not found}
+      security: [{bearerAuth: []}]
+    """
+    c = get_credential(cred_id)
+    if not c:
+        return {'error': 'Credential not found'}, 404
+    c['password_set'] = bool(c.pop('password', ''))
+    return {'credential': c}
+
+
 @credentials_bp.route('/credentials/<int:cred_id>', methods=['DELETE'])
 def api_delete_credential(cred_id):
     """Delete a credential."""

@@ -87,3 +87,41 @@ def run_site_scan_job(self, job_id):
             raise self.retry(exc=exc)
         _set_job(job, status='failed', error_message=str(exc), completed_at=_now_iso())
         raise
+
+
+@shared_task(bind=True, name='artemis.adhoc_scan', max_retries=1,
+             default_retry_delay=30, acks_late=True, reject_on_worker_lost=True)
+def run_adhoc_scan_job(self, job_id):
+    """Execute a one-off target scan requested via POST /api/v1/scans."""
+    from types import SimpleNamespace
+    from artemis.services.scheduler_service import _run_scan
+
+    job = db.session.get(ScanJob, job_id)
+    if not job:
+        raise LookupError(f'Scan job {job_id} does not exist')
+    if job.status in ('cancel_requested', 'cancelled'):
+        _set_job(job, status='cancelled', completed_at=_now_iso())
+        return job.to_dict()
+
+    opts = job._decode(job.options_json) or {}
+    _set_job(job, status='running', started_at=job.started_at or _now_iso(),
+             attempt=self.request.retries + 1, error_message=None)
+
+    sched = SimpleNamespace(
+        id=None,
+        target=job.target,
+        scan_type=opts.get('scan_type', 'port'),
+        scan_options_json=json.dumps({k: v for k, v in opts.items() if k != 'scan_type'}),
+        profile_id=opts.get('profile') or opts.get('templates') or '',
+        credential_ids_json=json.dumps(opts.get('credential_ids', [])),
+    )
+
+    try:
+        result = _run_scan(current_app._get_current_object(), sched)
+        _set_job(job, status='success', result_json=json.dumps(result),
+                 completed_at=_now_iso())
+        return job.to_dict()
+    except Exception as exc:
+        logger.exception('Adhoc scan job %s failed', job.id)
+        _set_job(job, status='failed', error_message=str(exc), completed_at=_now_iso())
+        raise

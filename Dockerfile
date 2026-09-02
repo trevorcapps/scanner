@@ -19,7 +19,11 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     MPLCONFIGDIR=/tmp/matplotlib \
-    FLASK_APP=run.py
+    FLASK_APP=run.py \
+    # Top-level scanner modules (device_type, nvd_feeds, fingerprint/, ...) are
+    # not part of the installed `artemis` package. gunicorn adds CWD to sys.path
+    # but the Celery prefork pool does not — pin it so every process can import.
+    PYTHONPATH=/app
 
 RUN set -eux; \
     apt-get update; \

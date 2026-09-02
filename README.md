@@ -63,8 +63,35 @@ celery -A artemis.celery_app:celery_app worker --loglevel=INFO
 python run.py
 ```
 
-Site scans are the first workload on the durable queue. Their state is exposed at
-`/api/v1/scan-jobs`; remaining interactive scan types are being migrated incrementally.
+Site scans and ad-hoc `POST /api/v1/scans` requests run on the durable Celery
+queue; their state is exposed at `/api/v1/scan-jobs`.
+
+## REST API
+
+PostgreSQL is the system of record for all application state. The NVD / CPE /
+ExploitDB feed cache is a local SQLite read-cache (`NVD_CACHE_PATH`), rebuilt by
+sync — not the system of record.
+
+Interactive docs and the machine-readable spec:
+
+| URL | |
+|-----|--|
+| `/api/v1/docs` | Swagger UI (public) |
+| `/api/v1/openapi.json` | OpenAPI 3.0 document (public) |
+| `/api/v1/health` | dependency health (public) |
+
+Authenticate with a bearer JWT (`POST /api/v1/auth/login`) or an `X-API-Key`
+header. Agent endpoints use `X-Agent-Key`.
+
+### Webhooks
+
+Configure outbound webhooks under **Settings → Webhooks** or via
+`/api/v1/webhooks`. Events: `scan.completed`, `vulnerability.discovered`,
+`asset.discovered`, `agent.registered`, `agent.report.received`,
+`site.scan.completed`. Each delivery is a signed POST carrying
+`X-Artemis-Signature: sha256=<hmac_sha256(secret, body)>`, retried with
+exponential backoff (up to 5 attempts); the delivery log is at
+`/api/v1/webhooks/<id>/deliveries`.
 
 ## Fingerprint Signatures
 

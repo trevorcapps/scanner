@@ -191,7 +191,7 @@ def execute_site_scan(app, site, job=None):
     site.last_duration_seconds = duration
     db.session.commit()
 
-    socketio.emit('site_scan_completed', {
+    completion = {
         'site_id': site.id,
         'site_scan_id': site_scan.id,
         'status': final_status,
@@ -202,7 +202,13 @@ def execute_site_scan(app, site, job=None):
         'vulns_found': total_vulns,
         'new_vulns': new_vulns,
         'removed_vulns': removed_vulns,
-    })
+    }
+    socketio.emit('site_scan_completed', completion)
+    try:
+        from artemis.services.webhook_service import emit as _emit_wh
+        _emit_wh('site.scan.completed', {'site_name': site.name, **completion})
+    except Exception:
+        logger.debug('webhook emit failed', exc_info=True)
 
     return site_scan
 

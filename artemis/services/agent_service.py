@@ -115,7 +115,19 @@ def register_agent(data):
     )
     db.session.add(agent)
     db.session.commit()
+    _emit_webhook('agent.registered', {
+        'agent_id': agent.id, 'hostname': agent.hostname, 'ip': agent.ip,
+        'os': agent.to_dict().get('os'), 'agent_version': agent.agent_version,
+    })
     return agent
+
+
+def _emit_webhook(event, payload):
+    try:
+        from artemis.services.webhook_service import emit
+        emit(event, payload)
+    except Exception:
+        logger.debug("webhook emit failed", exc_info=True)
 
 
 def process_report(agent, data):
@@ -160,6 +172,11 @@ def process_report(agent, data):
         report.vulns_matched = vulns_matched
         db.session.commit()
 
+    _emit_webhook('agent.report.received', {
+        'agent_id': agent.id, 'hostname': agent.hostname, 'ip': agent.ip,
+        'report_id': report.id, 'package_count': report.packages_count,
+        'ports_count': report.ports_count, 'vulns_matched': report.vulns_matched,
+    })
     return report
 
 

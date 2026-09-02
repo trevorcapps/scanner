@@ -14,3 +14,4 @@ cve-searchsploit
 lxml
 requests
 setuptools
+apispec[yaml]>=6.3

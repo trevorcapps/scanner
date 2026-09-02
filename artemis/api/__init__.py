@@ -11,6 +11,8 @@ from artemis.api.schedules import schedules_bp
 from artemis.api.agents import agents_bp
 from artemis.api.sites import sites_bp
 from artemis.api.auth import auth_bp
+from artemis.api.webhooks import webhooks_bp
+from artemis.api.openapi import docs_bp
 
 
 def register_blueprints(app):
@@ -33,6 +35,8 @@ def register_blueprints(app):
     app.register_blueprint(schedules_bp, url_prefix='/api/v1')
     app.register_blueprint(agents_bp, url_prefix='/api/v1')
     app.register_blueprint(sites_bp, url_prefix='/api/v1')
+    app.register_blueprint(webhooks_bp, url_prefix='/api/v1')
+    app.register_blueprint(docs_bp, url_prefix='/api/v1')
 
     # Legacy (backward compat) — same blueprints, no version prefix
     app.register_blueprint(assets_bp, url_prefix='/api', name='assets_legacy')
@@ -44,3 +48,4 @@ def register_blueprints(app):
     app.register_blueprint(schedules_bp, url_prefix='/api', name='schedules_legacy')
     app.register_blueprint(agents_bp, url_prefix='/api', name='agents_legacy')
     app.register_blueprint(sites_bp, url_prefix='/api', name='sites_legacy')
+    app.register_blueprint(webhooks_bp, url_prefix='/api', name='webhooks_legacy')

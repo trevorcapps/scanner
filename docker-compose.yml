@@ -30,6 +30,9 @@ x-app-env: &app-env
   INITIALIZE_LEGACY_SCHEMA: "true"
   NVD_API_KEY: ${NVD_API_KEY:-}
   PORT: "5005"
+  # Celery's prefork pool does not inherit CWD on sys.path — pin the scanner
+  # root so top-level modules (device_type, nvd_feeds, fingerprint/) import.
+  PYTHONPATH: /app
 
 x-app-build: &app-build
   build:

@@ -11,3 +11,4 @@ celery_app = flask_app.extensions['celery']
 
 # Import tasks after Celery becomes the default application.
 import artemis.tasks.scan_tasks  # noqa: E402,F401
+import artemis.tasks.webhook_tasks  # noqa: E402,F401

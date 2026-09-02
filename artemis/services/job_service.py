@@ -65,6 +65,31 @@ def dispatch_site_scan(site, requested_by=None):
     return job
 
 
+def dispatch_adhoc_scan(target, scan_type='port', options=None, requested_by=None):
+    """Persist a one-off target scan and publish it to Celery."""
+    from artemis.tasks.scan_tasks import run_adhoc_scan_job
+
+    job = create_job(
+        'adhoc_scan',
+        target=target,
+        requested_by=requested_by,
+        options={'scan_type': scan_type, **(options or {})},
+    )
+    job.task_id = f'adhoc-scan-{job.id}'
+    db.session.commit()
+
+    try:
+        run_adhoc_scan_job.apply_async(args=[job.id], task_id=job.task_id)
+    except Exception as exc:
+        job.status = 'dispatch_failed'
+        job.error_message = str(exc)
+        job.completed_at = _now_iso()
+        db.session.commit()
+        raise QueueDispatchError('Scan queue is unavailable', job) from exc
+
+    return job
+
+
 def cancel_job(job):
     if job.status in TERMINAL_STATES:
         return False

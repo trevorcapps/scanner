@@ -119,13 +119,25 @@ def _severity_from_score(score):
     return 'low'
 
 
+def _emit_webhook(event, payload):
+    try:
+        from artemis.services.webhook_service import emit
+        emit(event, payload)
+    except Exception:
+        logger.debug("webhook emit failed", exc_info=True)
+
+
 def store_vulnerabilities(ip, vulnerabilities):
     """Store Nuclei findings, enriching CVEs with NVD data. Returns the stored dicts."""
     scan_date = datetime.now().isoformat()
     stored = []
+    new_findings = []
 
     try:
         for vuln in vulnerabilities:
+            existed = db.session.query(Vulnerability.id).filter_by(
+                ip=ip, port=vuln['port'], protocol=vuln['protocol'],
+                vuln_id=vuln['vuln_id']).first() is not None
             vuln_id = vuln['vuln_id']
             description = vuln['description']
             severity = vuln['severity']
@@ -171,10 +183,18 @@ def store_vulnerabilities(ip, vulnerabilities):
                           'references_json': references_json,
                           'published_date': published_date, 'scan_date': scan_date})
             stored.append(row)
+            if not existed:
+                new_findings.append({
+                    'ip': ip, 'port': vuln['port'], 'protocol': vuln['protocol'],
+                    'vuln_id': vuln_id, 'vuln_name': vuln['vuln_name'],
+                    'severity': severity, 'cvss_score': cvss_score,
+                })
 
         db.session.commit()
         result = [r.to_dict() for r in stored]
         logger.info(f"Stored/updated {len(result)} vulnerabilities for {ip}")
+        for finding in new_findings:
+            _emit_webhook('vulnerability.discovered', finding)
         return result
     except Exception as e:
         db.session.rollback()

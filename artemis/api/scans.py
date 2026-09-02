@@ -3,16 +3,23 @@
 import json
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 
 from artemis.extensions import db
 from artemis.models.scan_job import ScanJob
+from artemis.models.scan import Scan
 from artemis.services.auth_service import role_required
-from artemis.services.job_service import TERMINAL_STATES, cancel_job
+from artemis.services.job_service import (
+    TERMINAL_STATES, cancel_job, dispatch_adhoc_scan, QueueDispatchError,
+)
+from artemis.utils.validation import validate_target
+from artemis.api._pagination import paginate
 
 logger = logging.getLogger(__name__)
 
 scans_bp = Blueprint('scans', __name__)
+
+_SCAN_TYPES = ('port', 'vuln', 'full', 'auth')
 
 
 def _load_scan_profiles():
@@ -34,6 +41,72 @@ def get_scan_profiles():
     """Get available scan profiles."""
     profiles = _load_scan_profiles()
     return {'profiles': list(profiles.values())}
+
+
+@scans_bp.route('/scans', methods=['GET'])
+def list_scans():
+    """
+    ---
+    get:
+      summary: Raw port-scan history
+      tags: [Scans]
+      parameters:
+        - {in: query, name: ip, schema: {type: string}}
+        - {in: query, name: page, schema: {type: integer}}
+        - {in: query, name: per_page, schema: {type: integer}}
+      responses:
+        200: {description: Paginated Scan rows}
+      security: [{bearerAuth: []}, {apiKeyAuth: []}]
+    """
+    q = Scan.query
+    ip = request.args.get('ip')
+    if ip:
+        q = q.filter_by(ip=ip)
+    q = q.order_by(Scan.scan_date.desc(), Scan.port)
+    return paginate(q, key='scans')
+
+
+@scans_bp.route('/scans', methods=['POST'])
+@role_required('analyst')
+def create_scan():
+    """
+    ---
+    post:
+      summary: Launch a scan against a target (IP, CIDR or hostname)
+      tags: [Scans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target: {type: string}
+                scan_type: {type: string, enum: [port, vuln, full, auth], default: port}
+                options: {type: object}
+      responses:
+        202: {description: Scan job accepted}
+        400: {description: Invalid target or scan_type}
+        503: {description: Scan queue unavailable}
+      security: [{bearerAuth: []}]
+    """
+    data = request.get_json(silent=True) or {}
+    target = (data.get('target') or '').strip()
+    scan_type = (data.get('scan_type') or 'port').strip().lower()
+
+    if not target or not validate_target(target):
+        return {'error': 'A valid target (IP, CIDR or hostname) is required'}, 400
+    if scan_type not in _SCAN_TYPES:
+        return {'error': f'scan_type must be one of {", ".join(_SCAN_TYPES)}'}, 400
+
+    user = getattr(g, 'current_user', None)
+    try:
+        job = dispatch_adhoc_scan(target, scan_type, data.get('options') or {},
+                                  requested_by=user.id if user else None)
+    except QueueDispatchError as e:
+        return {'error': str(e), 'job': e.job.to_dict()}, 503
+    return jsonify(job.to_dict()), 202
 
 
 @scans_bp.route('/scan-jobs', methods=['GET'])

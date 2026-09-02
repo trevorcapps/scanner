@@ -14,6 +14,14 @@ from artemis.models.agent_data import AgentData
 logger = logging.getLogger(__name__)
 
 
+def _emit_webhook(event, payload):
+    try:
+        from artemis.services.webhook_service import emit
+        emit(event, payload)
+    except Exception:
+        logger.debug("webhook emit failed", exc_info=True)
+
+
 def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None):
     """Create or update an asset row. Non-None fields overwrite; others are kept.
 
@@ -49,6 +57,11 @@ def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vend
         asset.last_seen = now
         asset.scan_count = (asset.scan_count or 0) + 1
         db.session.commit()
+        if created:
+            _emit_webhook('asset.discovered', {
+                'ip': ip, 'hostname': asset.hostname, 'os_name': asset.os_name,
+                'device_type': asset.device_type, 'first_seen': asset.first_seen,
+            })
         return created
     except Exception as e:
         db.session.rollback()

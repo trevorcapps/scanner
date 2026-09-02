@@ -111,6 +111,9 @@ def _setup_auth_middleware(app):
         '/agent/install.sh',
         '/agent/artemis_agent.py',
         '/agent/uninstall.sh',
+        '/api/v1/openapi.json',
+        '/api/v1/docs',
+        '/api/v1/health',
     }
     READONLY_SELF_SERVICE_PATHS = {
         '/api/v1/auth/change-password',
