@@ -37,6 +37,17 @@ def api_nvd_status():
     return get_nvd_sync_status()
 
 
+@settings_bp.route('/logs')
+def api_recent_logs():
+    """Return recent in-process application logs for the activity panel."""
+    from artemis.services.log_service import get_recent_logs
+
+    limit = request.args.get('limit', 200, type=int)
+    level = (request.args.get('level') or '').strip() or None
+    records = get_recent_logs(limit=limit, minimum_level=level)
+    return {'logs': records, 'count': len(records)}
+
+
 @settings_bp.route('/settings')
 def api_list_settings():
     """

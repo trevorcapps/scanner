@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
+import jwt
 from flask import request, jsonify, current_app, g
 
 from artemis.extensions import db
@@ -24,7 +25,6 @@ def _now_iso():
 
 # ==================== JWT Token Management ====================
 
-import jwt
 if not hasattr(jwt, 'encode'):
     raise ImportError(
         "The 'jwt' package is installed but PyJWT is required. "

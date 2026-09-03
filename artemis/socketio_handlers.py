@@ -12,10 +12,15 @@ from flask import request
 from flask_socketio import emit
 
 from artemis.extensions import socketio
-from artemis.utils.validation import validate_target, validate_ip, validate_hostname, is_cidr, is_hostname
+from artemis.utils.validation import validate_target, is_cidr, is_hostname
 from artemis.utils.dns import ScanError, resolve_target
 from artemis.utils.network import expand_cidr
-from artemis.scanners.nmap_scanner import scan as nmap_scan, parse_scan, get_os_info_from_scan, extract_host_info_from_scan
+from artemis.scanners.nmap_scanner import (
+    extract_host_info_from_scan,
+    get_os_info_from_scan,
+    parse_scan,
+    scan as nmap_scan,
+)
 from artemis.scanners.nuclei_scanner import vuln_scan, parse_vuln_scan
 from artemis.scanners.ssh_scanner import run_authenticated_scan
 from artemis.services.scan_service import store_scan, get_latest_scan, get_open_ports_for_ip
@@ -25,7 +30,6 @@ from artemis.services.fingerprint_service import (
 )
 from artemis.services.vuln_service import store_vulnerabilities, get_vulnerabilities
 from artemis.services.auth_scan_service import store_auth_scan_results, get_all_credentials, get_credential
-from artemis.services.fingerprint_service import get_fingerprint_summary
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,9 @@ def _lazy_imports():
 
 
 def emit_log(sid, message, level='info'):
-    """Emit a log message to the client."""
+    """Emit a log message to the client and normal application log history."""
+    log_method = getattr(logger, level, logger.info)
+    log_method(message)
     socketio.emit('scan_log', {'message': message, 'level': level}, room=sid)
 
 
@@ -230,7 +236,10 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             emit_log(sid, f'Found {len(scan_data)} open port(s) on {scan_target_str}', 'success')
 
             # Vulscan
-            if scan_options and scan_options.get('vulscan') and _vulscan_module and _vulscan_module.is_vulscan_available():
+            if (
+                scan_options and scan_options.get('vulscan')
+                and _vulscan_module and _vulscan_module.is_vulscan_available()
+            ):
                 try:
                     vulscan_results = _vulscan_module.parse_vulscan_output(scan_result)
                     if vulscan_results:
@@ -252,16 +261,26 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
             if ports_for_fp:
                 try:
                     engine = get_fingerprint_engine()
-                    fp_results = engine.fingerprint_all_ports(store_ip, ports_for_fp,
-                                                              log_callback=lambda msg: emit_log(sid, msg, 'debug'))
+                    fp_results = engine.fingerprint_all_ports(
+                        store_ip, ports_for_fp,
+                        log_callback=lambda msg: emit_log(sid, msg, 'debug'),
+                    )
                     store_fingerprints(store_ip, fp_results)
                     identified = sum(1 for r in fp_results if r.best_match is not None)
-                    emit_log(sid, f'Fingerprinting complete: identified {identified}/{len(fp_results)} services on {store_ip}', 'success')
+                    emit_log(
+                        sid,
+                        f'Fingerprinting complete: identified {identified}/{len(fp_results)} services on {store_ip}',
+                        'success',
+                    )
                     for r in fp_results:
                         if r.best_match:
                             m = r.best_match
                             ver = f' v{m.version}' if m.version else ''
-                            emit_log(sid, f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)', 'info')
+                            emit_log(
+                                sid,
+                                f'  Port {r.port}: {m.name}{ver} ({m.category}, {m.confidence}% confidence)',
+                                'info',
+                            )
                 except Exception as e:
                     emit_log(sid, f'Fingerprinting error: {e}', 'warning')
 
@@ -269,11 +288,17 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                 try:
                     if _fpx_check_installed and _fpx_check_installed():
                         emit_log(sid, f'Running protocol fingerprinting (fingerprintx) on {store_ip}', 'info')
-                        fpx_results = _fpx_scan_host(store_ip, ports_for_fp, timeout_ms=3000,
-                                                      log_callback=lambda msg: emit_log(sid, msg, 'debug'))
+                        fpx_results = _fpx_scan_host(
+                            store_ip, ports_for_fp, timeout_ms=3000,
+                            log_callback=lambda msg: emit_log(sid, msg, 'debug'),
+                        )
                         if fpx_results:
                             store_fpx_results(store_ip, fpx_results)
-                            emit_log(sid, f'fingerprintx identified {len(fpx_results)} service(s) on {store_ip}', 'success')
+                            emit_log(
+                                sid,
+                                f'fingerprintx identified {len(fpx_results)} service(s) on {store_ip}',
+                                'success',
+                            )
                             for r in fpx_results:
                                 ver = f' v{r.version}' if r.version else ''
                                 emit_log(sid, f'  Port {r.port}: {r.service}{ver} (protocol handshake)', 'info')
@@ -304,17 +329,28 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                                                 'port': port_num, 'protocol': 'tcp',
                                                 'signature_id': f"wap-{wr['name'].lower().replace(' ', '-')}",
                                                 'name': wr['name'],
-                                                'category': wr['categories'][0] if wr.get('categories') else 'web-technology',
+                                                'category': (
+                                                    wr['categories'][0]
+                                                    if wr.get('categories') else 'web-technology'
+                                                ),
                                                 'vendor': '', 'version': wr.get('version'), 'cpe': None,
                                                 'confidence': wr.get('confidence', 100),
                                                 'evidence': ['wappalyzer'],
                                             } for wr in wap_results])
                                             wap_stored += len(wap_results)
-                                            emit_log(sid, f'  Wappalyzer found {len(wap_results)} tech(s) on port {port_num}', 'info')
+                                            emit_log(
+                                                sid,
+                                                f'  Wappalyzer found {len(wap_results)} tech(s) on port {port_num}',
+                                                'info',
+                                            )
                                     except Exception:
                                         pass
                             if wap_stored:
-                                emit_log(sid, f'Wappalyzer: detected {wap_stored} web technologies on {store_ip}', 'success')
+                                emit_log(
+                                    sid,
+                                    f'Wappalyzer: detected {wap_stored} web technologies on {store_ip}',
+                                    'success',
+                                )
                 except Exception:
                     pass
 
@@ -322,8 +358,10 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                 try:
                     if _jarm_module:
                         emit_log(sid, f'Running JARM TLS fingerprinting on {store_ip}', 'debug')
-                        jarm_results = _jarm_module.scan_host_tls_ports(store_ip, ports_for_fp, timeout=10,
-                                                                        log_callback=lambda msg: emit_log(sid, msg, 'debug'))
+                        jarm_results = _jarm_module.scan_host_tls_ports(
+                            store_ip, ports_for_fp, timeout=10,
+                            log_callback=lambda msg: emit_log(sid, msg, 'debug'),
+                        )
                         if jarm_results:
                             store_raw_fingerprints(store_ip, [{
                                 'port': jr['port'], 'protocol': 'tcp',
@@ -334,7 +372,11 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
                                 'confidence': 70 if jr.get('identified_as') else 50,
                                 'evidence': [f"jarm:{jr['jarm_hash']}"],
                             } for jr in jarm_results])
-                            emit_log(sid, f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {store_ip}', 'success')
+                            emit_log(
+                                sid,
+                                f'JARM: fingerprinted {len(jarm_results)} TLS port(s) on {store_ip}',
+                                'success',
+                            )
                 except Exception:
                     pass
 
@@ -817,7 +859,11 @@ def handle_start_auth_scan(data):
                                 if facts.get('hostname'):
                                     emit_log(sid, f'Hostname: {facts["hostname"]}', 'info')
                                 if facts.get('listening_ports'):
-                                    emit_log(sid, f'{len(facts["listening_ports"])} listening service(s) enumerated', 'info')
+                                    emit_log(
+                                        sid,
+                                        f'{len(facts["listening_ports"])} listening service(s) enumerated',
+                                        'info',
+                                    )
 
                                 emit_log(sid, f'✓ Auth scan success on {ip}:{ssh_port} with "{cred["name"]}": '
                                          f'{len(result["packages"])} packages, {len(result["cves"])} CVEs', 'success')

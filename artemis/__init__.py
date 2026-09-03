@@ -2,7 +2,6 @@
 
 import os
 import sys
-import json
 import logging
 
 from flask import Flask, render_template, send_from_directory, abort
@@ -31,9 +30,16 @@ def create_app(config_name=None, start_background_services=True):
     )
     app.config.from_object(config_map[config_name])
 
+    # Install this before initialization work so the UI has useful history as
+    # soon as the application is ready.
+    from artemis.services.log_service import install_recent_log_handler
+    install_recent_log_handler()
+
     if config_name == 'production':
         if app.config['CELERY_BROKER_URL'] == 'memory://' or app.config['CELERY_TASK_ALWAYS_EAGER']:
-            raise RuntimeError('Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode')
+            raise RuntimeError(
+                'Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode'
+            )
 
     # Initialize extensions
     db.init_app(app)
@@ -174,7 +180,10 @@ def _setup_auth_middleware(app):
             # Debug: log why auth failed
             token = request.cookies.get('artemis_token')
             auth_header = request.headers.get('Authorization', '')
-            logger.debug(f"Auth failed for {path}: cookie={'yes' if token else 'no'}, header={'yes' if auth_header else 'no'}")
+            logger.debug(
+                "Auth failed for %s: cookie=%s, header=%s",
+                path, 'yes' if token else 'no', 'yes' if auth_header else 'no',
+            )
             return jsonify({'error': 'Authentication required'}), 401
 
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):

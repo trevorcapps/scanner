@@ -16,6 +16,7 @@ class CveMatch(db.Model):
     has_exploit = db.Column(db.Integer, default=0)
     exploit_ids = db.Column(db.Text)
     exploit_url = db.Column(db.Text)
+    detection_source = db.Column(db.Text)
     scan_date = db.Column(db.Text)
 
     __table_args__ = (
@@ -33,5 +34,6 @@ class CveMatch(db.Model):
             'has_exploit': bool(self.has_exploit),
             'exploit_ids': self.exploit_ids or '',
             'exploit_url': self.exploit_url or '',
+            'detection_source': self.detection_source or '',
             'scan_date': self.scan_date,
         }

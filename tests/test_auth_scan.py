@@ -58,7 +58,10 @@ class HostFactsTests(unittest.TestCase):
             '/proc/uptime': '128340.12 500000.00',
             'timedatectl show -p Timezone': 'Etc/UTC',
             'ip route show default': 'default via 10.0.0.1 dev eth0 proto dhcp',
-            '/sys/class/net': '/sys/class/net/eth0/address:52:54:00:ab:cd:ef\n/sys/class/net/lo/address:00:00:00:00:00:00',
+            '/sys/class/net': (
+                '/sys/class/net/eth0/address:52:54:00:ab:cd:ef\n'
+                '/sys/class/net/lo/address:00:00:00:00:00:00'
+            ),
             'ip -o -4 addr': '2: eth0    inet 10.0.0.23/24 brd 10.0.0.255 scope global eth0',
             'ss -H -tlnp': 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1,fd=3))',
             'who': 'root pts/0 2026-09-03 01:00',

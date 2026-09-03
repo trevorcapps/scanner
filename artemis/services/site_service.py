@@ -5,7 +5,6 @@ import logging
 from datetime import datetime
 
 from artemis.extensions import db, socketio
-from artemis.models.site import Site
 from artemis.models.site_scan import SiteScan
 from artemis.utils.validation import is_cidr, is_hostname
 from artemis.utils.network import expand_cidr
@@ -88,7 +87,10 @@ def execute_site_scan(app, site, job=None):
         'targets_total': len(targets),
         'started_at': start_iso,
     })
-    socketio.emit('scan_log', {'message': f'[{site.name}] Site scan started — {len(targets)} target(s), mode: {scan_type}', 'level': 'info'})
+    socketio.emit('scan_log', {
+        'message': f'[{site.name}] Site scan started — {len(targets)} target(s), mode: {scan_type}',
+        'level': 'info',
+    })
 
     per_target_results = []
     total_ports = 0
@@ -99,6 +101,7 @@ def execute_site_scan(app, site, job=None):
 
     def _site_log(message, level='info'):
         """Emit a scan_log event so the UI log panel picks it up."""
+        getattr(logger, level, logger.info)('[%s] %s', site.name, message)
         socketio.emit('scan_log', {'message': f'[{site.name}] {message}', 'level': level})
 
     for idx, target in enumerate(targets):
@@ -124,7 +127,10 @@ def execute_site_scan(app, site, job=None):
             if scan_type in ('port', 'full'):
                 target_result['ports'] = _run_port_scan(target, scan_options)
                 total_ports += target_result['ports']
-                _site_log(f'{target}: {target_result["ports"]} open port(s)', 'success' if target_result['ports'] else 'info')
+                _site_log(
+                    f'{target}: {target_result["ports"]} open port(s)',
+                    'success' if target_result['ports'] else 'info',
+                )
 
             # Vuln scan
             if scan_type in ('vuln', 'full'):
@@ -215,7 +221,12 @@ def execute_site_scan(app, site, job=None):
 
 def _run_port_scan(target, scan_options):
     """Run port scan on a single target. Returns port count."""
-    from artemis.scanners.nmap_scanner import scan as nmap_scan, parse_scan, get_os_info_from_scan, extract_host_info_from_scan
+    from artemis.scanners.nmap_scanner import (
+        extract_host_info_from_scan,
+        get_os_info_from_scan,
+        parse_scan,
+        scan as nmap_scan,
+    )
     from artemis.services.scan_service import store_scan
     from artemis.services.asset_service import store_asset_info
     from artemis.utils.dns import dns_lookup

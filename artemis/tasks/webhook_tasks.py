@@ -1,7 +1,6 @@
 """Celery task that delivers a single WebhookDelivery with HMAC signing + retry."""
 
 import hmac
-import json
 import logging
 import hashlib
 import urllib.request

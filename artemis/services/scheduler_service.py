@@ -3,7 +3,6 @@
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timedelta
 
 from croniter import croniter
@@ -203,7 +202,12 @@ def _run_scan(app, sched):
         ips = [target]
 
     if scan_type in ('port', 'full'):
-        from artemis.scanners.nmap_scanner import scan as nmap_scan, parse_scan, get_os_info_from_scan, extract_host_info_from_scan
+        from artemis.scanners.nmap_scanner import (
+            extract_host_info_from_scan,
+            get_os_info_from_scan,
+            parse_scan,
+            scan as nmap_scan,
+        )
         from artemis.services.scan_service import store_scan
         from artemis.services.asset_service import store_asset_info
         from artemis.utils.dns import dns_lookup
@@ -382,9 +386,15 @@ def calculate_next_run(sched):
     elif st == 'monthly':
         dom = sched.schedule_day_of_month or 1
         try:
-            nxt = now.replace(day=dom, hour=sched.schedule_hour or 2, minute=sched.schedule_minute or 0, second=0, microsecond=0)
+            nxt = now.replace(
+                day=dom, hour=sched.schedule_hour or 2,
+                minute=sched.schedule_minute or 0, second=0, microsecond=0,
+            )
         except ValueError:
-            nxt = now.replace(day=28, hour=sched.schedule_hour or 2, minute=sched.schedule_minute or 0, second=0, microsecond=0)
+            nxt = now.replace(
+                day=28, hour=sched.schedule_hour or 2,
+                minute=sched.schedule_minute or 0, second=0, microsecond=0,
+            )
         if nxt <= now:
             if now.month == 12:
                 nxt = nxt.replace(year=now.year + 1, month=1)

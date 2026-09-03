@@ -19,8 +19,8 @@ from artemis.services._db import upsert
 logger = logging.getLogger(__name__)
 
 
-def store_auth_scan_results(ip, os_info, packages, cves):
-    """Store results from an authenticated SSH scan.
+def store_auth_scan_results(ip, os_info, packages, cves, detection_source='auth-scan'):
+    """Store results from authenticated or agent-based inventory.
 
     Persists OS + system facts + software + CVE matches, and folds the
     newly-learned identity (hostname, MAC, OS) back onto the ``assets`` row so
@@ -49,11 +49,12 @@ def store_auth_scan_results(ip, os_info, packages, cves):
                 'has_exploit': 1 if cve.get('has_exploit') else 0,
                 'exploit_ids': cve.get('exploit_ids', ''),
                 'exploit_url': cve.get('exploit_url', ''),
+                'detection_source': detection_source,
                 'scan_date': scan_date,
             })
         db.session.commit()
-        logger.info(f"Stored auth scan: {ip} - OS: {os_info.get('distro')}, "
-                    f"{len(packages)} packages, {len(cves)} CVEs")
+        logger.info("Stored %s inventory: %s - OS: %s, %s packages, %s CVEs",
+                    detection_source, ip, os_info.get('distro'), len(packages), len(cves))
     except Exception as e:
         db.session.rollback()
         logger.error(f"Database error storing auth scan for {ip}: {e}")

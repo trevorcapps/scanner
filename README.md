@@ -13,8 +13,9 @@ A web-based network vulnerability scanner and asset fingerprinting platform powe
   - Service banner and CPE parsing
   - URL path probing for known endpoints
 - **Vulnerability Scanning** — Nuclei-based with NVD enrichment (CVSS, CWE, references)
+- **Agent Inventory Matching** — Agent package reports are CPE-normalized and matched against the local NVD cache
 - **Asset Management** — Track scanned hosts, scan history, technology stacks
-- **Real-time UI** — WebSocket-powered with live scan logs, multiple themes
+- **Operator Activity Log** — Recent backend history plus live WebSocket scan output
 
 ## Tech Stack
 
@@ -65,6 +66,9 @@ python run.py
 
 Site scans and ad-hoc `POST /api/v1/scans` requests run on the durable Celery
 queue; their state is exposed at `/api/v1/scan-jobs`.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for code structure and data
+flows, and [docs/TESTING.md](docs/TESTING.md) for the test-suite map and commands.
 
 ## REST API
 

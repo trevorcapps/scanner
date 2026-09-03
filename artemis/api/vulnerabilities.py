@@ -21,7 +21,10 @@ def get_vulnerabilities():
       tags: [Vulnerabilities]
       parameters:
         - {in: query, name: ip, schema: {type: string}}
-        - {in: query, name: source, schema: {type: string}, description: "nuclei | nvd-local | auth-scan | exploit-db"}
+        - in: query
+          name: source
+          schema: {type: string}
+          description: "nuclei | nvd-local | auth-scan | agent | exploit-db"
         - {in: query, name: has_exploit, schema: {type: boolean}}
         - {in: query, name: search, schema: {type: string}}
         - {in: query, name: severity, schema: {type: string}}

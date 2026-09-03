@@ -125,23 +125,5 @@
       "rate_limit": 100,
       "notes": "Cobalt Strike, Metasploit, known C2 JARM hashes, webshells, backdoors."
     }
-    ,
-    {
-      "id": "authenticated",
-      "name": "Authenticated Scan (SSH)",
-      "icon": "🔐",
-      "description": "SSH into target, detect OS, gather installed packages, match CVEs via NVD.",
-      "tags": "",
-      "severity": "",
-      "rate_limit": 100,
-      "auth_required": true,
-      "credentials": {
-        "type": "ssh_key",
-        "username": "root",
-        "key_path": "",
-        "password": ""
-      },
-      "notes": "Requires SSH credentials. Connects to target, enumerates packages, queries NVD for CVEs."
-    }
   ]
 }

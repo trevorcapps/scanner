@@ -27,7 +27,7 @@ from artemis.models.asset import Asset
 from artemis.models.scan import Scan
 from artemis.services.auth_scan_service import get_setting
 from artemis.services.vuln_service import (
-    get_unified_vulnerabilities, get_unified_vulnerability_summary,
+    get_unified_vulnerabilities,
 )
 
 logger = logging.getLogger(__name__)

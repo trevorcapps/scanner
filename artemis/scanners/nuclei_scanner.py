@@ -91,7 +91,8 @@ def vuln_scan(ip, options=None, log_callback=None):
 
         if log_callback:
             log_callback(f"Nuclei command: {' '.join(cmd)}")
-            log_callback(f"Starting vulnerability scan with {options.get('severity', 'all') if options else 'all'} severity levels...")
+            severity = options.get('severity', 'all') if options else 'all'
+            log_callback(f"Starting vulnerability scan with {severity} severity levels...")
 
         process = subprocess.Popen(
             cmd,
@@ -245,7 +246,10 @@ def parse_vuln_scan(nuclei_results):
                 'tags': tags if isinstance(tags, list) else [],
                 'references': references,
                 'cvss_score': classification.get('cvss-score') if classification else None,
-                'cwe_id': classification.get('cwe-id', [None])[0] if classification and classification.get('cwe-id') else None
+                'cwe_id': (
+                    classification.get('cwe-id', [None])[0]
+                    if classification and classification.get('cwe-id') else None
+                ),
             }
 
             vulnerabilities.append(vuln)

@@ -5,7 +5,6 @@ with incremental updates via the 'modified' feed. Stores CVEs and
 CPE match data in local SQLite for offline vulnerability lookups.
 """
 
-import os
 import re
 import json
 import gzip
@@ -13,11 +12,9 @@ import time
 import sqlite3
 import hashlib
 import logging
-import threading
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -155,9 +152,15 @@ def _extract_cpe_from_node(node, cve_id, results):
             'cpe23uri': criteria,
             'vulnerable': 1 if match.get('vulnerable', True) else 0,
             'version_start': match.get('versionStartIncluding') or match.get('versionStartExcluding'),
-            'version_start_type': 'including' if match.get('versionStartIncluding') else ('excluding' if match.get('versionStartExcluding') else None),
+            'version_start_type': (
+                'including' if match.get('versionStartIncluding')
+                else ('excluding' if match.get('versionStartExcluding') else None)
+            ),
             'version_end': match.get('versionEndIncluding') or match.get('versionEndExcluding'),
-            'version_end_type': 'including' if match.get('versionEndIncluding') else ('excluding' if match.get('versionEndExcluding') else None),
+            'version_end_type': (
+                'including' if match.get('versionEndIncluding')
+                else ('excluding' if match.get('versionEndExcluding') else None)
+            ),
         })
 
     for child in node.get('children', []):
@@ -375,7 +378,11 @@ def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None
         else:
             # Incremental sync: download only the 'modified' feed (last 8 days)
             feed_name = 'nvdcve-2.0-modified'
-            emit({'status': 'running', 'message': 'Downloading modified feed (last 8 days of changes)...', 'percent': 10})
+            emit({
+                'status': 'running',
+                'message': 'Downloading modified feed (last 8 days of changes)...',
+                'percent': 10,
+            })
 
             # Check meta
             meta = _fetch_meta(feed_name)
@@ -418,7 +425,10 @@ def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None
 
         emit({
             'status': 'complete',
-            'message': f'Sync complete: {total_imported:,} CVEs processed in {minutes}m {seconds}s. {total_in_db:,} total in database.',
+            'message': (
+                f'Sync complete: {total_imported:,} CVEs processed in {minutes}m {seconds}s. '
+                f'{total_in_db:,} total in database.'
+            ),
             'percent': 100,
             'imported': total_imported,
             'total_in_db': total_in_db
@@ -766,7 +776,7 @@ def _normalize_version(version_str):
     # distro revision — everything from the first '-'
     v = v.split('-', 1)[0]
     # openssh 'p1', 'rc1', 'beta', dfsg tags, git snapshots
-    v = _re.split(r'[+~]', v, 1)[0]
+    v = _re.split(r'[+~]', v, maxsplit=1)[0]
     m = _re.match(r'(\d+(?:\.\d+){0,3})', v)
     if not m:
         return '*'

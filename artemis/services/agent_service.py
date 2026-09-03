@@ -3,7 +3,7 @@
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from artemis.extensions import db
 from artemis.models.agent import Agent
@@ -55,7 +55,7 @@ def summarize_agent(agent, latest_report=None):
 
 def aggregate_agent_telemetry(agents):
     """Aggregate the latest reports into fleet-level collection telemetry."""
-    cutoff = datetime.utcnow() - timedelta(hours=24)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     summaries = []
     for agent in agents:
         latest = AgentReport.query.filter_by(agent_id=agent.id).order_by(AgentReport.id.desc()).first()
@@ -99,7 +99,7 @@ def generate_agent_key():
 def register_agent(data):
     """Register a new agent. Returns the agent record with its key."""
     key = generate_agent_key()
-    now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     agent = Agent(
         agent_key=key,
         name=data.get('name', ''),
@@ -132,7 +132,7 @@ def _emit_webhook(event, payload):
 
 def process_report(agent, data):
     """Process and store an agent report."""
-    now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     report = AgentReport(
         agent_id=agent.id,
@@ -167,7 +167,12 @@ def process_report(agent, data):
     _sync_agent_to_asset(agent, data)
 
     # Try to match packages against CVEs
-    vulns_matched = _match_package_cves(agent, data.get('packages', []))
+    vulns_matched = _match_package_cves(
+        agent,
+        data.get('packages', []),
+        os_info=data.get('os_info', {}),
+        system_info=data.get('system_info', {}),
+    )
     if vulns_matched > 0:
         report.vulns_matched = vulns_matched
         db.session.commit()
@@ -191,8 +196,6 @@ def _sync_agent_to_asset(agent, data):
         os_info = data.get('os_info', {})
         if isinstance(os_info, str):
             os_info = {'os_name': os_info}
-
-        system_info = data.get('system_info', {})
 
         # Map agent os_info to the format store_asset_info expects
         asset_os = {
@@ -232,7 +235,7 @@ def _store_agent_system_data(ip, data):
         from artemis.models.agent_data import AgentData
         from artemis.services._db import upsert
 
-        now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         packages = data.get('packages', [])
         upsert(AgentData, {'ip': ip}, {
             'packages_json': json.dumps(packages),
@@ -247,14 +250,63 @@ def _store_agent_system_data(ip, data):
         logger.warning(f"Failed to store agent system data for {ip}: {e}")
 
 
-def _match_package_cves(agent, packages):
-    """Return matches only when package data has been normalized to CPEs.
+def _match_package_cves(agent, packages, os_info=None, system_info=None):
+    """Normalize agent packages to CPEs, match the local NVD cache, and persist.
 
-    Distribution package names are not reliable CPE product identifiers. The
-    authenticated scan pipeline performs CPE-aware matching; agent inventory is
-    retained as evidence until that same normalization is available here.
+    Agent check-ins never make per-package NVD API calls: report ingestion must
+    stay bounded and reliable. If the local feed has not been synced, inventory
+    is still stored and the report correctly records zero matches.
     """
-    return 0
+    if not agent.ip or not isinstance(packages, list):
+        return 0
+
+    from auth_scan import generate_cpe
+    from artemis.services.auth_scan_service import store_auth_scan_results
+
+    normalized = []
+    os_info = dict(os_info) if isinstance(os_info, dict) else {}
+    if isinstance(system_info, dict) and system_info:
+        os_info['system'] = system_info
+
+    for package in packages:
+        if not isinstance(package, dict):
+            continue
+        name = str(package.get('name') or '').strip()
+        version = str(package.get('version') or '').strip()
+        if not name:
+            continue
+        cpe = package.get('cpe') or generate_cpe(name, version, os_info)
+        normalized.append({**package, 'name': name, 'version': version, 'cpe': cpe})
+
+    cves = []
+    versioned_cpes = [
+        package['cpe'] for package in normalized
+        if package.get('cpe') and len(package['cpe'].split(':')) > 5
+        and package['cpe'].split(':')[5] not in ('', '*', '-')
+    ]
+    if versioned_cpes:
+        try:
+            from nvd_feeds import match_cpes_local
+            cves = match_cpes_local(versioned_cpes) or []
+        except Exception:
+            logger.warning("Local NVD matching failed for agent %s", agent.id, exc_info=True)
+
+    if cves:
+        try:
+            from exploit_ref import enrich_cves_with_exploits
+            cves = enrich_cves_with_exploits(cves)
+        except Exception:
+            logger.debug("Exploit enrichment failed for agent %s", agent.id, exc_info=True)
+
+    store_auth_scan_results(
+        agent.ip,
+        os_info,
+        normalized,
+        cves,
+        detection_source='agent',
+    )
+    logger.info("Agent %s inventory matched %s CVEs", agent.id, len(cves))
+    return len(cves)
 
 
 def deregister_agent(agent):
@@ -275,13 +327,13 @@ def deregister_agent(agent):
 
 def update_stale_agents():
     """Mark agents as stale if no checkin in 2x their interval."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     agents = Agent.query.filter(Agent.enabled == 1, Agent.status != 'offline').all()
     for agent in agents:
         if not agent.last_checkin:
             continue
         try:
-            last = datetime.strptime(agent.last_checkin, '%Y-%m-%dT%H:%M:%SZ')
+            last = datetime.strptime(agent.last_checkin, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
             threshold = timedelta(seconds=(agent.checkin_interval or 21600) * 2)
             if now - last > threshold:
                 agent.status = 'stale'

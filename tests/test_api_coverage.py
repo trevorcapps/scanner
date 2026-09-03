@@ -105,6 +105,13 @@ class ApiCoverageTests(unittest.TestCase):
                              headers=self._h(self.admin_tok))
         self.assertEqual(r.status_code, 400)
 
+    def test_authenticated_inventory_is_one_scan_method_not_a_vuln_profile(self):
+        r = self.client.get('/api/v1/scan-profiles', headers=self._h(self.readonly_tok))
+        self.assertEqual(r.status_code, 200)
+        profiles = r.get_json()['profiles']
+        self.assertFalse(any(profile.get('auth_required') for profile in profiles))
+        self.assertNotIn('authenticated', {profile['id'] for profile in profiles})
+
     def test_settings_redacts_secrets(self):
         with self.ctx():
             from artemis.services.auth_scan_service import set_setting

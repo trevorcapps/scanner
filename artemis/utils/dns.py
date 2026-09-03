@@ -3,7 +3,7 @@
 import socket
 import logging
 
-from artemis.utils.validation import validate_ip, is_cidr, validate_hostname
+from artemis.utils.validation import validate_ip, validate_hostname
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,8 @@ class Report(db.Model):
     title = db.Column(db.Text, nullable=False)
     kind = db.Column(db.Text, default='executive')       # executive | technical | full
     fmt = db.Column(db.Text, default='pdf')              # pdf | html
-    scope_json = db.Column(db.Text)                      # {"type": "environment"} | {"type":"site","id":N} | {"type":"filter",...}
+    # {"type": "environment"} | {"type":"site","id":N} | {"type":"filter",...}
+    scope_json = db.Column(db.Text)
     status = db.Column(db.Text, default='ready')         # ready | failed
     error = db.Column(db.Text)
     file_path = db.Column(db.Text)                       # absolute path under REPORTS_DIR

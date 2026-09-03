@@ -103,7 +103,7 @@ export default function Vulns() {
           </select>
           <select className="input w-auto" value={source} onChange={(e) => setParam('source', e.target.value)}>
             <option value="">any source</option>
-            {['nuclei', 'nvd-local', 'auth-scan', 'exploit-db'].map((s) => (
+            {['nuclei', 'nvd-local', 'auth-scan', 'agent', 'exploit-db'].map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>

@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { getSocket } from '@/lib/socket';
+import { api } from '@/lib/api';
 import { useUi } from '@/stores/ui';
 
 interface LogLine {
-  ts: string;
+  id?: number;
+  timestamp?: string;
   message: string;
   level: string;
+  logger?: string;
 }
 
 const MAX = 500;
@@ -24,7 +27,7 @@ export function LogPanel() {
         const next = [
           ...prev,
           {
-            ts: new Date().toLocaleTimeString(),
+            timestamp: new Date().toISOString(),
             message: data.message,
             level: data.level || 'info',
           },
@@ -37,6 +40,21 @@ export function LogPanel() {
       s.off('scan_log', onLog);
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api.get<{ logs: LogLine[] }>('/api/v1/logs?limit=200')
+      .then((data) => {
+        if (!cancelled) setLines(data.logs);
+      })
+      .catch(() => {
+        // Live Socket.IO output still works if history is temporarily unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -58,10 +76,13 @@ export function LogPanel() {
         </div>
       </div>
       <div ref={bodyRef} className="flex-1 overflow-y-auto px-4 py-2 font-mono text-2xs leading-relaxed">
-        {lines.length === 0 && <div className="text-faint">Waiting for scan activity…</div>}
+        {lines.length === 0 && <div className="text-faint">No application log records yet.</div>}
         {lines.map((l, i) => (
-          <div key={i} className="flex gap-2">
-            <span className="shrink-0 text-faint">{l.ts}</span>
+          <div key={l.id ?? i} className="flex gap-2">
+            <span className="shrink-0 text-faint">
+              {l.timestamp ? new Date(l.timestamp).toLocaleTimeString() : '—'}
+            </span>
+            {l.logger && <span className="shrink-0 text-faint">[{l.logger}]</span>}
             <span
               className={clsx(
                 'break-all',

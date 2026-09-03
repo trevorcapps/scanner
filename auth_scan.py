@@ -181,7 +181,11 @@ def _count_pending_updates(client, os_family):
     """Best-effort count of upgradable packages. Returns int or None."""
     try:
         if os_family == 'debian':
-            out = _exec(client, "apt-get -s -o Debug::NoLocking=true upgrade 2>/dev/null | grep -c '^Inst '", timeout=45)
+            out = _exec(
+                client,
+                "apt-get -s -o Debug::NoLocking=true upgrade 2>/dev/null | grep -c '^Inst '",
+                timeout=45,
+            )
             return int(out) if out.isdigit() else None
         if os_family == 'alpine':
             out = _exec(client, "apk version -l '<' 2>/dev/null | grep -c '<'", timeout=30)
@@ -291,7 +295,7 @@ def collect_host_facts(client, os_info):
     # Sessions / hardening / updates
     who = _exec(client, 'who 2>/dev/null')
     if who:
-        facts['logged_in_users'] = sorted({l.split()[0] for l in who.splitlines() if l.split()})
+        facts['logged_in_users'] = sorted({line.split()[0] for line in who.splitlines() if line.split()})
     selinux = _first_line(_exec(client, 'getenforce 2>/dev/null'))
     if selinux:
         facts['selinux'] = selinux
@@ -566,12 +570,12 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
                     cves = local_results
                     log(f'Local NVD match: {len(cves)} CVE(s) found', 'success' if not cves else 'warning')
                 else:
-                    log(f'Local NVD database empty, falling back to API...', 'info')
+                    log('Local NVD database empty, falling back to API...', 'info')
                     local_results = None  # Signal API fallback
             else:
                 local_results = None
         except ImportError:
-            log(f'Local NVD module not available, using API...', 'debug')
+            log('Local NVD module not available, using API...', 'debug')
             local_results = None
 
         # Fall back to NVD API if local DB is empty — capped and priority-first.

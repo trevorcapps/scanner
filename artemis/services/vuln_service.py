@@ -364,7 +364,9 @@ def get_unified_vulnerabilities(ip=None, source=None, has_exploit=None, search=N
             if not cve_id:
                 continue
             asset_key = f"{row.ip}:0/tcp"
-            det_source = 'auth-scan' if row.ip in sw_ips else 'nvd-local'
+            # New rows carry explicit provenance. The inference remains only for
+            # records created before the detection_source migration.
+            det_source = row.detection_source or ('auth-scan' if row.ip in sw_ips else 'nvd-local')
 
             if cve_id in unified:
                 entry = unified[cve_id]
@@ -438,7 +440,10 @@ def get_unified_vulnerability_summary(ip=None):
         summary = {
             'total_findings': 0, 'unique_cves': 0, 'with_exploits': 0, 'affected_hosts': 0,
             'by_severity': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0},
-            'by_source': {'nuclei': 0, 'nvd-local': 0, 'nmap-vulscan': 0, 'auth-scan': 0, 'exploit-db': 0},
+            'by_source': {
+                'nuclei': 0, 'nvd-local': 0, 'nmap-vulscan': 0,
+                'auth-scan': 0, 'agent': 0, 'exploit-db': 0,
+            },
         }
         vulns = get_unified_vulnerabilities(ip=ip)
         summary['unique_cves'] = len(vulns)

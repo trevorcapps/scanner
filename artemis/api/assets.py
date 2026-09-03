@@ -70,11 +70,17 @@ def get_assets():
       parameters:
         - {in: query, name: device_type, schema: {type: string}}
         - {in: query, name: q, schema: {type: string}, description: Substring match on IP or hostname}
-        - {in: query, name: severity, schema: {type: string}, description: "only assets with >=1 finding at this severity"}
+        - in: query
+          name: severity
+          schema: {type: string}
+          description: "only assets with >=1 finding at this severity"
         - {in: query, name: has_vulns, schema: {type: boolean}}
         - {in: query, name: sort, schema: {type: string, enum: [ip, hostname, last_scan, port_count, risk]}}
         - {in: query, name: order, schema: {type: string, enum: [asc, desc]}}
-        - {in: query, name: page, schema: {type: integer}, description: "when set, returns the {data, pagination} envelope"}
+        - in: query
+          name: page
+          schema: {type: integer}
+          description: "when set, returns the {data, pagination} envelope"
         - {in: query, name: per_page, schema: {type: integer}}
       responses:
         200:

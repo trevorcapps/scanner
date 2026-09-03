@@ -30,6 +30,11 @@ def _load_scan_profiles():
         with open(profiles_path, 'r') as f:
             data = json.load(f)
             for p in data.get('profiles', []):
+                # Authenticated inventory is a first-class scan type. Older
+                # profile files exposed the same SSH workflow as a Nuclei
+                # profile, which produced two controls for one operation.
+                if p.get('auth_required'):
+                    continue
                 profiles[p['id']] = p
     except Exception as e:
         logger.warning(f"Could not load scan profiles: {e}")

@@ -45,19 +45,10 @@ export default function Scan() {
       return;
     }
     setLogOpen(true);
-    // A vuln profile flagged auth_required routes through auth.
-    if (mode === 'vuln' && activeProfile?.auth_required) {
-      if (!useAll && credIds.length === 0) {
-        toast.error('This profile needs credentials');
-        return;
-      }
-      runner.start('auth', t, { credentialIds: credIds, useAllCreds: useAll });
-      return;
-    }
     runner.start(mode, t, mode === 'vuln' && profile ? { profile } : {});
   };
 
-  const showCreds = mode === 'auth' || (mode === 'vuln' && activeProfile?.auth_required);
+  const showCreds = mode === 'auth';
 
   return (
     <div>
