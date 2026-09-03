@@ -810,14 +810,14 @@ def handle_start_auth_scan(data):
                                     nvd_api_key=nvd_api_key, log_callback=log_cb
                                 )
 
+                                # also enriches the asset (hostname, MAC, OS) + reclassifies
                                 store_auth_scan_results(ip, result['os_info'], result['packages'], result['cves'])
 
-                                if result['os_info'].get('pretty_name') or result['os_info'].get('distro'):
-                                    os_update = {
-                                        'os_name': result['os_info'].get('pretty_name') or result['os_info'].get('distro'),
-                                        'os_family': result['os_info'].get('os_family'),
-                                    }
-                                    store_asset_info(ip, os_info=os_update)
+                                facts = result['os_info'].get('system') or {}
+                                if facts.get('hostname'):
+                                    emit_log(sid, f'Hostname: {facts["hostname"]}', 'info')
+                                if facts.get('listening_ports'):
+                                    emit_log(sid, f'{len(facts["listening_ports"])} listening service(s) enumerated', 'info')
 
                                 emit_log(sid, f'✓ Auth scan success on {ip}:{ssh_port} with "{cred["name"]}": '
                                          f'{len(result["packages"])} packages, {len(result["cves"])} CVEs', 'success')

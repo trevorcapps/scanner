@@ -240,6 +240,7 @@ function AuthScanSection({ ip }: { ip: string }) {
   }
 
   const os = data.os_details;
+  const sys = os?.system_info ?? {};
   const software = filter
     ? data.software.filter(
         (s) =>
@@ -255,8 +256,43 @@ function AuthScanSection({ ip }: { ip: string }) {
           <KV k="Distro" v={os.pretty_name || os.distro} />
           <KV k="Version" v={os.version} />
           <KV k="Arch" v={os.arch} />
+          <KV k="Kernel" v={sys.kernel_release || os.kernel} />
+          <KV k="Hostname" v={sys.hostname} />
+          <KV k="Virtualization" v={sys.virtualization} />
+          <KV k="CPU" v={sys.cpu_model ? `${sys.cpu_model}${sys.cpu_count ? ` ×${sys.cpu_count}` : ''}` : null} />
+          <KV k="Memory" v={sys.memory_mb ? `${(sys.memory_mb / 1024).toFixed(1)} GiB` : null} />
+          <KV k="Timezone" v={sys.timezone} />
+          <KV k="Uptime" v={formatUptime(sys.uptime_seconds)} />
+          <KV k="Gateway" v={sys.default_gateway} />
+          <KV k="Primary MAC" v={sys.primary_mac} />
+          <KV k="SELinux" v={sys.selinux} />
+          <KV
+            k="Pending updates"
+            v={sys.pending_updates != null ? String(sys.pending_updates) : null}
+          />
+          <KV k="Logged in" v={sys.logged_in_users?.length ? sys.logged_in_users.join(', ') : null} />
           <KV k="Scanned" v={formatDate(os.scan_date)} />
-          {os.kernel && <KV k="Kernel" v={os.kernel} />}
+        </div>
+      )}
+
+      {sys.listening_ports && sys.listening_ports.length > 0 && (
+        <div className="mb-4">
+          <div className="eyebrow mb-1">Listening services ({sys.listening_ports.length})</div>
+          <div className="max-h-48 overflow-y-auto rounded border border-line-soft">
+            <table className="w-full text-2xs">
+              <tbody>
+                {sys.listening_ports.map((p) => (
+                  <tr key={`${p.address}:${p.port}`} className="border-b border-line-soft last:border-0">
+                    <td className="px-2 py-1 font-mono text-text-soft">
+                      {p.port}/{p.protocol}
+                    </td>
+                    <td className="px-2 py-1 font-mono text-muted">{p.address}</td>
+                    <td className="px-2 py-1 font-mono text-faint">{p.process || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -309,6 +345,16 @@ function AuthScanSection({ ip }: { ip: string }) {
       </div>
     </Section>
   );
+}
+
+function formatUptime(seconds?: number): string | null {
+  if (!seconds || seconds < 0) return null;
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

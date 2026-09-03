@@ -4,6 +4,7 @@ System of record: Postgres via the ``AssetOsDetails`` / ``InstalledSoftware`` /
 ``CveMatch`` / ``Credential`` / ``Setting`` models.
 """
 
+import json
 import logging
 from datetime import datetime
 
@@ -19,14 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 def store_auth_scan_results(ip, os_info, packages, cves):
-    """Store results from an authenticated SSH scan."""
+    """Store results from an authenticated SSH scan.
+
+    Persists OS + system facts + software + CVE matches, and folds the
+    newly-learned identity (hostname, MAC, OS) back onto the ``assets`` row so
+    an authenticated scan enriches the asset the same way a port scan does.
+    """
     scan_date = datetime.now().isoformat()
+    system = os_info.get('system') or {}
     try:
         upsert(AssetOsDetails, {'ip': ip}, {
             'distro': os_info.get('distro'), 'version': os_info.get('version'),
             'kernel': os_info.get('kernel'), 'arch': os_info.get('arch'),
             'os_family': os_info.get('os_family'), 'os_id': os_info.get('os_id'),
             'pretty_name': os_info.get('pretty_name'), 'scan_date': scan_date,
+            'system_info_json': json.dumps(system) if system else None,
         })
         for pkg in packages:
             upsert(InstalledSoftware, {'ip': ip, 'package_name': pkg['name']}, {
@@ -49,6 +57,36 @@ def store_auth_scan_results(ip, os_info, packages, cves):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Database error storing auth scan for {ip}: {e}")
+        return
+
+    _enrich_asset_from_auth(ip, os_info, system)
+
+
+def _enrich_asset_from_auth(ip, os_info, system):
+    """Fold authenticated findings back onto the ``assets`` row + reclassify."""
+    from artemis.services.asset_service import store_asset_info, update_device_type
+
+    os_name = os_info.get('pretty_name') or os_info.get('distro')
+    hostname = system.get('hostname') or os_info.get('hostname')
+    mac = system.get('primary_mac') or os_info.get('primary_mac')
+    mac_vendor = None
+    if mac:
+        try:
+            from device_type import lookup_mac_vendor
+            mac_vendor = lookup_mac_vendor(mac)
+        except Exception:
+            pass
+
+    try:
+        store_asset_info(
+            ip,
+            dns_info={'hostname': hostname} if hostname else None,
+            os_info={'os_name': os_name, 'os_family': os_info.get('os_family')},
+            mac_address=mac, mac_vendor=mac_vendor,
+        )
+        update_device_type(ip)
+    except Exception as e:
+        logger.warning(f"Asset enrichment from auth scan failed for {ip}: {e}")
 
 
 def get_asset_os_details(ip):

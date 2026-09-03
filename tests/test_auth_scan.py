@@ -7,7 +7,76 @@ from artemis.extensions import db
 from artemis.models.credential import Credential
 from artemis.services.auth_service import create_access_token, create_user
 
+import auth_scan
 import nvd_feeds
+
+
+class FakeSSHClient:
+    """Answers _exec() from a {substring: output} table."""
+
+    def __init__(self, responses):
+        self.responses = responses
+
+    def exec_command(self, cmd, timeout=30):
+        out = ''
+        for needle, value in self.responses.items():
+            if needle in cmd:
+                out = value
+                break
+
+        class _Stream:
+            def __init__(self, data):
+                self._data = data.encode()
+
+            def read(self):
+                return self._data
+
+        return None, _Stream(out), _Stream('')
+
+
+class HostFactsTests(unittest.TestCase):
+    def test_parse_listening_ports(self):
+        ss = (
+            'LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=712,fd=3))\n'
+            'LISTEN 0 4096 127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=901,fd=5))\n'
+            'LISTEN 0 511 [::]:80 [::]:* users:(("nginx",pid=1002,fd=6))\n'
+        )
+        ports = auth_scan._parse_listening_ports(ss)
+        by_port = {p['port']: p for p in ports}
+        self.assertEqual(by_port[22]['process'], 'sshd')
+        self.assertEqual(by_port[5432]['address'], '127.0.0.1')
+        self.assertEqual(by_port[80]['process'], 'nginx')
+
+    def test_collect_host_facts(self):
+        client = FakeSSHClient({
+            'hostname -f': 'web01.example.com',
+            'uname -r': '6.1.0-18-amd64',
+            'systemd-detect-virt': 'kvm',
+            'model name': ': Intel(R) Xeon(R) E5-2680',
+            'nproc': '4',
+            'MemTotal': '8039248',
+            '/proc/uptime': '128340.12 500000.00',
+            'timedatectl show -p Timezone': 'Etc/UTC',
+            'ip route show default': 'default via 10.0.0.1 dev eth0 proto dhcp',
+            '/sys/class/net': '/sys/class/net/eth0/address:52:54:00:ab:cd:ef\n/sys/class/net/lo/address:00:00:00:00:00:00',
+            'ip -o -4 addr': '2: eth0    inet 10.0.0.23/24 brd 10.0.0.255 scope global eth0',
+            'ss -H -tlnp': 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1,fd=3))',
+            'who': 'root pts/0 2026-09-03 01:00',
+        })
+        os_info = {'os_family': 'debian', 'kernel': 'Linux web01 6.1.0-18-amd64'}
+        facts = auth_scan.collect_host_facts(client, os_info)
+        self.assertEqual(facts['hostname'], 'web01.example.com')
+        self.assertEqual(os_info['hostname'], 'web01.example.com')
+        self.assertEqual(facts['kernel_release'], '6.1.0-18-amd64')
+        self.assertEqual(facts['virtualization'], 'kvm')
+        self.assertEqual(facts['cpu_count'], 4)
+        self.assertEqual(facts['memory_mb'], 7851)
+        self.assertEqual(facts['uptime_seconds'], 128340)
+        self.assertEqual(facts['timezone'], 'Etc/UTC')
+        self.assertEqual(facts['default_gateway'], '10.0.0.1')
+        self.assertEqual(facts['primary_mac'], '52:54:00:ab:cd:ef')
+        self.assertEqual(facts['ipv4_addresses'], ['10.0.0.23'])
+        self.assertEqual(facts['listening_ports'][0]['port'], 22)
 
 
 class VersionNormalizationTests(unittest.TestCase):

@@ -1,5 +1,7 @@
 """Asset OS details model — from authenticated scans."""
 
+import json
+
 from artemis.extensions import db
 
 
@@ -16,8 +18,13 @@ class AssetOsDetails(db.Model):
     os_id = db.Column(db.Text)
     pretty_name = db.Column(db.Text)
     scan_date = db.Column(db.Text)
+    system_info_json = db.Column(db.Text)
 
     def to_dict(self):
+        try:
+            system_info = json.loads(self.system_info_json) if self.system_info_json else {}
+        except (ValueError, TypeError):
+            system_info = {}
         return {
             'distro': self.distro,
             'version': self.version,
@@ -27,4 +34,5 @@ class AssetOsDetails(db.Model):
             'os_id': self.os_id,
             'pretty_name': self.pretty_name,
             'scan_date': self.scan_date,
+            'system_info': system_info,
         }

@@ -242,7 +242,6 @@ def _run_scan(app, sched):
         from artemis.services.auth_scan_service import (
             store_auth_scan_results, get_credential, get_all_credentials, get_setting,
         )
-        from artemis.services.asset_service import store_asset_info
         from artemis.services.scan_service import get_open_ports_for_ip
 
         cred_ids = json.loads(sched.credential_ids_json) if sched.credential_ids_json else []
@@ -288,14 +287,10 @@ def _run_scan(app, sched):
                             nvd_api_key=nvd_api_key,
                             log_callback=lambda m, lvl='info': logs.append(m),
                         )
+                        # store_auth_scan_results also enriches the asset row
+                        # (hostname, MAC, OS) and reclassifies the device.
                         store_auth_scan_results(ip, auth_result['os_info'],
                                                 auth_result['packages'], auth_result['cves'])
-                        os_info = auth_result['os_info']
-                        if os_info.get('pretty_name') or os_info.get('distro'):
-                            store_asset_info(ip, os_info={
-                                'os_name': os_info.get('pretty_name') or os_info.get('distro'),
-                                'os_family': os_info.get('os_family'),
-                            })
                         result['hosts_scanned'] += 1
                         result.setdefault('packages_found', 0)
                         result['packages_found'] += len(auth_result['packages'])

@@ -98,10 +98,30 @@ export const useAgent = (id: number | null) =>
   useQuery({ queryKey: ['agent', id], queryFn: () => api.get<any>(`/api/v1/agents/${id}`), enabled: !!id });
 
 /* ---- Auth-scan detail for an asset ---- */
+export interface HostFacts {
+  hostname?: string;
+  kernel_release?: string;
+  virtualization?: string;
+  cpu_model?: string;
+  cpu_count?: number;
+  memory_mb?: number;
+  uptime_seconds?: number;
+  boot_time?: string;
+  timezone?: string;
+  default_gateway?: string;
+  primary_mac?: string;
+  mac_addresses?: Record<string, string>;
+  ipv4_addresses?: string[];
+  logged_in_users?: string[];
+  selinux?: string;
+  pending_updates?: number;
+  listening_ports?: Array<{ port: number; protocol: string; address: string; process: string }>;
+}
 export interface AuthDetails {
   os_details: {
     distro?: string; version?: string; kernel?: string; arch?: string;
     os_family?: string; pretty_name?: string; scan_date?: string;
+    system_info?: HostFacts;
   } | null;
   software: Array<{ name: string; version: string; cpe: string; scan_date?: string }>;
   software_count: number;

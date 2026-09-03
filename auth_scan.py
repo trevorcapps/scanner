@@ -131,6 +131,177 @@ def detect_os(client):
     return info
 
 
+def _first_line(text):
+    for line in (text or '').splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return None
+
+
+def _parse_listening_ports(raw):
+    """Parse `ss -tlnp` / `netstat -tlnp` output into a list of dicts.
+
+    In both tools the local endpoint is the 4th whitespace field
+    (``State Recv-Q Send-Q Local:Port …`` / ``Proto Recv-Q Send-Q Local …``).
+    """
+    ports = []
+    seen = set()
+    for line in (raw or '').splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith(('netid', 'proto', 'active', 'state')):
+            continue
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        local = parts[3]
+        addr, _, port = local.rpartition(':')
+        if not port.isdigit():
+            continue
+        proc = ''
+        m = re.search(r'users:\(\("([^"]+)"', line)          # ss
+        if m:
+            proc = m.group(1)
+        else:
+            m = re.search(r'(?:^|\s)\d+/(\S+)', line)          # netstat "1234/sshd"
+            if m:
+                proc = m.group(1)
+        addr = addr.strip('[]') or '*'
+        if addr in ('::', '0.0.0.0'):          # all interfaces — collapse v4/v6
+            addr = '*'
+        key = (int(port), addr)
+        if key in seen:
+            continue
+        seen.add(key)
+        ports.append({'port': int(port), 'protocol': 'tcp', 'address': addr, 'process': proc})
+    return sorted(ports, key=lambda p: p['port'])
+
+
+def _count_pending_updates(client, os_family):
+    """Best-effort count of upgradable packages. Returns int or None."""
+    try:
+        if os_family == 'debian':
+            out = _exec(client, "apt-get -s -o Debug::NoLocking=true upgrade 2>/dev/null | grep -c '^Inst '", timeout=45)
+            return int(out) if out.isdigit() else None
+        if os_family == 'alpine':
+            out = _exec(client, "apk version -l '<' 2>/dev/null | grep -c '<'", timeout=30)
+            return max(0, int(out) - 0) if out.isdigit() else None
+        if os_family == 'rhel':
+            out = _exec(client, "dnf -q check-update 2>/dev/null | grep -c '^[a-zA-Z0-9]' ; true", timeout=60)
+            return int(out) if out.isdigit() else None
+        if os_family == 'arch':
+            out = _exec(client, "pacman -Qu 2>/dev/null | wc -l", timeout=30)
+            return int(out) if out.isdigit() else None
+    except Exception:
+        pass
+    return None
+
+
+def collect_host_facts(client, os_info):
+    """Enumerate everything cheap an authenticated session reveals about a host.
+
+    Runs while the SSH session is open. Every probe is read-only, guarded, and
+    short. Returns a dict of facts (also merges a few onto ``os_info``).
+    """
+    os_family = os_info.get('os_family')
+    facts = {}
+
+    # Identity
+    hostname = _first_line(_exec(client, 'hostname -f 2>/dev/null || hostname 2>/dev/null || uname -n'))
+    if hostname and hostname.lower() != 'localhost':
+        facts['hostname'] = hostname
+        os_info.setdefault('hostname', hostname)
+    facts['kernel_release'] = _first_line(_exec(client, 'uname -r'))
+    facts['kernel_full'] = os_info.get('kernel')
+
+    # Platform / virtualisation
+    virt = _first_line(_exec(client, 'systemd-detect-virt 2>/dev/null'))
+    if virt and virt not in ('none', ''):
+        facts['virtualization'] = virt
+    elif _exec(client, 'test -f /.dockerenv && echo docker'):
+        facts['virtualization'] = 'docker'
+
+    # CPU / memory
+    cpu_model = _first_line(_exec(
+        client,
+        "grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 "
+        "|| sysctl -n hw.model 2>/dev/null"))
+    if cpu_model:
+        facts['cpu_model'] = cpu_model.strip()
+    cpu_count = _first_line(_exec(client, 'nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null'))
+    if cpu_count and cpu_count.isdigit():
+        facts['cpu_count'] = int(cpu_count)
+    mem_kb = _first_line(_exec(client, "grep -m1 MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}'"))
+    if mem_kb and mem_kb.isdigit():
+        facts['memory_mb'] = round(int(mem_kb) / 1024)
+
+    # Uptime / boot / time
+    uptime_raw = _exec(client, 'cat /proc/uptime 2>/dev/null')
+    if uptime_raw:
+        try:
+            facts['uptime_seconds'] = int(float(uptime_raw.split()[0]))
+        except (ValueError, IndexError):
+            pass
+    boot_time = _first_line(_exec(client, 'uptime -s 2>/dev/null'))
+    if boot_time:
+        facts['boot_time'] = boot_time
+    tz = _first_line(_exec(
+        client,
+        "timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null"))
+    if tz:
+        facts['timezone'] = tz
+
+    # Network — default route iface drives "primary" MAC/IP
+    gw_line = _first_line(_exec(client, 'ip route show default 2>/dev/null || route -n get default 2>/dev/null'))
+    primary_iface = None
+    if gw_line:
+        gm = re.search(r'via (\S+)', gw_line)
+        if gm:
+            facts['default_gateway'] = gm.group(1)
+        im = re.search(r'dev (\S+)', gw_line)
+        if im:
+            primary_iface = im.group(1)
+
+    macs = {}
+    for entry in _exec(client, "grep -H . /sys/class/net/*/address 2>/dev/null").splitlines():
+        path, _, mac = entry.partition(':')
+        iface = path.rsplit('/', 2)[-2] if '/' in path else ''
+        mac = mac.strip()
+        if iface and iface != 'lo' and mac and mac != '00:00:00:00:00:00':
+            macs[iface] = mac
+    if macs:
+        facts['mac_addresses'] = macs
+        facts['primary_mac'] = macs.get(primary_iface) or next(iter(macs.values()))
+        os_info.setdefault('primary_mac', facts['primary_mac'])
+
+    ipv4 = re.findall(r'inet (\d+\.\d+\.\d+\.\d+)',
+                      _exec(client, 'ip -o -4 addr show scope global 2>/dev/null || ifconfig 2>/dev/null'))
+    ipv4 = [a for a in ipv4 if not a.startswith('127.')]
+    if ipv4:
+        facts['ipv4_addresses'] = sorted(set(ipv4))
+
+    # Listening services (authenticated ground truth)
+    listen_raw = _exec(client,
+                       'ss -H -tlnp 2>/dev/null || ss -tln 2>/dev/null || netstat -tlnp 2>/dev/null',
+                       timeout=20)
+    listening = _parse_listening_ports(listen_raw)
+    if listening:
+        facts['listening_ports'] = listening
+
+    # Sessions / hardening / updates
+    who = _exec(client, 'who 2>/dev/null')
+    if who:
+        facts['logged_in_users'] = sorted({l.split()[0] for l in who.splitlines() if l.split()})
+    selinux = _first_line(_exec(client, 'getenforce 2>/dev/null'))
+    if selinux:
+        facts['selinux'] = selinux
+    pending = _count_pending_updates(client, os_family)
+    if pending is not None:
+        facts['pending_updates'] = pending
+
+    return facts
+
+
 def gather_packages(client, os_family):
     """Gather installed packages based on OS family.
 
@@ -326,6 +497,25 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
             log(f'Arch: {os_info["arch"]}')
         if os_info.get('kernel'):
             log(f'Kernel: {os_info["kernel"][:80]}', 'debug')
+
+        # Enumerate host facts (hostname, hardware, network, listening services…)
+        log(f'Enumerating host details on {host}...')
+        try:
+            facts = collect_host_facts(client, os_info)
+            os_info['system'] = facts
+            summary = []
+            if facts.get('hostname'):
+                summary.append(f"hostname {facts['hostname']}")
+            if facts.get('virtualization'):
+                summary.append(facts['virtualization'])
+            if facts.get('listening_ports'):
+                summary.append(f"{len(facts['listening_ports'])} listening port(s)")
+            if facts.get('pending_updates'):
+                summary.append(f"{facts['pending_updates']} pending update(s)")
+            if summary:
+                log('Host details: ' + ', '.join(summary))
+        except Exception as e:
+            log(f'Host detail enumeration partial: {e}', 'debug')
 
         if not os_info.get('os_family'):
             log(f'Could not detect package manager on {host}', 'warning')
