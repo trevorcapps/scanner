@@ -181,9 +181,18 @@ def gather_packages(client, os_family):
 def generate_cpe(pkg_name, pkg_version, os_info=None):
     """Generate a CPE 2.3 string for a package.
 
-    Format: cpe:2.3:a:VENDOR:PRODUCT:VERSION:*:*:*:*:*:*:*
+    Delegates to nvd_feeds.resolve_cpe (curated map + local cpe_products index +
+    version normalisation). Falls back to the legacy heuristic if that import
+    fails (e.g. NVD module unavailable).
     """
-    # Normalize name
+    try:
+        from nvd_feeds import resolve_cpe
+        os_family = (os_info or {}).get('os_family')
+        return resolve_cpe(pkg_name, pkg_version, os_family=os_family)
+    except Exception:
+        pass
+
+    # --- legacy fallback ---
     product = pkg_name.lower().replace(' ', '_')
     version = pkg_version.split('-')[0] if pkg_version else '*'  # strip release suffix
     version = version.split(':')[-1] if ':' in version else version  # strip epoch
@@ -288,7 +297,7 @@ def query_nvd_cves_for_cpe(cpe_string, nvd_api_key=None):
 
 
 def run_authenticated_scan(host, port=22, username='root', password=None, key_path=None,
-                           nvd_api_key=None, log_callback=None, max_cve_lookups=50):
+                           nvd_api_key=None, log_callback=None, max_cve_lookups=400):
     """Run a full authenticated scan on a host.
 
     Returns dict with os_info, packages (list), cves (list).
@@ -351,23 +360,15 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
     # Query NVD for CVE matches (outside SSH session)
     cves = []
     if packages:
-        # Focus on well-known packages that are more likely to have CVEs
-        priority_keywords = [
-            'openssl', 'openssh', 'apache', 'nginx', 'curl', 'python', 'php',
-            'mysql', 'mariadb', 'postgresql', 'redis', 'node', 'docker',
-            'sudo', 'bash', 'glibc', 'libc6', 'bind', 'samba', 'vim', 'git',
-            'linux-image', 'kernel', 'httpd', 'tomcat', 'java', 'perl', 'ruby',
-            'libxml', 'libpng', 'zlib', 'sqlite', 'exim', 'postfix', 'dovecot',
-        ]
+        # Local matching is a single indexed query per CPE, so every versioned
+        # package can go through it. `max_cve_lookups` only bounds the (slow,
+        # rate-limited) API fallback.
+        versioned = [p for p in packages if p['cpe'].split(':')[5] not in ('*', '')]
 
-        priority_pkgs = [p for p in packages if any(k in p['name'].lower() for k in priority_keywords)]
-        other_pkgs = [p for p in packages if p not in priority_pkgs]
-        scan_pkgs = (priority_pkgs + other_pkgs)[:max_cve_lookups]
-
-        # Try local NVD database first
+        # Try local NVD database first — over ALL versioned packages.
         try:
             from nvd_feeds import match_cpes_local
-            cpe_list = [pkg['cpe'] for pkg in scan_pkgs if pkg['cpe'].split(':')[5] != '*']
+            cpe_list = [pkg['cpe'] for pkg in versioned]
             if cpe_list:
                 log(f'Checking {len(cpe_list)} CPEs against local NVD database...')
                 local_results = match_cpes_local(cpe_list)
@@ -383,9 +384,10 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
             log(f'Local NVD module not available, using API...', 'debug')
             local_results = None
 
-        # Fall back to NVD API if local DB is empty
+        # Fall back to NVD API if local DB is empty — capped and priority-first.
+        scan_pkgs = versioned[:max_cve_lookups]
         if local_results is None:
-            log(f'Querying NVD API for CVEs on {len(scan_pkgs)} packages (priority: {len(priority_pkgs)})...')
+            log(f'Querying NVD API for CVEs on {len(scan_pkgs)} packages...')
 
             delay = 1.0 if nvd_api_key else NVD_RATE_LIMIT_DELAY
             checked = 0

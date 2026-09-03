@@ -216,3 +216,19 @@ def _init_database(app):
             except Exception as e:
                 logger.warning(f"Could not initialize {label} cache tables: {e}")
         logger.info(f"NVD feed cache ready: {cache_path}")
+
+        # Product->vendor index for the auth-scan CPE resolver (no-op if the NVD
+        # cache is empty or the index is already current).
+        try:
+            from nvd_feeds import build_cpe_product_index
+            import sqlite3 as _sq
+            _c = _sq.connect(cache_path)
+            has_index = _c.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='cpe_products'"
+            ).fetchone()[0]
+            rows = _c.execute("SELECT count(*) FROM cpe_products").fetchone()[0] if has_index else 0
+            _c.close()
+            if rows == 0:
+                build_cpe_product_index(cache_path)
+        except Exception as e:
+            logger.warning(f"CPE product index unavailable: {e}")

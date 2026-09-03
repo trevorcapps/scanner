@@ -73,6 +73,19 @@ def init_nvd_tables(db_path=None):
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_nvd_cpe_product
                       ON nvd_cpe_matches(cpe23uri COLLATE NOCASE)''')
 
+    # Denormalized product -> vendor index, derived from nvd_cpe_matches by
+    # build_cpe_product_index(). Lets the auth-scan CPE resolver name packages
+    # accurately without a separate CPE-dictionary download.
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cpe_products (
+        product TEXT NOT NULL,
+        vendor TEXT NOT NULL,
+        part TEXT NOT NULL,
+        hits INTEGER DEFAULT 0,
+        PRIMARY KEY (product, vendor, part)
+    )''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_cpe_products_product
+                      ON cpe_products(product)''')
+
     conn.commit()
     conn.close()
     logger.info("NVD tables initialized")
@@ -388,6 +401,13 @@ def sync_nvd_database(socketio=None, api_key=None, full_sync=False, db_path=None
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('nvd_last_sync', ?)", (now_str,))
         conn.commit()
 
+        # Refresh the product->vendor index used by the auth-scan CPE resolver.
+        try:
+            emit({'status': 'running', 'message': 'Rebuilding CPE product index...', 'percent': 98})
+            build_cpe_product_index(path)
+        except Exception as e:
+            logger.warning(f"CPE product index rebuild skipped: {e}")
+
         # Get total count in DB
         cursor.execute("SELECT COUNT(*) FROM nvd_cves")
         total_in_db = cursor.fetchone()[0]
@@ -624,3 +644,258 @@ def match_cpes_local(cpe_list, db_path=None):
 
     logger.info(f"Local NVD matching: {len(results)} CVEs found for {len(cpe_list)} CPEs")
     return results
+
+
+# ===========================================================================
+# CPE resolution for the authenticated scanner
+# ===========================================================================
+
+import re as _re  # noqa: E402
+
+# Packages whose distro name does not match the CPE product/vendor. Seeds the
+# resolver; anything not here falls through to the cpe_products index.
+_CPE_OVERRIDES = {
+    'openssh': ('openbsd', 'openssh'),
+    'openssh-server': ('openbsd', 'openssh'),
+    'openssh-client': ('openbsd', 'openssh'),
+    'openssh-sftp-server': ('openbsd', 'openssh'),
+    'openssl': ('openssl', 'openssl'),
+    'libssl1.1': ('openssl', 'openssl'),
+    'libssl3': ('openssl', 'openssl'),
+    'libssl': ('openssl', 'openssl'),
+    'apache2': ('apache', 'http_server'),
+    'apache2-bin': ('apache', 'http_server'),
+    'httpd': ('apache', 'http_server'),
+    'nginx': ('f5', 'nginx'),
+    'nginx-core': ('f5', 'nginx'),
+    'nginx-full': ('f5', 'nginx'),
+    'curl': ('haxx', 'curl'),
+    'libcurl4': ('haxx', 'libcurl'),
+    'libcurl3': ('haxx', 'libcurl'),
+    'libc6': ('gnu', 'glibc'),
+    'libc-bin': ('gnu', 'glibc'),
+    'glibc': ('gnu', 'glibc'),
+    'bash': ('gnu', 'bash'),
+    'sudo': ('sudo_project', 'sudo'),
+    'sudo-ldap': ('sudo_project', 'sudo'),
+    'vim': ('vim', 'vim'),
+    'vim-common': ('vim', 'vim'),
+    'vim-tiny': ('vim', 'vim'),
+    'git': ('git-scm', 'git'),
+    'perl': ('perl', 'perl'),
+    'perl-base': ('perl', 'perl'),
+    'python3': ('python', 'python'),
+    'python3.9': ('python', 'python'),
+    'python3.10': ('python', 'python'),
+    'python3.11': ('python', 'python'),
+    'python2.7': ('python', 'python'),
+    'php': ('php', 'php'),
+    'bind9': ('isc', 'bind'),
+    'bind9-host': ('isc', 'bind'),
+    'libbind9-161': ('isc', 'bind'),
+    'named': ('isc', 'bind'),
+    'samba': ('samba', 'samba'),
+    'samba-common': ('samba', 'samba'),
+    'libsmbclient': ('samba', 'samba'),
+    'postgresql': ('postgresql', 'postgresql'),
+    'mariadb-server': ('mariadb', 'mariadb'),
+    'mysql-server': ('oracle', 'mysql'),
+    'redis-server': ('redis', 'redis'),
+    'redis': ('redis', 'redis'),
+    'nodejs': ('nodejs', 'node.js'),
+    'docker-ce': ('docker', 'docker'),
+    'docker.io': ('docker', 'docker'),
+    'containerd': ('linuxfoundation', 'containerd'),
+    'runc': ('linuxfoundation', 'runc'),
+    'zlib1g': ('zlib', 'zlib'),
+    'libzstd1': ('facebook', 'zstd'),
+    'libxml2': ('xmlsoft', 'libxml2'),
+    'libpng16-16': ('libpng', 'libpng'),
+    'libexpat1': ('libexpat_project', 'libexpat'),
+    'libssh2-1': ('libssh2', 'libssh2'),
+    'libssh-4': ('libssh', 'libssh'),
+    'sqlite3': ('sqlite', 'sqlite'),
+    'libsqlite3-0': ('sqlite', 'sqlite'),
+    'libtiff5': ('libtiff', 'libtiff'),
+    'libtiff6': ('libtiff', 'libtiff'),
+    'libtiff-dev': ('libtiff', 'libtiff'),
+    'libjpeg62-turbo': ('libjpeg-turbo', 'libjpeg-turbo'),
+    'libjpeg-turbo8': ('libjpeg-turbo', 'libjpeg-turbo'),
+    'libfreetype6': ('freetype', 'freetype'),
+    'libwebp7': ('webmproject', 'libwebp'),
+    'libpcre2-8-0': ('pcre2_project', 'pcre2'),
+    'libpcre3': ('pcre', 'pcre'),
+    'libgd3': ('libgd', 'libgd'),
+    'libtasn1-6': ('gnu', 'libtasn1'),
+    'libidn2-0': ('gnu', 'libidn2'),
+    'libksba8': ('gnupg', 'libksba'),
+    'libnghttp2-14': ('nghttp2', 'nghttp2'),
+    'liblzma5': ('tukaani', 'xz'),
+    'xz-utils': ('tukaani', 'xz'),
+    'exim4': ('exim', 'exim'),
+    'postfix': ('postfix', 'postfix'),
+    'dovecot-core': ('dovecot', 'dovecot'),
+    'tar': ('gnu', 'tar'),
+    'wget': ('gnu', 'wget'),
+    'gnutls-bin': ('gnu', 'gnutls'),
+    'libgnutls30': ('gnu', 'gnutls'),
+    'libgcrypt20': ('gnupg', 'libgcrypt'),
+    'gnupg': ('gnupg', 'gnupg'),
+    'sysstat': ('sysstat_project', 'sysstat'),
+    'rsync': ('samba', 'rsync'),
+    'cron': ('vixie', 'cron'),
+    'util-linux': ('kernel', 'util-linux'),
+}
+
+_KERNEL_RE = _re.compile(r'^(?:linux-image|linux-headers|kernel|linux-modules)')
+
+
+def _normalize_version(version_str):
+    """Reduce a distro package version to a CPE-comparable dotted version.
+
+    '1:2.4.1-3+deb11u1' -> '2.4.1' ; '9.2p1-2' -> '9.2' ;
+    '3.0.11-1~deb12u2' -> '3.0.11' ; '7.88.1-10+deb12u5' -> '7.88.1'
+    Returns '*' when nothing usable remains.
+    """
+    if not version_str:
+        return '*'
+    v = str(version_str).strip()
+    # epoch
+    if ':' in v:
+        v = v.split(':', 1)[1]
+    # distro revision — everything from the first '-'
+    v = v.split('-', 1)[0]
+    # openssh 'p1', 'rc1', 'beta', dfsg tags, git snapshots
+    v = _re.split(r'[+~]', v, 1)[0]
+    m = _re.match(r'(\d+(?:\.\d+){0,3})', v)
+    if not m:
+        return '*'
+    return m.group(1)
+
+
+def _norm_product(name):
+    n = name.lower().strip()
+    n = _re.sub(r'[^a-z0-9._+-]', '', n)
+    return n
+
+
+def build_cpe_product_index(db_path=None):
+    """(Re)build cpe_products from nvd_cpe_matches. Idempotent; a few seconds."""
+    path = db_path or _get_db_path()
+    if not path or path == ':memory:':
+        return 0
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cpe_matches'")
+        if not cur.fetchone():
+            return 0
+        cur.execute("SELECT COUNT(*) FROM nvd_cpe_matches")
+        if cur.fetchone()[0] == 0:
+            return 0
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS cpe_products (
+            product TEXT NOT NULL, vendor TEXT NOT NULL, part TEXT NOT NULL,
+            hits INTEGER DEFAULT 0, PRIMARY KEY (product, vendor, part))''')
+        cur.execute('''CREATE INDEX IF NOT EXISTS idx_cpe_products_product
+                       ON cpe_products(product)''')
+
+        tally = {}
+        cur.execute("SELECT DISTINCT cpe23uri FROM nvd_cpe_matches")
+        for (uri,) in cur:
+            parts = (uri or '').split(':')
+            if len(parts) < 6 or not parts[0].startswith('cpe'):
+                continue
+            part, vendor, product = parts[2], parts[3], parts[4]
+            if vendor in ('*', '-', '') or product in ('*', '-', ''):
+                continue
+            key = (product, vendor, part)
+            tally[key] = tally.get(key, 0) + 1
+
+        cur.execute("DELETE FROM cpe_products")
+        cur.executemany(
+            "INSERT INTO cpe_products (product, vendor, part, hits) VALUES (?, ?, ?, ?)",
+            [(p, v, pt, n) for (p, v, pt), n in tally.items()],
+        )
+        conn.commit()
+        logger.info(f"cpe_products index built: {len(tally)} product/vendor pairs")
+        return len(tally)
+    except Exception as e:
+        logger.warning(f"build_cpe_product_index failed: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
+def _lookup_vendor(cur, product):
+    """Best vendor for a normalized product name from cpe_products. Returns
+    (vendor, product, part) or None."""
+    for candidate in _product_candidates(product):
+        cur.execute(
+            "SELECT vendor, product, part FROM cpe_products WHERE product = ? "
+            "ORDER BY (part = 'a') DESC, hits DESC LIMIT 1",
+            (candidate,),
+        )
+        row = cur.fetchone()
+        if row:
+            return row
+    return None
+
+
+def _product_candidates(product):
+    seen = []
+
+    def add(x):
+        if x and x not in seen:
+            seen.append(x)
+
+    add(product)
+    add(product.replace('-', '_'))
+    add(product.replace('_', '-'))
+    # strip lib prefix / -dev,-bin,-common,-core suffixes and soname digits
+    stripped = _re.sub(r'^lib', '', product)
+    stripped = _re.sub(r'[0-9.]+$', '', stripped)
+    stripped = _re.sub(r'-(dev|bin|common|core|server|client|utils|tools|doc|data)$', '', stripped)
+    add(stripped)
+    add(stripped.replace('-', '_'))
+    return seen
+
+
+def resolve_cpe(product_name, version, os_family=None, db_path=None):
+    """Resolve a distro package to a CPE 2.3 'a' string, best-effort.
+
+    Order: curated override map -> local cpe_products index -> generated fallback.
+    """
+    version = _normalize_version(version)
+    product = _norm_product(product_name)
+
+    if _KERNEL_RE.match(product):
+        return f"cpe:2.3:o:linux:linux_kernel:{version}:*:*:*:*:*:*:*"
+
+    ov = _CPE_OVERRIDES.get(product) or _CPE_OVERRIDES.get(product.replace('_', '-'))
+    if ov:
+        return f"cpe:2.3:a:{ov[0]}:{ov[1]}:{version}:*:*:*:*:*:*:*"
+
+    path = db_path or _get_db_path()
+    if path and path != ':memory:':
+        conn = sqlite3.connect(path)
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cpe_products'")
+            if cur.fetchone():
+                cur.execute("SELECT COUNT(*) FROM cpe_products")
+                if cur.fetchone()[0] == 0:
+                    conn.close()
+                    build_cpe_product_index(path)
+                    conn = sqlite3.connect(path)
+                    cur = conn.cursor()
+                hit = _lookup_vendor(cur, product)
+                if hit:
+                    vendor, prod, part = hit
+                    return f"cpe:2.3:{part}:{vendor}:{prod}:{version}:*:*:*:*:*:*:*"
+        except Exception as e:
+            logger.debug(f"resolve_cpe index lookup failed: {e}")
+        finally:
+            conn.close()
+
+    return f"cpe:2.3:a:{product}:{product}:{version}:*:*:*:*:*:*:*"

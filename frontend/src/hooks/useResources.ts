@@ -97,6 +97,28 @@ export function useAgentTelemetry() {
 export const useAgent = (id: number | null) =>
   useQuery({ queryKey: ['agent', id], queryFn: () => api.get<any>(`/api/v1/agents/${id}`), enabled: !!id });
 
+/* ---- Auth-scan detail for an asset ---- */
+export interface AuthDetails {
+  os_details: {
+    distro?: string; version?: string; kernel?: string; arch?: string;
+    os_family?: string; pretty_name?: string; scan_date?: string;
+  } | null;
+  software: Array<{ name: string; version: string; cpe: string; scan_date?: string }>;
+  software_count: number;
+  cves: Array<{
+    cve_id: string; severity: string; cvss_score: number | null;
+    description: string; affected_cpe: string; has_exploit: boolean;
+    exploit_url?: string; scan_date?: string;
+  }>;
+  cve_count: number;
+}
+export const useAuthDetails = (ip: string | null) =>
+  useQuery({
+    queryKey: ['auth-details', ip],
+    queryFn: () => api.get<AuthDetails>(`/api/v1/assets/${ip}/auth-details`),
+    enabled: !!ip,
+  });
+
 export function useAgentActions() {
   const qc = useQueryClient();
   const inv = () => {

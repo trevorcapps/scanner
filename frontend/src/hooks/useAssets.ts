@@ -44,9 +44,14 @@ export function useAssetActions(ip: string) {
   };
 
   const scan = useMutation({
-    mutationFn: (scan_type: string) =>
-      api.post<{ id: string }>('/api/v1/scans', { target: ip, scan_type }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dash', 'queue'] }),
+    mutationFn: (arg: string | { scan_type: string; options?: Record<string, unknown> }) => {
+      const { scan_type, options } = typeof arg === 'string' ? { scan_type: arg, options: undefined } : arg;
+      return api.post<{ id: string }>('/api/v1/scans', { target: ip, scan_type, options });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dash', 'queue'] });
+      qc.invalidateQueries({ queryKey: ['auth-details', ip] });
+    },
   });
 
   const remove = useMutation({

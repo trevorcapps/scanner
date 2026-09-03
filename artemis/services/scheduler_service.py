@@ -239,38 +239,78 @@ def _run_scan(app, sched):
 
     if scan_type == 'auth':
         from artemis.scanners.ssh_scanner import run_authenticated_scan
-        from artemis.services.auth_scan_service import store_auth_scan_results, get_credential
+        from artemis.services.auth_scan_service import (
+            store_auth_scan_results, get_credential, get_all_credentials, get_setting,
+        )
+        from artemis.services.asset_service import store_asset_info
         from artemis.services.scan_service import get_open_ports_for_ip
 
         cred_ids = json.loads(sched.credential_ids_json) if sched.credential_ids_json else []
-        creds = [get_credential(int(cid)) for cid in cred_ids]
-        creds = [c for c in creds if c]
+        if cred_ids:
+            creds = [c for c in (get_credential(int(cid)) for cid in cred_ids) if c]
+        else:
+            creds = get_all_credentials()
+        nvd_api_key = get_setting('nvd_api_key', '') or None
+        logs = []
 
         for ip in ips:
             open_ports = get_open_ports_for_ip(ip)
+            if not open_ports:
+                # No prior port data — probe the common SSH ports first so a
+                # non-standard sshd is found (parity with the socket path). Kept
+                # narrow and short so it never dominates the scan.
+                try:
+                    from artemis.scanners.nmap_scanner import scan as nmap_scan, parse_scan
+                    from artemis.services.scan_service import store_scan
+                    scan_data = parse_scan(nmap_scan(ip, options={
+                        'ports': '22,2222,2200', 'host_timeout': 30,
+                    }))
+                    if scan_data:
+                        store_scan(ip, scan_data)
+                    open_ports = get_open_ports_for_ip(ip)
+                except Exception as e:
+                    logger.warning(f"Pre-auth SSH probe failed for {ip}: {e}")
             ssh_ports = [p['port'] for p in open_ports
                          if p['port'] in (22, 2222, 2200) or p.get('service') in ('ssh', 'openssh')]
             if not ssh_ports:
                 ssh_ports = [22]
 
+            done = False
             for cred in creds:
+                if cred['cred_type'] not in ('ssh_key', 'ssh_password'):
+                    continue
                 for port in ssh_ports:
                     try:
                         auth_result = run_authenticated_scan(
                             host=ip, port=port, username=cred['username'],
                             password=cred.get('password') if cred['cred_type'] == 'ssh_password' else None,
                             key_path=cred.get('key_path') if cred['cred_type'] == 'ssh_key' else None,
+                            nvd_api_key=nvd_api_key,
+                            log_callback=lambda m, lvl='info': logs.append(m),
                         )
                         store_auth_scan_results(ip, auth_result['os_info'],
                                                 auth_result['packages'], auth_result['cves'])
+                        os_info = auth_result['os_info']
+                        if os_info.get('pretty_name') or os_info.get('distro'):
+                            store_asset_info(ip, os_info={
+                                'os_name': os_info.get('pretty_name') or os_info.get('distro'),
+                                'os_family': os_info.get('os_family'),
+                            })
                         result['hosts_scanned'] += 1
+                        result.setdefault('packages_found', 0)
+                        result['packages_found'] += len(auth_result['packages'])
                         result['vulns_found'] += len(auth_result['cves'])
                         result['vulns'].extend([{'id': c['cve_id'], 'name': c['cve_id'],
                                                   'severity': c.get('severity', 'medium')}
                                                  for c in auth_result['cves']])
-                        break  # Success — next IP
+                        done = True
+                        break
                     except Exception as e:
-                        logger.warning(f"Auth scan failed for {ip}:{port}: {e}")
+                        logger.warning(f"Auth scan failed for {ip}:{port} ({cred['name']}): {e}")
+                if done:
+                    break
+        if logs:
+            result['log_tail'] = logs[-40:]
 
     return result
 

@@ -84,25 +84,35 @@ def create_scan():
               properties:
                 target: {type: string}
                 scan_type: {type: string, enum: [port, vuln, full, auth], default: port}
-                options: {type: object}
+                options:
+                  type: object
+                  description: >
+                    scan_type=vuln accepts `profile`, `templates`, `severity`,
+                    `rate_limit`. scan_type=auth requires `credential_ids`
+                    (array of credential ids) OR `use_all_credentials: true`.
       responses:
         202: {description: Scan job accepted}
-        400: {description: Invalid target or scan_type}
+        400: {description: Invalid target, scan_type, or missing credentials}
         503: {description: Scan queue unavailable}
       security: [{bearerAuth: []}]
     """
     data = request.get_json(silent=True) or {}
     target = (data.get('target') or '').strip()
     scan_type = (data.get('scan_type') or 'port').strip().lower()
+    options = data.get('options') or {}
 
     if not target or not validate_target(target):
         return {'error': 'A valid target (IP, CIDR or hostname) is required'}, 400
     if scan_type not in _SCAN_TYPES:
         return {'error': f'scan_type must be one of {", ".join(_SCAN_TYPES)}'}, 400
+    if scan_type == 'auth':
+        cred_ids = options.get('credential_ids') or []
+        if not cred_ids and not options.get('use_all_credentials'):
+            return {'error': 'auth scans require options.credential_ids or use_all_credentials'}, 400
 
     user = getattr(g, 'current_user', None)
     try:
-        job = dispatch_adhoc_scan(target, scan_type, data.get('options') or {},
+        job = dispatch_adhoc_scan(target, scan_type, options,
                                   requested_by=user.id if user else None)
     except QueueDispatchError as e:
         return {'error': str(e), 'job': e.job.to_dict()}, 503
