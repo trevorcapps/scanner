@@ -73,22 +73,29 @@
 ## Tier 3: Reporting & UX (What Sells It)
 *Enterprise buyers live in dashboards and PDFs.*
 
-### 10. **Executive Reporting**
-- PDF/HTML export with branding
-- Risk trending over time (charts showing vuln count trajectory)
-- Executive summary vs. technical detail views
-- Scheduled report delivery via email
+### 10. **Executive Reporting** — 🔨 in progress
+- [x] Branded HTML report generator (org name, logo, accent colour, confidentiality banner)
+- [x] PDF export (WeasyPrint, server-side — works headless for scheduled delivery)
+- [x] Executive summary vs. technical detail vs. full views
+- [x] Risk trending over time — daily `risk_snapshots` rollup + trajectory chart
+- [x] Report scope: whole environment, a site, or a severity/device filter
+- [x] Generated-report history (list / download / delete), stored on the data volume
+- [x] Reports page in the SPA + REST (`/api/v1/reports`)
+- [x] SMTP settings + "send test email"
+- [x] Scheduled report delivery via email (`report_schedules`, cron, scheduler hook)
 
-### 11. **Dashboard Overhaul**
-- Risk heatmaps, CVSS distribution charts, top-10 vulns
-- Asset topology/network map visualization
-- Scan queue status, historical trends
-- Filter/sort/search across all assets and vulns
+### 11. **Dashboard Overhaul** — ✅ done
+- [x] Risk heatmap (device type × severity), CVSS distribution histogram, top-10 findings
+- [x] Asset topology / network map (force graph: root → subnet → asset, risk-coloured)
+- [x] Scan queue status panel, 30-day activity trends
+- [x] Filter / sort / search across the Assets and Findings pages
+- [x] Single-payload dashboard aggregation API (`/api/v1/dashboard/*`)
 
-### 12. **Frontend Rewrite**
-- Move from vanilla JS to React/Vue — the current 2,300-line `script.js` won't scale
-- Proper component architecture, state management, routing
-- Responsive design for tablet/mobile use
+### 12. **Frontend Rewrite** — ✅ done
+- [x] React 18 + TypeScript + Vite SPA served at `/` (vanilla app kept at `/classic`)
+- [x] Component architecture (`components/{ui,charts,layout}`), 11 routed pages
+- [x] State management: TanStack Query (server state) + Zustand (UI state), React Router
+- [x] Responsive layout (Tailwind, tablet/mobile breakpoints)
 
 ---
 

@@ -24,6 +24,7 @@ dependencies = [
     "celery[redis]>=5.4",
     "Flask-Migrate>=4.0",
     "apispec[yaml]>=6.3",
+    "weasyprint>=62",
 ]
 
 [project.optional-dependencies]

@@ -16,6 +16,7 @@ const NAV: Item[] = [
   { to: '/sites', label: 'Sites', meta: 'SCOPE' },
   { to: '/schedules', label: 'Schedules', meta: 'AUTO' },
   { to: '/agents', label: 'Agents', meta: 'EDR' },
+  { to: '/reports', label: 'Reports', meta: 'DOC' },
   { to: '/settings', label: 'Control', meta: 'CFG' },
   { to: '/data-query', label: 'Data query', meta: 'SQL' },
 ];

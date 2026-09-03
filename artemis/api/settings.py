@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 settings_bp = Blueprint('settings', __name__)
 
 # Never returned in the clear or writable through the generic endpoint.
-_SECRET_KEYS = {'nvd_api_key'}
+_SECRET_KEYS = {'nvd_api_key', 'smtp_password'}
 # Internal bookkeeping — hidden from the generic list.
 _HIDDEN_PREFIXES = ('_',)
 

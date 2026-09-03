@@ -3,6 +3,7 @@ import { PageHeading, Panel, Badge } from '@/components/ui/primitives';
 import { Modal, Field, FormActions } from '@/components/ui/Modal';
 import { DEFAULT_SCAN, useUi, type ScanDefaults } from '@/stores/ui';
 import { useCredentials, useSettings, useWebhooks } from '@/hooks/useResources';
+import { useBranding, useSmtp } from '@/hooks/useReports';
 import { getSocket } from '@/lib/socket';
 import { formatDate } from '@/lib/format';
 import { toast } from '@/stores/toast';
@@ -14,9 +15,189 @@ export default function Settings() {
       <ScanDefaultsPanel />
       <NvdPanel />
       <CredentialsPanel />
+      <ReportBrandingPanel />
+      <SmtpPanel />
       <WebhooksPanel />
       <ApiPanel />
     </div>
+  );
+}
+
+function ReportBrandingPanel() {
+  const { get, save } = useBranding();
+  const [d, setD] = useState({
+    report_org_name: '',
+    report_logo: '',
+    report_accent_color: '#7c3aed',
+    report_footer: '',
+    report_confidentiality: 'CONFIDENTIAL',
+  });
+  useEffect(() => {
+    if (get.data) setD((p) => ({ ...p, ...get.data }));
+  }, [get.data]);
+
+  const onLogo = (file?: File) => {
+    if (!file) return;
+    if (file.size > 400_000) {
+      toast.error('Logo must be under 400 KB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setD({ ...d, report_logo: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <Panel
+      title="Report branding"
+      actions={
+        <button
+          className="btn-primary px-2 py-1"
+          onClick={() =>
+            save.mutate(d, { onSuccess: () => toast.success('Saved'), onError: () => toast.error('Save failed') })
+          }
+        >
+          Save
+        </button>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Organisation name">
+          <input
+            className="input"
+            value={d.report_org_name}
+            placeholder="Acme Security"
+            onChange={(e) => setD({ ...d, report_org_name: e.target.value })}
+          />
+        </Field>
+        <Field label="Accent colour">
+          <input
+            className="input h-9"
+            type="color"
+            value={d.report_accent_color || '#7c3aed'}
+            onChange={(e) => setD({ ...d, report_accent_color: e.target.value })}
+          />
+        </Field>
+        <Field label="Confidentiality banner" hint="blank to omit">
+          <input
+            className="input"
+            value={d.report_confidentiality}
+            onChange={(e) => setD({ ...d, report_confidentiality: e.target.value })}
+          />
+        </Field>
+        <Field label="Footer text" hint="e.g. legal disclaimer">
+          <input
+            className="input"
+            value={d.report_footer}
+            onChange={(e) => setD({ ...d, report_footer: e.target.value })}
+          />
+        </Field>
+        <Field label="Logo" hint="PNG/SVG, under 400 KB — embedded in the cover page">
+          <div className="flex items-center gap-3">
+            <input type="file" accept="image/*" onChange={(e) => onLogo(e.target.files?.[0])} className="text-2xs" />
+            {d.report_logo && (
+              <>
+                <img src={d.report_logo} alt="logo" className="h-8 rounded border border-line-soft bg-white p-1" />
+                <button className="btn px-2 py-0.5 text-2xs" onClick={() => setD({ ...d, report_logo: '' })}>
+                  Clear
+                </button>
+              </>
+            )}
+          </div>
+        </Field>
+      </div>
+    </Panel>
+  );
+}
+
+function SmtpPanel() {
+  const { get, save, test } = useSmtp();
+  const [d, setD] = useState({
+    smtp_host: '',
+    smtp_port: '587',
+    smtp_username: '',
+    smtp_password: '',
+    smtp_from: '',
+    smtp_security: 'starttls',
+  });
+  const [testTo, setTestTo] = useState('');
+  useEffect(() => {
+    if (get.data)
+      setD((p) => ({
+        ...p,
+        smtp_host: get.data.smtp_host,
+        smtp_port: get.data.smtp_port || '587',
+        smtp_username: get.data.smtp_username,
+        smtp_from: get.data.smtp_from,
+        smtp_security: get.data.smtp_security || 'starttls',
+      }));
+  }, [get.data]);
+
+  return (
+    <Panel
+      title="Email (SMTP)"
+      meta={get.data?.smtp_password_set ? 'password set' : ''}
+      actions={
+        <button
+          className="btn-primary px-2 py-1"
+          onClick={() =>
+            save.mutate(d, {
+              onSuccess: () => {
+                toast.success('Saved');
+                setD({ ...d, smtp_password: '' });
+              },
+              onError: () => toast.error('Save failed'),
+            })
+          }
+        >
+          Save
+        </button>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Host">
+          <input className="input" value={d.smtp_host} placeholder="smtp.example.com"
+            onChange={(e) => setD({ ...d, smtp_host: e.target.value })} />
+        </Field>
+        <Field label="Port">
+          <input className="input" value={d.smtp_port} onChange={(e) => setD({ ...d, smtp_port: e.target.value })} />
+        </Field>
+        <Field label="Security">
+          <select className="input" value={d.smtp_security} onChange={(e) => setD({ ...d, smtp_security: e.target.value })}>
+            <option value="starttls">STARTTLS</option>
+            <option value="ssl">SSL/TLS</option>
+            <option value="none">None</option>
+          </select>
+        </Field>
+        <Field label="From address">
+          <input className="input" value={d.smtp_from} placeholder="artemis@example.com"
+            onChange={(e) => setD({ ...d, smtp_from: e.target.value })} />
+        </Field>
+        <Field label="Username" hint="blank for unauthenticated relays">
+          <input className="input" value={d.smtp_username} onChange={(e) => setD({ ...d, smtp_username: e.target.value })} />
+        </Field>
+        <Field label="Password" hint={get.data?.smtp_password_set ? 'leave blank to keep current' : ''}>
+          <input className="input" type="password" value={d.smtp_password}
+            onChange={(e) => setD({ ...d, smtp_password: e.target.value })} />
+        </Field>
+      </div>
+      <div className="mt-2 flex items-center gap-2 border-t border-line-soft pt-3">
+        <input className="input flex-1" placeholder="you@example.com" value={testTo}
+          onChange={(e) => setTestTo(e.target.value)} />
+        <button
+          className="btn px-3 py-1"
+          disabled={!testTo || test.isPending}
+          onClick={() =>
+            test.mutate(testTo, {
+              onSuccess: () => toast.success('Test email sent'),
+              onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+            })
+          }
+        >
+          {test.isPending ? 'Sending…' : 'Send test'}
+        </button>
+      </div>
+    </Panel>
   );
 }
 

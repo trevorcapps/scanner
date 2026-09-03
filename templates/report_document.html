@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ branding.org_name }} — {{ kind|title }} Vulnerability Report</title>
+<style>
+  :root { --accent: {{ branding.accent }}; }
+  @page {
+    size: A4; margin: 20mm 16mm 22mm 16mm;
+    @bottom-left { content: "{{ branding.confidentiality }}"; font-size: 7pt; color: #9ca3af; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    @bottom-center { content: "{{ branding.org_name }}"; font-size: 7pt; color: #9ca3af; }
+  }
+  @page :first { @bottom-left { content: ""; } @bottom-right { content: ""; } @bottom-center { content: ""; } }
+
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1f2937;
+         font-size: 10pt; line-height: 1.45; margin: 0; }
+  h1, h2, h3 { color: #111827; margin: 0 0 .4em; line-height: 1.2; }
+  h2 { font-size: 15pt; border-bottom: 2px solid var(--accent); padding-bottom: 4px; margin-top: 26px; }
+  h3 { font-size: 11.5pt; margin-top: 16px; }
+  a { color: var(--accent); text-decoration: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.5pt; }
+  th { text-align: left; background: #f3f4f6; padding: 5px 7px; border-bottom: 1px solid #d1d5db; }
+  td { padding: 4px 7px; border-bottom: 1px solid #eceef1; vertical-align: top; }
+  .muted { color: #6b7280; }
+  .pill { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 7.5pt;
+          font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .03em; }
+
+  /* Cover */
+  .cover { height: 245mm; display: flex; flex-direction: column; page-break-after: always; }
+  .cover .top { flex: 1; }
+  .cover .logo { max-height: 64px; max-width: 260px; margin-bottom: 30px; }
+  .cover .org { font-size: 13pt; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+  .cover h1 { font-size: 30pt; margin-top: 60px; }
+  .cover .sub { font-size: 12pt; color: #4b5563; margin-top: 6px; }
+  .cover .meta { margin-top: 40px; font-size: 10pt; color: #4b5563; }
+  .cover .meta div { margin: 3px 0; }
+  .conf-banner { margin-top: 30px; display: inline-block; border: 1.5px solid #b91c1c; color: #b91c1c;
+                 font-weight: 700; padding: 6px 14px; letter-spacing: .08em; font-size: 10pt; }
+  .riskbadge { display: inline-block; padding: 8px 18px; border-radius: 6px; color: #fff;
+               font-size: 13pt; font-weight: 700; }
+
+  /* KPI cards */
+  .kpis { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .kpi { flex: 1 1 18%; min-width: 90px; border: 1px solid #e5e7eb; border-radius: 6px;
+         padding: 9px 11px; }
+  .kpi .n { font-size: 18pt; font-weight: 700; }
+  .kpi .l { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+
+  .sev-crit { background: #b91c1c; } .sev-high { background: #ea580c; }
+  .sev-med  { background: #ca8a04; } .sev-low  { background: #2563eb; }
+  .sev-info { background: #6b7280; }
+
+  .chartrow { display: flex; gap: 16px; align-items: flex-start; margin: 10px 0; }
+  .chartrow img { max-width: 100%; }
+  .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+
+  .host { page-break-inside: avoid; margin-top: 14px; border: 1px solid #e5e7eb; border-radius: 6px;
+          padding: 10px 12px; }
+  .host h3 { margin-top: 0; }
+  .host .counts span { margin-right: 8px; font-size: 8pt; }
+  .findings-note { font-size: 8pt; color: #6b7280; margin-top: 2px; }
+  .footer-note { margin-top: 28px; font-size: 8pt; color: #9ca3af; border-top: 1px solid #e5e7eb;
+                 padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────── COVER ───────────────── -->
+<section class="cover">
+  <div class="top">
+    {% if branding.logo %}<img class="logo" src="{{ branding.logo }}" alt="logo">{% else %}
+      <div class="org">{{ branding.org_name }}</div>{% endif %}
+    <h1>{{ kind|title }} Vulnerability Report</h1>
+    <div class="sub">{{ scope_label }}</div>
+    <div class="meta">
+      <div><strong>Prepared by:</strong> {{ branding.org_name }}</div>
+      <div><strong>Generated:</strong> {{ generated_at }}</div>
+      <div><strong>Assets in scope:</strong> {{ totals.assets }}</div>
+      <div><strong>Report type:</strong> {{ kind|title }}</div>
+    </div>
+    <div style="margin-top:34px">
+      <span class="riskbadge" style="background: {{ risk_band[1] }}">
+        Overall risk: {{ risk_band[0] }}
+      </span>
+    </div>
+    {% if branding.confidentiality %}
+      <div><span class="conf-banner">{{ branding.confidentiality }}</span></div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ───────────────── EXECUTIVE SUMMARY ───────────────── -->
+<h2>Executive Summary</h2>
+<p>
+  This assessment covers <strong>{{ totals.assets }}</strong> asset(s)
+  ({{ scope_label|lower }}). {{ totals.unique_cves }} distinct vulnerabilit{{ 'y' if totals.unique_cves == 1 else 'ies' }}
+  {{ 'was' if totals.unique_cves == 1 else 'were' }} identified across
+  <strong>{{ totals.affected_hosts }}</strong> host(s), of which
+  <strong>{{ totals.exploitable }}</strong> ha{{ 's' if totals.exploitable == 1 else 've' }} a
+  known public exploit. The weighted risk score is <strong>{{ totals.risk_score }}</strong>
+  ({{ risk_band[0] }}).
+</p>
+
+<div class="kpis">
+  <div class="kpi"><div class="n" style="color:#b91c1c">{{ totals.by_severity.critical }}</div><div class="l">Critical</div></div>
+  <div class="kpi"><div class="n" style="color:#ea580c">{{ totals.by_severity.high }}</div><div class="l">High</div></div>
+  <div class="kpi"><div class="n" style="color:#ca8a04">{{ totals.by_severity.medium }}</div><div class="l">Medium</div></div>
+  <div class="kpi"><div class="n" style="color:#2563eb">{{ totals.by_severity.low }}</div><div class="l">Low</div></div>
+  <div class="kpi"><div class="n">{{ totals.exploitable }}</div><div class="l">Exploitable</div></div>
+</div>
+
+<div class="chartrow">
+  {% if charts.severity %}<div class="card"><strong>Severity mix</strong><br><img src="{{ charts.severity }}"></div>{% endif %}
+  {% if charts.trend %}<div class="card" style="flex:1"><strong>90-day risk trajectory</strong><br><img src="{{ charts.trend }}"></div>{% endif %}
+</div>
+{% if not charts.trend %}
+  <p class="muted findings-note">Trend data accrues one point per day — the trajectory chart appears once at least two daily snapshots exist.</p>
+{% endif %}
+
+<!-- ───────────────── KEY FINDINGS ───────────────── -->
+<h2>Key Findings</h2>
+{% if top_vulns %}
+<table>
+  <thead><tr><th>Severity</th><th>ID</th><th>CVSS</th><th>Hosts</th><th>Finding &amp; recommended action</th></tr></thead>
+  <tbody>
+  {% for v in top_vulns %}
+    <tr>
+      <td><span class="pill" style="background: {{ v.severity|sevcolor }}">{{ v.severity }}</span>
+          {% if v.has_exploit %}<span class="pill" style="background:#000">exploit</span>{% endif %}</td>
+      <td>{{ v.cve_id }}</td>
+      <td>{{ '%.1f'|format(v.cvss_score) if v.cvss_score is not none else '—' }}</td>
+      <td>{{ v.host_count }}</td>
+      <td>
+        <strong>{{ v.name }}</strong><br>
+        <span class="muted">{{ v.description }}</span><br>
+        <span class="findings-note">↳ {{ v.remediation }}</span>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No vulnerabilities in scope. 🎉</p>
+{% endif %}
+
+{% if kind in ('technical', 'full') %}
+<!-- ───────────────── CVSS DISTRIBUTION ───────────────── -->
+<h2>CVSS Distribution</h2>
+{% if charts.cvss %}<img src="{{ charts.cvss }}" style="max-width:100%">{% else %}
+  <p class="muted">No scored findings.</p>{% endif %}
+
+<!-- ───────────────── PER-HOST DETAIL ───────────────── -->
+<h2>Asset Detail</h2>
+<p class="muted findings-note">Hosts ordered by weighted risk. {{ hosts|length }} asset(s) shown.</p>
+{% for h in hosts %}
+  <div class="host">
+    <h3>{{ h.hostname or h.ip }} <span class="muted" style="font-weight:400">— {{ h.ip }} · {{ h.device_type }}{% if h.os_name %} · {{ h.os_name }}{% endif %}</span></h3>
+    <div class="counts">
+      {% for s in severities %}{% if h.counts[s] %}
+        <span class="pill" style="background: {{ s|sevcolor }}">{{ h.counts[s] }} {{ s }}</span>
+      {% endif %}{% endfor %}
+      {% if h.exploit %}<span class="pill" style="background:#000">{{ h.exploit }} exploitable</span>{% endif %}
+      <span class="muted">risk {{ h.risk_score }}</span>
+    </div>
+    {% if h.open_ports %}
+      <div class="findings-note" style="margin-top:5px"><strong>Open ports:</strong>
+        {% for p in h.open_ports %}{{ p.port }}/{{ p.protocol }}{% if p.service %} ({{ p.service }}{% if p.product %} {{ p.product }} {{ p.version }}{% endif %}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+      </div>
+    {% endif %}
+    {% if h.cves %}
+    <table style="margin-top:6px">
+      <thead><tr><th>Severity</th><th>ID</th><th>CVSS</th><th>Name</th></tr></thead>
+      <tbody>
+      {% for c in h.cves[:40] %}
+        <tr>
+          <td><span class="pill" style="background: {{ c.severity|sevcolor }}">{{ c.severity }}</span>{% if c.has_exploit %} <span class="pill" style="background:#000">exp</span>{% endif %}</td>
+          <td>{{ c.cve_id }}</td>
+          <td>{{ '%.1f'|format(c.cvss_score) if c.cvss_score is not none else '—' }}</td>
+          <td>{{ c.name }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if h.cves|length > 40 %}<div class="findings-note">+ {{ h.cves|length - 40 }} more not shown</div>{% endif %}
+    {% else %}
+      <div class="findings-note muted">No known vulnerabilities.</div>
+    {% endif %}
+  </div>
+{% endfor %}
+{% endif %}
+
+<div class="footer-note">
+  {% if branding.footer %}{{ branding.footer }}<br>{% endif %}
+  Generated by {{ branding.org_name }} on {{ generated_at }}. Data reflects the most recent
+  scan results at time of generation. {{ branding.confidentiality }}.
+</div>
+
+</body>
+</html>

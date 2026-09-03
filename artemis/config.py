@@ -77,6 +77,13 @@ class Config:
     if LEGACY_SQLITE_PATH is None:
         LEGACY_SQLITE_PATH = DB_PATH
 
+    # Generated report artifacts (PDF/HTML). Lives on the data volume alongside
+    # the NVD cache so history survives container recreation.
+    REPORTS_DIR = os.environ.get(
+        'REPORTS_DIR',
+        os.path.join(os.path.dirname(NVD_CACHE_PATH) if NVD_CACHE_PATH not in ('', ':memory:')
+                     else basedir, 'reports'))
+
     # API / docs
     API_VERSION = os.environ.get('API_VERSION', '2.0.0')
 

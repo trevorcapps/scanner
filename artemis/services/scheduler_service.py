@@ -94,6 +94,20 @@ def _check_and_run(app):
             site.updated_at = _now_iso()
             db.session.commit()
 
+    # Daily environment risk snapshot (at most once per calendar day).
+    try:
+        from artemis.services.risk_snapshot_service import maybe_capture_daily
+        maybe_capture_daily()
+    except Exception:
+        logger.exception("Risk snapshot tick failed")
+
+    # Due scheduled reports — generate + email.
+    try:
+        from artemis.services.report_schedule_runner import run_due_report_schedules
+        run_due_report_schedules(now_iso)
+    except Exception:
+        logger.exception("Report schedule tick failed")
+
 
 def _execute_scheduled_scan(app, sched):
     """Run one scheduled scan and record history."""

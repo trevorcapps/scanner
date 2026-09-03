@@ -13,6 +13,7 @@ const Sites = lazy(() => import('@/pages/Sites'));
 const Schedules = lazy(() => import('@/pages/Schedules'));
 const Agents = lazy(() => import('@/pages/Agents'));
 const Settings = lazy(() => import('@/pages/Settings'));
+const Reports = lazy(() => import('@/pages/Reports'));
 const DataQuery = lazy(() => import('@/pages/DataQuery'));
 
 function Loading() {
@@ -44,6 +45,7 @@ export function App() {
           <Route path="/sites" element={page(Sites)} />
           <Route path="/schedules" element={page(Schedules)} />
           <Route path="/agents" element={page(Agents)} />
+          <Route path="/reports" element={page(Reports)} />
           <Route path="/settings" element={page(Settings)} />
           <Route path="/data-query" element={page(DataQuery)} />
           <Route path="*" element={<Navigate to="/" replace />} />

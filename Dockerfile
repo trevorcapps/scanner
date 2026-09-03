@@ -48,7 +48,14 @@ RUN set -eux; \
         libxml2 \
         libxslt1.1 \
         libmagic1 \
-        postgresql-client; \
+        postgresql-client \
+        # WeasyPrint (PDF report export) — Pango text stack + base fonts
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libjpeg62-turbo \
+        libffi8 \
+        shared-mime-info \
+        fonts-dejavu-core; \
     rm -rf /var/lib/apt/lists/*
 
 # Install nuclei from GitHub releases. When NUCLEI_VERSION is empty the latest
