@@ -102,7 +102,16 @@ def get_assets():
         latest_by_ip = {ip: ls for ip, ls in latest}
 
         asset_rows = {a.ip: a for a in Asset.query.all()}
-        ips = set(latest_by_ip) | set(asset_rows)
+        # A port scan is retained as raw history even when every probed port
+        # is closed. Such scan-only hosts are not assets under the default
+        # policy; only include scan IPs that have an open port (or an explicit
+        # asset row from agent, discovery, auth, or manual workflows).
+        open_scan_ips = {
+            ip for (ip,) in db.session.query(Scan.ip).filter(
+                Scan.state == 'open',
+            ).distinct().all()
+        }
+        ips = set(asset_rows) | (set(latest_by_ip) & open_scan_ips)
 
         assets = []
         for ip in ips:

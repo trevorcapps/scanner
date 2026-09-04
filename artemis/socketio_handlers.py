@@ -24,7 +24,9 @@ from artemis.scanners.nmap_scanner import (
 from artemis.scanners.nuclei_scanner import vuln_scan, parse_vuln_scan
 from artemis.scanners.ssh_scanner import run_authenticated_scan
 from artemis.services.scan_service import store_scan, get_latest_scan, get_open_ports_for_ip
-from artemis.services.asset_service import store_asset_info, update_device_type, get_asset_details
+from artemis.services.asset_service import (
+    store_asset_info, record_scan_asset, update_device_type, get_asset_details,
+)
 from artemis.services.fingerprint_service import (
     store_fingerprints, store_fpx_results, store_raw_fingerprints, get_fingerprint_engine,
 )
@@ -251,8 +253,12 @@ def scan_single_ip(ip, sid, current=1, total=1, scan_options=None):
         if original_hostname and not dns_info.get('hostname'):
             dns_info['hostname'] = original_hostname
 
-        store_asset_info(store_ip, dns_info=dns_info, os_info=os_info,
-                         mac_address=mac_address, mac_vendor=mac_vendor)
+        # Create the asset before enrichment/fingerprinting so those steps can
+        # attach their observations. New hosts are ignored when the scan has
+        # no open ports (unless explicitly enabled in scan options/config).
+        record_scan_asset(store_ip, scan_data, dns_info=dns_info, os_info=os_info,
+                          mac_address=mac_address, mac_vendor=mac_vendor,
+                          include_empty=(scan_options or {}).get('record_zero_port_assets'))
 
         if scan_data:
             store_scan(store_ip, scan_data)

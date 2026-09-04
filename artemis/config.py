@@ -58,6 +58,11 @@ class Config:
         'SCAN_PROFILES_PATH',
         os.path.join(basedir, 'scan_profiles.json'))
 
+    # Port scans retain their raw results, but do not create an asset for a
+    # newly observed host when no port is open. Set this to true to retain the
+    # legacy behavior for environments that want every responsive host listed.
+    RECORD_ZERO_PORT_ASSETS = _env_bool('RECORD_ZERO_PORT_ASSETS', False)
+
     # Database file path (legacy). Retained as an alias: a few top-level modules
     # (vuln_scan, nvd_feeds, cpe_dict) still import it. Application state now
     # lives in Postgres (SQLALCHEMY_DATABASE_URI); this only backs the NVD cache

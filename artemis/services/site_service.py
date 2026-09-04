@@ -228,7 +228,7 @@ def _run_port_scan(target, scan_options):
         scan as nmap_scan,
     )
     from artemis.services.scan_service import store_scan
-    from artemis.services.asset_service import store_asset_info
+    from artemis.services.asset_service import record_scan_asset
     from artemis.utils.dns import dns_lookup
 
     store_ip = target
@@ -241,9 +241,12 @@ def _run_port_scan(target, scan_options):
     os_info = get_os_info_from_scan(scan_result)
     host_info = extract_host_info_from_scan(scan_result)
     dns_info = dns_lookup(store_ip)
-    store_asset_info(store_ip, dns_info=dns_info, os_info=os_info,
-                     mac_address=host_info.get('mac_address'),
-                     mac_vendor=host_info.get('mac_vendor'))
+    record_scan_asset(
+        store_ip, scan_data, dns_info=dns_info, os_info=os_info,
+        mac_address=host_info.get('mac_address'),
+        mac_vendor=host_info.get('mac_vendor'),
+        include_empty=scan_options.get('record_zero_port_assets'),
+    )
 
     if scan_data:
         store_scan(store_ip, scan_data)

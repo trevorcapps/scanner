@@ -8,8 +8,9 @@ from artemis import create_app
 from artemis.extensions import db
 from artemis.models.asset import Asset
 from artemis.models.asset_group import AssetReviewEvent
+from artemis.models.scan import Scan
 from artemis.services import asset_lifecycle_service as svc
-from artemis.services.asset_service import store_asset_info
+from artemis.services.asset_service import record_scan_asset, store_asset_info
 from artemis.services.auth_service import create_access_token, create_user
 
 
@@ -77,6 +78,42 @@ class AssetLifecycleTests(unittest.TestCase):
             db.session.commit()
             self.assertEqual(svc.mark_stale_assets(), 1)
             self.assertEqual(db.session.get(Asset, aid).lifecycle, "stale")
+
+    def test_zero_open_port_scan_does_not_create_asset(self):
+        with self.ctx():
+            result = record_scan_asset(
+                "10.0.0.20",
+                [("tcp", 443, "closed", "https", "", "")],
+            )
+            self.assertFalse(result)
+            self.assertIsNone(Asset.query.filter_by(ip="10.0.0.20").first())
+
+    def test_open_port_scan_creates_asset_and_existing_asset_is_retained(self):
+        with self.ctx():
+            self.assertTrue(record_scan_asset(
+                "10.0.0.21",
+                [("tcp", 443, "open", "https", "nginx", "1.0")],
+            ))
+            self.assertIsNotNone(Asset.query.filter_by(ip="10.0.0.21").first())
+
+            # A later all-closed scan updates an existing asset rather than
+            # turning it into an untracked host.
+            self.assertFalse(record_scan_asset(
+                "10.0.0.21",
+                [("tcp", 443, "closed", "https", "", "")],
+            ))
+            self.assertIsNotNone(Asset.query.filter_by(ip="10.0.0.21").first())
+
+    def test_scan_only_zero_open_host_is_not_listed_as_asset(self):
+        with self.ctx():
+            db.session.add(Scan(
+                ip="10.0.0.22", protocol="tcp", port=443, state="closed",
+                service="https", product="", version="", scan_date="2026-09-04T12:00:00",
+            ))
+            db.session.commit()
+        response = self.client.get("/api/v1/assets", headers=self._h())
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("10.0.0.22", {a["ip"] for a in response.get_json()["assets"]})
 
     def test_dynamic_group_membership_follows_the_filter(self):
         with self.ctx():

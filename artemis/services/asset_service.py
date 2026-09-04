@@ -22,6 +22,42 @@ def _emit_webhook(event, payload):
         logger.debug("webhook emit failed", exc_info=True)
 
 
+def record_scan_asset(ip, scan_data, dns_info=None, os_info=None,
+                      mac_address=None, mac_vendor=None, *, include_empty=None):
+    """Record a port-scan asset only when it has an open port by default.
+
+    Raw scan rows remain the source of truth for scan history. Existing asset
+    rows are still refreshed even when a later scan finds no open ports, while
+    a new zero-open host is ignored unless ``RECORD_ZERO_PORT_ASSETS`` (or the
+    explicit ``include_empty`` override) is enabled. Agent, auth, discovery,
+    and manually sourced assets should call :func:`store_asset_info` directly.
+    """
+    if include_empty is None:
+        try:
+            from flask import current_app
+            include_empty = current_app.config.get('RECORD_ZERO_PORT_ASSETS', False)
+        except RuntimeError:
+            include_empty = False
+    if isinstance(include_empty, str):
+        include_empty = include_empty.lower() in ('1', 'true', 'yes', 'on')
+
+    rows = scan_data or []
+    has_open_port = any(
+        len(row) > 2 and str(row[2]).lower() == 'open'
+        for row in rows
+        if isinstance(row, (tuple, list))
+    )
+    existing = Asset.query.filter_by(ip=ip).first()
+    if not include_empty and not has_open_port and existing is None:
+        logger.info('Skipping zero-open scan-only asset %s', ip)
+        return False
+
+    return store_asset_info(
+        ip, dns_info=dns_info, os_info=os_info,
+        mac_address=mac_address, mac_vendor=mac_vendor,
+    )
+
+
 def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None,
                      source='scan'):
     """Create or update an asset row. Non-None fields overwrite; others are kept.

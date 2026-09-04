@@ -379,7 +379,7 @@ def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
             scan as nmap_scan,
         )
         from artemis.services.scan_service import store_scan
-        from artemis.services.asset_service import store_asset_info
+        from artemis.services.asset_service import record_scan_asset
         from artemis.utils.dns import dns_lookup
 
         for idx, ip in enumerate(ips):
@@ -395,9 +395,12 @@ def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
                 os_info = get_os_info_from_scan(scan_result)
                 host_info = extract_host_info_from_scan(scan_result)
                 dns_info = dns_lookup(ip)
-                store_asset_info(ip, dns_info=dns_info, os_info=os_info,
-                                 mac_address=host_info.get('mac_address'),
-                                 mac_vendor=host_info.get('mac_vendor'))
+                record_scan_asset(
+                    ip, scan_data, dns_info=dns_info, os_info=os_info,
+                    mac_address=host_info.get('mac_address'),
+                    mac_vendor=host_info.get('mac_vendor'),
+                    include_empty=scan_options.get('record_zero_port_assets'),
+                )
                 result['hosts_scanned'] += 1
             except Exception as e:
                 logger.warning(f"Port scan failed for {ip}: {e}")

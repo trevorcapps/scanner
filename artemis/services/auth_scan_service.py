@@ -112,7 +112,7 @@ def _enrich_asset_from_auth(ip, os_info, system):
             ip,
             dns_info={'hostname': hostname} if hostname else None,
             os_info={'os_name': os_name, 'os_family': os_info.get('os_family')},
-            mac_address=mac, mac_vendor=mac_vendor,
+            mac_address=mac, mac_vendor=mac_vendor, source='auth',
         )
         update_device_type(ip)
     except Exception as e:
