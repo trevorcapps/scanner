@@ -140,7 +140,7 @@
 ## Quick Wins (Low Effort, High Impact)
 *Sprinkle these in between the big items.*
 
-- [ ] Add `requirements.txt` pinned versions + `pyproject.toml`
+- [x] `pyproject.toml` as the dependency source + hashed `requirements*.lock` files
 - [ ] Environment config (`.env` file, not hardcoded paths)
 - [ ] Rate limiting on the web UI
 - [ ] HTTPS by default (not just via reverse proxy)

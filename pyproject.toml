@@ -5,6 +5,7 @@ description = "Enterprise network vulnerability scanner and asset fingerprinting
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Trevor Capps", email = "trevor@chronos.host"},
 ]
@@ -31,14 +32,29 @@ dependencies = [
 postgres = [
     "psycopg[binary]>=3.2",
 ]
+# Production WSGI/websocket stack. The Docker image installs this in an earlier
+# layer for caching; listing it here keeps pyproject the single source of truth.
+wsgi = [
+    "gunicorn>=21.2",
+    "gevent>=24.2",
+    "gevent-websocket>=0.10",
+]
+# Optional web-technology fingerprinting. wap_engine imports these lazily and
+# degrades gracefully when they are absent, so they are not a core dependency.
+fingerprint = [
+    "python-Wappalyzer>=0.3.1",
+    "requests>=2.31",
+    "lxml>=5.1",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "ruff>=0.3",
     "build>=1.2",
+    "uv>=0.5",
 ]
 all = [
-    "artemis-scanner[postgres,dev]",
+    "artemis-scanner[postgres,wsgi,fingerprint,dev]",
 ]
 
 [build-system]

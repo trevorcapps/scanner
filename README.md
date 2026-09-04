@@ -45,7 +45,7 @@ bundled in the image. See [DEPLOY.md](DEPLOY.md) for details.
 ```bash
 python -m venv env
 . env/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[all]'          # or: pip install --require-hashes -r requirements-dev.lock
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 python run.py
 ```
@@ -59,7 +59,7 @@ export DATABASE_URL=postgresql+psycopg://artemis:password@localhost/artemis
 export CELERY_BROKER_URL=redis://localhost:6379/0
 export CELERY_RESULT_BACKEND=redis://localhost:6379/1
 
-python -m pip install -e '.[postgres]'
+python -m pip install --require-hashes -r requirements.lock && python -m pip install --no-deps -e .
 flask --app run.py db upgrade
 celery -A artemis.celery_app:celery_app worker --loglevel=INFO
 python run.py
@@ -116,3 +116,14 @@ The fingerprint engine includes 91 signatures across 38 categories:
 | And more... | Jenkins, GitLab, Splunk, Keycloak, Portainer, etc. |
 
 Signatures are stored in `fingerprint/signatures.json` and can be extended easily.
+
+## Contributing & Security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, dependency and
+  migration rules, tests, and commit conventions.
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately.
+- [docs/RELEASING.md](docs/RELEASING.md) — versioning and release process.
+
+## License
+
+[MIT](LICENSE) © Trevor Capps
