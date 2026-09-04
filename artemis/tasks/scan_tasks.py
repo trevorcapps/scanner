@@ -156,6 +156,23 @@ def run_discovery_job(self, job_id):
         raise
 
 
+@shared_task(bind=True, name='artemis.ansible_run', max_retries=0,
+             acks_late=True, reject_on_worker_lost=True)
+def run_automation_job(self, job_id):
+    """Execute one Ansible automation run in a rootless private data directory."""
+    from artemis.services.automation.run_service import execute
+
+    job = _load_job(job_id)
+    if job_service.is_cancelling(job.id):
+        return job_service.mark_cancelled(job).to_dict()
+    try:
+        return execute(job).to_dict()
+    except Exception as exc:
+        logger.exception('Automation job %s failed', job.id)
+        job_service.mark_failed(job, exc)
+        raise
+
+
 @shared_task(name='artemis.sync_intel')
 def sync_intel():
     """Daily: refresh EPSS + CISA KEV + exploit maturity and re-score findings."""

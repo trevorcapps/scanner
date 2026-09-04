@@ -57,6 +57,7 @@ publishes the image with CycloneDX SBOMs. It never deploys.
 | `test_api_coverage.py` | core REST resources, permissions, scan profiles, settings redaction |
 | `test_dashboard_api.py` | aggregation, sorting, filtering, pagination, topology integrity |
 | `test_feed_caches.py` | NVD feed metadata schema and native ExploitDB CSV caching/lookups |
+| `test_automation.py` | executor boundary, playbook validation + content-addressing, ephemeral inventory, run job + event mapping |
 | `test_dispositions.py` | FP/risk-acceptance approval gating, suppression without evidence loss, auto-expiry + reopen, effective risk |
 | `test_remediation.py` | informational remediation guidance: advisory-backed vs heuristic, no secrets/payload |
 | `test_vuln_intel.py` | EPSS + CISA KEV ingestion (idempotent, tracked-only), exploit maturity, transparent priority score |

@@ -20,6 +20,7 @@ from artemis.api.asset_mgmt import asset_mgmt_bp
 from artemis.api.discovery import discovery_bp
 from artemis.api.findings import findings_bp
 from artemis.api.dispositions import dispositions_bp
+from artemis.api.automation import automation_bp
 
 
 def register_blueprints(app):
@@ -51,6 +52,7 @@ def register_blueprints(app):
     app.register_blueprint(discovery_bp, url_prefix='/api/v1')
     app.register_blueprint(findings_bp, url_prefix='/api/v1')
     app.register_blueprint(dispositions_bp, url_prefix='/api/v1')
+    app.register_blueprint(automation_bp, url_prefix='/api/v1')
 
     # Legacy (backward compat) — same blueprints, no version prefix
     app.register_blueprint(assets_bp, url_prefix='/api', name='assets_legacy')

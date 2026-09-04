@@ -46,6 +46,14 @@ fingerprint = [
     "requests>=2.31",
     "lxml>=5.1",
 ]
+# Optional Ansible orchestration backend (Phase 5). The AutomationExecutor
+# interface reports "unavailable" and every automation run is rejected when
+# these are absent.
+automation = [
+    "ansible-core>=2.16",
+    "ansible-runner>=2.4",
+    "ansible-lint>=24.2",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
