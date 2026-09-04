@@ -62,6 +62,15 @@ def store_auth_scan_results(ip, os_info, packages, cves, detection_source='auth-
 
     _enrich_asset_from_auth(ip, os_info, system)
 
+    # Historical inventory: observation intervals + timeline (P3.3).
+    try:
+        from artemis.services.inventory_service import record_inventory
+        record_inventory(ip, [{'name': p['name'], 'version': p.get('version'),
+                               'cpe': p.get('cpe')} for p in packages],
+                         source='agent' if detection_source == 'agent' else 'auth-scan')
+    except Exception:
+        logger.exception("inventory history update failed for %s", ip)
+
 
 def _enrich_asset_from_auth(ip, os_info, system):
     """Fold authenticated findings back onto the ``assets`` row + reclassify."""

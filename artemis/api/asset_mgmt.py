@@ -142,6 +142,22 @@ def remove_member(group_id, asset_id):
     return jsonify({'status': 'removed'})
 
 
+@asset_mgmt_bp.route('/assets/<int:asset_id>/timeline', methods=['GET'])
+def asset_timeline(asset_id):
+    from artemis.services import inventory_service
+    kinds = request.args.get('kinds', '').split(',') if request.args.get('kinds') else None
+    limit = min(max(request.args.get('limit', 200, type=int), 1), 1000)
+    events = inventory_service.asset_timeline(asset_id, limit=limit, kinds=kinds)
+    return jsonify({'events': [e.to_dict() for e in events]})
+
+
+@asset_mgmt_bp.route('/assets/<int:asset_id>/software-history', methods=['GET'])
+def software_history(asset_id):
+    from artemis.services import inventory_service
+    rows = inventory_service.software_history(asset_id, package_name=request.args.get('package'))
+    return jsonify({'observations': [o.to_dict() for o in rows]})
+
+
 @asset_mgmt_bp.route('/asset-review-events', methods=['GET'])
 def review_events():
     unresolved = request.args.get('all') not in ('1', 'true')

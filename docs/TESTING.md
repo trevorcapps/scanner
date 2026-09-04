@@ -57,6 +57,7 @@ publishes the image with CycloneDX SBOMs. It never deploys.
 | `test_api_coverage.py` | core REST resources, permissions, scan profiles, settings redaction |
 | `test_dashboard_api.py` | aggregation, sorting, filtering, pagination, topology integrity |
 | `test_feed_caches.py` | NVD feed metadata schema and native ExploitDB CSV caching/lookups |
+| `test_inventory_history.py` | package observation intervals, asset timeline, identity/port change events |
 | `test_discovery.py` | discovery scope authorization, approval gating, bounded sweeps, scan allow/deny |
 | `test_asset_lifecycle.py` | asset business context, lifecycle/decommission, tags, dynamic groups, discovery non-clobber |
 | `test_exec_profiles.py` | versioned scan profiles, time-window/cron/timezone validation, missed-run policy, observation deltas |
