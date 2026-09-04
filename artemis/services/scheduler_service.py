@@ -111,6 +111,99 @@ def _check_and_run(app):
         logger.exception("Report schedule tick failed")
 
 
+def dispatch_due_scans():
+    """Beat entry point: create durable jobs for every due schedule/site.
+
+    Unlike the legacy in-process ``_check_and_run``, this never executes a scan
+    in the caller — it only enqueues jobs. Returns the number dispatched.
+    """
+    from artemis.extensions import db
+    from artemis.models.scheduled_scan import ScheduledScan
+    from artemis.models.site import Site
+    from artemis.services.job_service import dispatch_adhoc_scan, dispatch_site_scan
+    from artemis.services.tenant import SKIP_TENANT_FILTER, use_organization
+
+    now_iso = _now_iso()
+    dispatched = 0
+
+    due = (ScheduledScan.query.execution_options(**{SKIP_TENANT_FILTER: True})
+           .filter(ScheduledScan.enabled == 1, ScheduledScan.next_run <= now_iso).all())
+    for sched in due:
+        occurrence = f'sched-{sched.id}-{sched.next_run}'
+        try:
+            with use_organization(sched.organization_id):
+                opts = json.loads(sched.scan_options_json) if sched.scan_options_json else {}
+                opts.update({'schedule_id': sched.id, 'profile': sched.profile_id or opts.get('profile', ''),
+                             'credential_ids': json.loads(sched.credential_ids_json or '[]')})
+                dispatch_adhoc_scan(sched.target, sched.scan_type or 'port', opts,
+                                    idempotency_key=occurrence)
+                sched.last_run = now_iso
+                sched.last_status = 'queued'
+                dispatched += 1
+        except Exception:
+            logger.exception('Failed to dispatch scheduled scan %s', sched.id)
+        finally:
+            sched.next_run = calculate_next_run(sched)
+            sched.updated_at = now_iso
+            if sched.schedule_type == 'once':
+                sched.enabled = 0
+            db.session.commit()
+
+    due_sites = (Site.query.execution_options(**{SKIP_TENANT_FILTER: True})
+                 .filter(Site.schedule_enabled == 1, Site.next_run <= now_iso,
+                         Site.last_status != 'running').all())
+    for site in due_sites:
+        try:
+            with use_organization(site.organization_id):
+                dispatch_site_scan(site)
+                dispatched += 1
+        except Exception:
+            logger.exception('Failed to dispatch site scan %s', site.id)
+            site.last_status = 'failed'
+        finally:
+            site.next_run = calculate_next_run_for_site(site)
+            site.updated_at = now_iso
+            db.session.commit()
+
+    try:
+        from artemis.services.risk_snapshot_service import maybe_capture_daily
+        maybe_capture_daily()
+    except Exception:
+        logger.exception('Risk snapshot tick failed')
+
+    return dispatched
+
+
+def record_schedule_history(schedule_id, result, status, duration_seconds=0):
+    """Called by the adhoc task when a job came from a schedule."""
+    from artemis.extensions import db
+    from artemis.models.scan_history import ScanHistory
+    from artemis.models.scheduled_scan import ScheduledScan
+
+    sched = db.session.get(ScheduledScan, schedule_id)
+    if not sched:
+        return
+    history = ScanHistory(
+        scheduled_scan_id=sched.id, target=sched.target, scan_type=sched.scan_type,
+        status=status, started_at=_now_iso(), completed_at=_now_iso(),
+        duration_seconds=duration_seconds,
+        hosts_scanned=result.get('hosts_scanned', 0),
+        ports_found=result.get('ports_found', 0),
+        vulns_found=result.get('vulns_found', 0),
+    )
+    if status == 'success' and sched.compare_with_previous:
+        delta = _compute_delta(sched, result)
+        history.new_vulns = delta.get('new_vulns', 0)
+        result = {**result, 'delta': delta}
+    history.summary_json = json.dumps(result)
+    if status != 'success':
+        history.error_message = str(result.get('error', ''))[:1000]
+    db.session.add(history)
+    sched.last_status = status
+    sched.last_duration_seconds = duration_seconds
+    db.session.commit()
+
+
 def _execute_scheduled_scan(app, sched):
     """Run one scheduled scan and record history."""
     from artemis.extensions import db, socketio
@@ -185,8 +278,27 @@ def _execute_scheduled_scan(app, sched):
     })
 
 
-def _run_scan(app, sched):
-    """Execute the actual scan based on scan_type. Returns result dict."""
+class _ScanCancelled(RuntimeError):
+    """Cooperative cancellation between expanded targets."""
+
+
+def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
+    """Execute the actual scan based on scan_type. Returns result dict.
+
+    ``cancel_predicate`` is polled between expanded targets; ``log_callback`` (if
+    given) receives progress lines for the job event stream.
+    """
+    def _check_cancel():
+        if cancel_predicate and cancel_predicate():
+            raise _ScanCancelled()
+
+    def _log(msg, level='info'):
+        if log_callback:
+            try:
+                log_callback(msg, level)
+            except TypeError:
+                log_callback(msg)
+
     scan_options = json.loads(sched.scan_options_json) if sched.scan_options_json else {}
     result = {'hosts_scanned': 0, 'ports_found': 0, 'vulns_found': 0, 'vulns': []}
 
@@ -215,7 +327,9 @@ def _run_scan(app, sched):
         from artemis.services.asset_service import store_asset_info
         from artemis.utils.dns import dns_lookup
 
-        for ip in ips:
+        for idx, ip in enumerate(ips):
+            _check_cancel()
+            _log(f'port scan {ip} ({idx + 1}/{len(ips)})')
             try:
                 scan_result = nmap_scan(ip, options=scan_options)
                 scan_data = parse_scan(scan_result)
@@ -239,7 +353,9 @@ def _run_scan(app, sched):
         from artemis.scanners.nuclei_scanner import vuln_scan as nuclei_scan, parse_vuln_scan
         from artemis.services.vuln_service import store_vulnerabilities
 
-        for ip in ips:
+        for idx, ip in enumerate(ips):
+            _check_cancel()
+            _log(f'vuln scan {ip} ({idx + 1}/{len(ips)})')
             try:
                 nuclei_results = nuclei_scan(ip, options={
                     **scan_options,
@@ -277,7 +393,9 @@ def _run_scan(app, sched):
         nvd_api_key = get_setting('nvd_api_key', '') or None
         logs = []
 
-        for ip in ips:
+        for idx, ip in enumerate(ips):
+            _check_cancel()
+            _log(f'auth scan {ip} ({idx + 1}/{len(ips)})')
             open_ports = get_open_ports_for_ip(ip)
             if not open_ports:
                 # No prior port data — probe the common SSH ports first so a

@@ -480,6 +480,32 @@ def scan_target(target, sid, scan_options=None):
             active_scans.pop(sid, None)
 
 
+@socketio.on('subscribe_job')
+def handle_subscribe_job(data):
+    """Join the event room for one durable job (authorised, tenant-scoped)."""
+    from flask_socketio import join_room
+    from artemis.models.scan_job import ScanJob
+    from artemis.services.tenant import scoped_get
+
+    if not _require_socket_role('readonly'):
+        return
+    job_id = (data or {}).get('job_id', '')
+    job = scoped_get(ScanJob, job_id) if job_id else None
+    if not job:
+        emit('job_error', {'error': 'Job not found'})
+        return
+    join_room(f'job:{job.id}')
+    emit('job_subscribed', {'job_id': job.id, 'status': job.status})
+
+
+@socketio.on('unsubscribe_job')
+def handle_unsubscribe_job(data):
+    from flask_socketio import leave_room
+    job_id = (data or {}).get('job_id', '')
+    if job_id:
+        leave_room(f'job:{job_id}')
+
+
 @socketio.on('start_scan')
 def handle_start_scan(data):
     if not _require_socket_role():

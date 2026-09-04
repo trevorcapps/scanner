@@ -121,8 +121,14 @@ def create_app(config_name=None, start_background_services=True):
         _init_database(app)
 
     if start_background_services and app.config.get('START_BACKGROUND_SERVICES', True):
-        from artemis.services.scheduler_service import start_scheduler
-        start_scheduler(app)
+        # Celery Beat (the "beat" container) owns due-work dispatch in
+        # production; the in-web-process scheduler thread remains the default
+        # for single-process local development.
+        if os.environ.get('ARTEMIS_USE_BEAT', '').lower() in ('1', 'true', 'yes', 'on'):
+            logger.info('Beat mode: in-process scheduler disabled')
+        else:
+            from artemis.services.scheduler_service import start_scheduler
+            start_scheduler(app)
 
     logger.info("Artemis app created successfully")
     return app

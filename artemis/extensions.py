@@ -36,6 +36,13 @@ def init_celery(app):
         result_serializer='json',
         accept_content=['json'],
         timezone='UTC',
+        beat_schedule={
+            'dispatch-due-work': {
+                'task': 'artemis.dispatch_due_work',
+                'schedule': float(app.config.get('DISPATCH_INTERVAL_SECONDS', 60)),
+                'options': {'expires': 55},
+            },
+        },
     )
     celery.set_default()
     app.extensions['celery'] = celery

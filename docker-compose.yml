@@ -22,6 +22,9 @@ x-app-env: &app-env
   ARTEMIS_ALLOW_INSECURE: ${ARTEMIS_ALLOW_INSECURE:-}
   ARTEMIS_BEHIND_TLS_PROXY: ${ARTEMIS_BEHIND_TLS_PROXY:-}
   ARTEMIS_LOG_FORMAT: ${ARTEMIS_LOG_FORMAT:-json}
+  # Celery Beat drives scheduled-scan / report dispatch; disables the in-process
+  # scheduler thread in the web container.
+  ARTEMIS_USE_BEAT: "1"
   DATABASE_URL: postgresql+psycopg://artemis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@${DB_HOST:-postgres}:5432/artemis
   REDIS_URL: redis://${REDIS_HOST:-redis}:6379/0
   CELERY_BROKER_URL: redis://${REDIS_HOST:-redis}:6379/0
@@ -119,6 +122,21 @@ services:
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    <<: *app-build
+    command: ["beat"]
+    environment:
+      <<: *app-env
+      START_BACKGROUND_SERVICES: "false"
     depends_on:
       postgres:
         condition: service_healthy

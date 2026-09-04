@@ -21,10 +21,23 @@ class ScanJob(TenantMixin, db.Model):
     result_json = db.Column(db.Text)
     error_message = db.Column(db.Text)
     attempt = db.Column(db.Integer, nullable=False, default=0)
+    progress_current = db.Column(db.Integer, nullable=False, default=0)
+    progress_total = db.Column(db.Integer)
+    parent_job_id = db.Column(
+        db.String(36), db.ForeignKey('scan_jobs.id', ondelete='CASCADE'), index=True,
+    )
+    idempotency_key = db.Column(db.String(128), index=True)
+    lease_expires_at = db.Column(db.Text)
+    retention_until = db.Column(db.Text)
     created_at = db.Column(db.Text, nullable=False)
     started_at = db.Column(db.Text)
     completed_at = db.Column(db.Text)
     cancel_requested_at = db.Column(db.Text)
+
+    events = db.relationship(
+        'JobEvent', backref='job', cascade='all, delete-orphan',
+        order_by='JobEvent.seq', lazy='dynamic',
+    )
 
     @staticmethod
     def _decode(value):
@@ -48,6 +61,11 @@ class ScanJob(TenantMixin, db.Model):
             'result': self._decode(self.result_json),
             'error_message': self.error_message,
             'attempt': self.attempt,
+            'progress': {'current': self.progress_current, 'total': self.progress_total},
+            'parent_job_id': self.parent_job_id,
+            'idempotency_key': self.idempotency_key,
+            'lease_expires_at': self.lease_expires_at,
+            'retention_until': self.retention_until,
             'created_at': self.created_at,
             'started_at': self.started_at,
             'completed_at': self.completed_at,

@@ -130,30 +130,120 @@ def create_scan():
     return jsonify(job.to_dict()), 202
 
 
-@scans_bp.route('/scan-jobs', methods=['GET'])
-def list_scan_jobs():
-    """List durable scanner jobs, newest first."""
-    query = ScanJob.query
+def _list_jobs():
+    from artemis.services.tenant import current_org_id
+    query = ScanJob.query.filter(ScanJob.organization_id == current_org_id())
     status = request.args.get('status', '').strip()
     if status:
-        query = query.filter_by(status=status)
+        query = query.filter(ScanJob.status == status)
+    job_type = request.args.get('type', '').strip()
+    if job_type:
+        query = query.filter(ScanJob.job_type == job_type)
     limit = min(max(request.args.get('limit', 50, type=int), 1), 200)
     jobs = query.order_by(ScanJob.created_at.desc()).limit(limit).all()
     return jsonify({'jobs': [job.to_dict() for job in jobs], 'count': len(jobs)})
 
 
+def _get_job_or_404(job_id):
+    from artemis.services.tenant import scoped_get
+    return scoped_get(ScanJob, job_id)
+
+
+@scans_bp.route('/jobs', methods=['GET'])
+@scans_bp.route('/scan-jobs', methods=['GET'])
+def list_scan_jobs():
+    """List durable jobs for the active organization, newest first."""
+    return _list_jobs()
+
+
+@scans_bp.route('/jobs', methods=['POST'])
+@role_required('analyst')
+def create_job_endpoint():
+    """
+    ---
+    post:
+      summary: Create and dispatch a scan job (async; 202 + job URL)
+      tags: [Jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, target]
+              properties:
+                type: {type: string, enum: [port, vuln, fingerprint, auth, full]}
+                target: {type: string}
+                options: {type: object}
+      responses:
+        202: {description: Job accepted}
+        400: {description: Invalid request}
+      security: [{bearerAuth: []}]
+    """
+    data = request.get_json(silent=True) or {}
+    job_type = data.get('type', 'port')
+    target = (data.get('target') or '').strip()
+    options = data.get('options') or {}
+    if job_type not in ('port', 'vuln', 'fingerprint', 'auth', 'full'):
+        return {'error': 'type must be one of port, vuln, fingerprint, auth, full'}, 400
+    if not validate_target(target):
+        return {'error': 'A valid target (IP, CIDR or hostname) is required'}, 400
+    if job_type == 'auth' and not (options.get('credential_ids') or options.get('use_all_credentials')):
+        return {'error': 'auth jobs require options.credential_ids or use_all_credentials'}, 400
+
+    user = getattr(g, 'current_user', None)
+    try:
+        job = dispatch_adhoc_scan(target, job_type, options,
+                                  requested_by=user.id if user else None,
+                                  idempotency_key=request.headers.get('Idempotency-Key'))
+    except QueueDispatchError as e:
+        return {'error': str(e), 'job': e.job.to_dict()}, 503
+
+    from artemis.services import audit_service
+    audit_service.record(audit_service.SCAN_START, target_type='scan_job', target_id=job.id,
+                         detail={'scan_type': job_type, 'target': target}, commit=True)
+    resp = jsonify(job.to_dict())
+    resp.status_code = 202
+    resp.headers['Location'] = f'/api/v1/jobs/{job.id}'
+    return resp
+
+
+@scans_bp.route('/jobs/<job_id>', methods=['GET'])
 @scans_bp.route('/scan-jobs/<job_id>', methods=['GET'])
 def get_scan_job(job_id):
-    """Return current execution state and result for a scan job."""
-    job = db.get_or_404(ScanJob, job_id)
+    """Return current execution state and result for a job."""
+    job = _get_job_or_404(job_id)
+    if not job:
+        return jsonify({'error': 'Not found'}), 404
     return jsonify(job.to_dict())
 
 
+@scans_bp.route('/jobs/<job_id>/events', methods=['GET'])
+@scans_bp.route('/scan-jobs/<job_id>/events', methods=['GET'])
+def get_job_events(job_id):
+    """Ordered, replayable job event stream. Pass ?after=<seq> to resume."""
+    job = _get_job_or_404(job_id)
+    if not job:
+        return jsonify({'error': 'Not found'}), 404
+    from artemis.services.job_service import job_events
+    after = request.args.get('after', 0, type=int)
+    limit = min(max(request.args.get('limit', 500, type=int), 1), 2000)
+    events = job_events(job, after_seq=after, limit=limit)
+    return jsonify({
+        'job': job.to_dict(),
+        'events': [e.to_dict() for e in events],
+        'last_seq': events[-1].seq if events else after,
+    })
+
+
+@scans_bp.route('/jobs/<job_id>/cancel', methods=['POST'])
 @scans_bp.route('/scan-jobs/<job_id>/cancel', methods=['POST'])
 @role_required('analyst')
 def cancel_scan_job(job_id):
-    """Request cooperative cancellation of a queued or running scan job."""
-    job = db.get_or_404(ScanJob, job_id)
+    """Request cooperative cancellation of a queued or running job."""
+    job = _get_job_or_404(job_id)
+    if not job:
+        return jsonify({'error': 'Not found'}), 404
     if not cancel_job(job):
         return jsonify({
             'error': f'Job is already {job.status}',
