@@ -102,7 +102,9 @@ class ProductionConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    # Defaults to in-memory SQLite. CI's PostgreSQL integration job sets
+    # TEST_DATABASE_URL to run the identical suite against a real server.
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL', 'sqlite:///:memory:')
     DB_PATH = ':memory:'
     NVD_CACHE_PATH = ':memory:'
     LEGACY_SQLITE_PATH = ''

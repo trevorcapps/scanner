@@ -32,8 +32,10 @@
 
 ### 4. **Testing & CI/CD**
 - Unit tests, integration tests, scan simulation tests
-- GitHub Actions pipeline: lint → test → build → deploy
-- Code coverage tracking
+- [x] Split CI: Python lint/test, frontend type-check/build, PostgreSQL
+  migration + drift, PostgreSQL/Redis integration, Docker image smoke
+- [x] Enforced coverage floor, ratcheted per phase
+- [x] Signed image + SBOM on protected tags; deploy stays manually gated
 
 ---
 

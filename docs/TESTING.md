@@ -6,28 +6,49 @@ From the repository root:
 
 ```bash
 python -m venv env
-env/bin/python -m pip install -e '.[dev]'
-env/bin/python -m pytest -q
-env/bin/ruff check --select E,F artemis tests auth_scan.py nvd_feeds.py
+env/bin/python -m pip install -e '.[all]'
+env/bin/python -m pytest -q                       # unit suite (SQLite in-memory)
+env/bin/ruff check artemis agent tests --select E9,F63,F7,F82
 npm --prefix frontend ci
+npm --prefix frontend run typecheck
 npm --prefix frontend run build
+env/bin/bash scripts/check-migrations.sh          # needs DATABASE_URL
 ```
 
-For coverage:
+For coverage (the floor lives in `pyproject.toml` → `[tool.coverage.report]`):
 
 ```bash
-env/bin/python -m pytest --cov=artemis --cov=agent --cov-report=term-missing
+env/bin/python -m pytest --cov --cov-report=term-missing
 ```
 
+Run the same suite against a real database by exporting
+`TEST_DATABASE_URL=postgresql+psycopg://…` before `pytest` — this is what CI's
+`integration` job does, alongside a live Redis for Celery task tests.
+
 The frontend build runs TypeScript type checking before the Vite production
-bundle. `E,F` is the current blocking Ruff baseline. Broader style and
+bundle. `E9,F63,F7,F82` is the current blocking Ruff baseline. Broader style and
 exception-policy rules can be ratcheted in incrementally.
+
+## CI jobs
+
+| Job | What it gates |
+|---|---|
+| `python` | Ruff baseline, unit suite, and the coverage floor |
+| `frontend` | `npm ci`, strict `tsc --noEmit`, and the production build |
+| `migrations` | Fresh PostgreSQL upgrade, head downgrade/upgrade roundtrip, model drift (`flask db check`), and upgrade from the previous release tag |
+| `integration` | Full suite against PostgreSQL + Redis |
+| `docker` | Production image build and a `/api/v1/health` smoke test |
+
+`release.yml` runs only on protected `v*` tags: it builds, signs (cosign), and
+publishes the image with CycloneDX SBOMs. It never deploys.
 
 ## Suite map
 
 | Suite | Use cases |
 |---|---|
+| `test_agent_cli.py` | Agent CLI arg handling, register payload, and quiet HTTP-error behavior |
 | `test_agent_reporting.py` | Agent package normalization, local NVD matching, unified source attribution, empty-cache behavior |
+| `test_scanner_subprocess.py` | Scanner adapters against fake nmap/nuclei binaries (argv, output parsing) |
 | `test_agent_shell.py` | Admin authorization, agent transport, lifecycle/limits, capability exposure, and a real local PTY |
 | `test_agent_telemetry.py` | Endpoint collection contract and secret-safe serializers |
 | `test_activity_logs.py` | In-memory history and authenticated log API |

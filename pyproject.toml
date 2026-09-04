@@ -71,3 +71,13 @@ line-length = 120
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["artemis", "agent"]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+# Baseline ~51% measured 2026-09-03 at P0.3 (floor set 2 pts under to absorb
+# nondeterministic hits). Raise one phase at a time; never lower.
+fail_under = 49
+show_missing = true

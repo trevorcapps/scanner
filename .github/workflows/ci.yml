@@ -7,35 +7,203 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20.18.1"
+
 jobs:
-  verify:
+  # ---------------------------------------------------------------------------
+  # Python lint, unit tests, and the coverage floor (SQLite in-memory).
+  # ---------------------------------------------------------------------------
+  python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       MPLCONFIGDIR: /tmp/matplotlib
       FLASK_APP: run.py
-      DATABASE_URL: sqlite:////tmp/artemis-ci.db
-      DB_PATH: /tmp/artemis-ci.db
       AUTO_CREATE_SCHEMA: "false"
       INITIALIZE_LEGACY_SCHEMA: "false"
       START_BACKGROUND_SERVICES: "false"
-
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - name: Install
+      - name: Install (hashed lock)
         run: |
           python -m pip install --upgrade pip
           python -m pip install --require-hashes -r requirements-dev.lock
           python -m pip install --no-deps -e .
       - name: Lint
         run: ruff check artemis agent tests --select E9,F63,F7,F82
-      - name: Test
-        run: pytest --cov=artemis --cov=agent --cov-report=term-missing --cov-report=xml
-      - name: Verify migrations
-        run: flask db upgrade
+      - name: Test + coverage floor
+        run: pytest --cov --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Frontend: strict type-check and production build.
+  # ---------------------------------------------------------------------------
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
       - name: Build
-        run: python -m build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Migrations against real PostgreSQL: fresh upgrade, roundtrip, drift check.
+  # ---------------------------------------------------------------------------
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.6-alpine@sha256:1d04b9ba1d4996401f2552b51beda8187f175c0645c091e4781134fc9c9a3eef
+        env:
+          POSTGRES_USER: artemis
+          POSTGRES_PASSWORD: artemis
+          POSTGRES_DB: artemis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U artemis -d artemis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://artemis:artemis@localhost:5432/artemis
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install (hashed lock)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r requirements-dev.lock
+          python -m pip install --no-deps -e .
+      - name: Fresh migrate, roundtrip, drift check
+        run: bash scripts/check-migrations.sh
+      - name: Upgrade from the previous release database
+        run: |
+          prev="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          if [ -z "$prev" ]; then
+            echo "No prior release tag yet — skipping cross-release upgrade test."
+            exit 0
+          fi
+          echo "Building schema from $prev then upgrading to HEAD"
+          psql "$DATABASE_URL" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+          git worktree add /tmp/prev "$prev"
+          (cd /tmp/prev && python -m pip install --no-deps -e . >/dev/null && flask db upgrade)
+          flask db upgrade
+          bash scripts/check-migrations.sh
+
+  # ---------------------------------------------------------------------------
+  # Full test suite against PostgreSQL + Redis (Celery task integration).
+  # ---------------------------------------------------------------------------
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.6-alpine@sha256:1d04b9ba1d4996401f2552b51beda8187f175c0645c091e4781134fc9c9a3eef
+        env:
+          POSTGRES_USER: artemis
+          POSTGRES_PASSWORD: artemis
+          POSTGRES_DB: artemis_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U artemis -d artemis_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      MPLCONFIGDIR: /tmp/matplotlib
+      TEST_DATABASE_URL: postgresql+psycopg://artemis:artemis@localhost:5432/artemis_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install (hashed lock)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r requirements-dev.lock
+          python -m pip install --no-deps -e .
+      - name: Test suite on PostgreSQL + Redis
+        run: pytest -q --no-cov
+
+  # ---------------------------------------------------------------------------
+  # Build the production image and smoke-test /api/v1/health.
+  # ---------------------------------------------------------------------------
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-buildx-action@6524bf65af31da8d45b59e8c27de4bd072b392f5 # v3.8.0
+      - name: Build image
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          context: .
+          load: true
+          tags: artemis-scanner:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker network create artemis-ci
+          docker run -d --name pg --network artemis-ci \
+            -e POSTGRES_USER=artemis -e POSTGRES_PASSWORD=artemis -e POSTGRES_DB=artemis \
+            postgres:16.6-alpine@sha256:1d04b9ba1d4996401f2552b51beda8187f175c0645c091e4781134fc9c9a3eef
+          docker run -d --name redis --network artemis-ci \
+            redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          for i in $(seq 1 30); do
+            docker exec pg pg_isready -U artemis -d artemis && break || sleep 2
+          done
+          docker run -d --name web --network artemis-ci -p 5005:5005 \
+            -e FLASK_CONFIG=production -e SECRET_KEY=ci-smoke-secret \
+            -e DATABASE_URL=postgresql+psycopg://artemis:artemis@pg:5432/artemis \
+            -e REDIS_URL=redis://redis:6379/0 \
+            -e CELERY_BROKER_URL=redis://redis:6379/0 \
+            -e CELERY_RESULT_BACKEND=redis://redis:6379/1 \
+            -e START_BACKGROUND_SERVICES=false \
+            artemis-scanner:ci
+          ok=""
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:5005/api/v1/health | tee /dev/stderr | grep -q '"status":"ok"'; then
+              ok=1; break
+            fi
+            sleep 3
+          done
+          docker logs web
+          test -n "$ok"

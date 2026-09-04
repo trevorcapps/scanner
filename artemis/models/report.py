@@ -9,6 +9,9 @@ class Report(db.Model):
     """A single generated report artifact stored on the data volume."""
 
     __tablename__ = 'reports'
+    __table_args__ = (
+        db.Index('idx_reports_created_at', 'created_at'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.Text, nullable=False)
