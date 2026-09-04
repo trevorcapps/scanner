@@ -30,6 +30,29 @@ def _reset_security_singletons():
     rate_limit_service.reset_state()
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _seed_default_org_on_create_all():
+    """Every `db.create_all()` in a test also seeds the Default organization, so
+    tenant-owned rows created directly in a test's setUp get stamped."""
+    from artemis.extensions import db
+
+    original = db.create_all
+
+    def patched(*args, **kwargs):
+        original(*args, **kwargs)
+        try:
+            from artemis.models.organization import Organization
+            if Organization.query.filter_by(is_default=1).first() is None:
+                db.session.add(Organization(name="Default", slug="default", is_default=1))
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    db.create_all = patched
+    yield
+    db.create_all = original
+
+
 @pytest.fixture
 def fake_scanner_bin(tmp_path, monkeypatch):
     bindir = tmp_path / "bin"

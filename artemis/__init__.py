@@ -58,6 +58,9 @@ def create_app(config_name=None, start_background_services=True):
     celery = init_celery(app)
     app.celery = celery
 
+    # Install the tenant write-stamp hook (organization_id on every new row).
+    from artemis.services import tenant  # noqa: F401
+
     # Register blueprints
     register_blueprints(app)
 

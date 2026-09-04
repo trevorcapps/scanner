@@ -1,13 +1,17 @@
 """Asset model."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Asset(db.Model):
+class Asset(TenantMixin, db.Model):
     __tablename__ = 'assets'
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'ip', name='uq_asset_org_ip'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    ip = db.Column(db.Text, unique=True)
+    ip = db.Column(db.Text)
     hostname = db.Column(db.Text)
     reverse_dns = db.Column(db.Text)
     aliases_json = db.Column(db.Text)

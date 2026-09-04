@@ -4,9 +4,10 @@ import json
 import uuid
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class ScanJob(db.Model):
+class ScanJob(TenantMixin, db.Model):
     __tablename__ = 'scan_jobs'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

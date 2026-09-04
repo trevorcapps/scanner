@@ -2,9 +2,10 @@
 
 import json
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class SiteScan(db.Model):
+class SiteScan(TenantMixin, db.Model):
     __tablename__ = 'site_scans'
 
     id = db.Column(db.Integer, primary_key=True)

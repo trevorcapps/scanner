@@ -22,8 +22,19 @@ def _truthy(name):
 
 
 def validate_production_config(app):
-    """Refuse to serve production without secrets/TLS unless explicitly waived."""
+    """Refuse to serve production without secrets/TLS unless explicitly waived.
+
+    Skipped for management commands (``flask db ...``, shell) — they never expose
+    a socket and legitimately run before TLS/al the runtime env is in place.
+    """
     if app.config.get("TESTING"):
+        return
+    import sys
+    argv = " ".join(sys.argv)
+    serving = ("gunicorn" in argv or "run:app" in argv
+               or argv.rstrip().endswith("run.py") or _truthy("ARTEMIS_SERVING"))
+    if not serving:
+        # Management command (flask db, shell, ...) — never opens a socket.
         return
     if _truthy("ARTEMIS_ALLOW_INSECURE"):
         logger.warning(

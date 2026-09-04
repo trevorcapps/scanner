@@ -1,9 +1,10 @@
 """CVE match model — auth scan / vulscan results."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class CveMatch(db.Model):
+class CveMatch(TenantMixin, db.Model):
     __tablename__ = 'cve_matches'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -20,7 +21,7 @@ class CveMatch(db.Model):
     scan_date = db.Column(db.Text)
 
     __table_args__ = (
-        db.UniqueConstraint('ip', 'cve_id', name='uq_cve_match_ip_cve'),
+        db.UniqueConstraint('organization_id', 'ip', 'cve_id', name='uq_cve_match_org_ip_cve'),
     )
 
     def to_dict(self):

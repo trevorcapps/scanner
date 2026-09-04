@@ -8,14 +8,18 @@ label of where the key originally came from.
 """
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 from artemis.services import crypto_service
 
 
-class Credential(db.Model):
+class Credential(TenantMixin, db.Model):
     __tablename__ = 'credentials'
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'name', name='uq_credential_org_name'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.Text, unique=True, nullable=False)
+    name = db.Column(db.Text, nullable=False)
     cred_type = db.Column(db.Text, nullable=False)          # ssh_password | ssh_key
     username = db.Column(db.Text, nullable=False)
     # Optional human note of the key's origin (not used for auth).

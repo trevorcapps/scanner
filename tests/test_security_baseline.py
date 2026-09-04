@@ -62,7 +62,7 @@ class ProductionGuardTests(unittest.TestCase):
 
         app = create_app("testing", start_background_services=False)
         app.config["TESTING"] = False
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"ARTEMIS_SERVING": "1"}, clear=True):
             crypto_service.reset_cache()
             with self.assertRaises(InsecureConfigError):
                 validate_production_config(app)
@@ -72,7 +72,7 @@ class ProductionGuardTests(unittest.TestCase):
 
         app = create_app("testing", start_background_services=False)
         app.config["TESTING"] = False
-        with patch.dict(os.environ, {"ARTEMIS_ALLOW_INSECURE": "1"}, clear=True):
+        with patch.dict(os.environ, {"ARTEMIS_ALLOW_INSECURE": "1", "ARTEMIS_SERVING": "1"}, clear=True):
             crypto_service.reset_cache()
             validate_production_config(app)  # must not raise
 

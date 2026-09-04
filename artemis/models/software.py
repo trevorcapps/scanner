@@ -1,9 +1,10 @@
 """Installed software model."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class InstalledSoftware(db.Model):
+class InstalledSoftware(TenantMixin, db.Model):
     __tablename__ = 'installed_software'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -14,7 +15,7 @@ class InstalledSoftware(db.Model):
     scan_date = db.Column(db.Text)
 
     __table_args__ = (
-        db.UniqueConstraint('ip', 'package_name', name='uq_sw_ip_pkg'),
+        db.UniqueConstraint('organization_id', 'ip', 'package_name', name='uq_sw_org_ip_pkg'),
     )
 
     def to_dict(self):

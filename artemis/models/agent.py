@@ -3,9 +3,10 @@
 import json
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Agent(db.Model):
+class Agent(TenantMixin, db.Model):
     __tablename__ = 'agents'
 
     id = db.Column(db.Integer, primary_key=True)

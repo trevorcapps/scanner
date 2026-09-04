@@ -3,9 +3,10 @@
 import uuid
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class AgentShellSession(db.Model):
+class AgentShellSession(TenantMixin, db.Model):
     __tablename__ = 'agent_shell_sessions'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

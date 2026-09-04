@@ -1,9 +1,10 @@
 """ScanHistory model — execution log for scheduled and ad-hoc scans."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class ScanHistory(db.Model):
+class ScanHistory(TenantMixin, db.Model):
     __tablename__ = 'scan_history'
 
     id = db.Column(db.Integer, primary_key=True)

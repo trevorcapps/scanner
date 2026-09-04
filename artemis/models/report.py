@@ -3,9 +3,10 @@
 import json
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Report(db.Model):
+class Report(TenantMixin, db.Model):
     """A single generated report artifact stored on the data volume."""
 
     __tablename__ = 'reports'
@@ -53,7 +54,7 @@ class Report(db.Model):
         }
 
 
-class ReportSchedule(db.Model):
+class ReportSchedule(TenantMixin, db.Model):
     """A recurring report: generate on a cron and email it to recipients."""
 
     __tablename__ = 'report_schedules'
