@@ -156,6 +156,8 @@ def _setup_auth_middleware(app):
         '/api/v1/agents/deregister',
         '/api/v1/agents/shell/poll',
         '/api/v1/agents/shell/output',
+        '/api/v1/agents/work/poll',
+        '/api/v1/agents/work/result',
         '/api/agents/register',
         '/api/agents/report',
         '/api/agents/deregister',

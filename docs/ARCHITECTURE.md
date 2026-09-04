@@ -149,6 +149,27 @@ Every tenant-owned row carries a non-null `organization_id` (`TenantMixin`).
   defense in depth — inert until the app runs as a dedicated non-owner role with
   `ARTEMIS_ENABLE_RLS=1`.
 
+## Automation (Phase 5)
+
+`AutomationExecutor` is the execution boundary (D11). `RunnerExecutor` embeds
+ansible-runner (optional `[automation]` extra) and runs operator-supplied
+content from an SSH execution node; `AgentLocalExecutor` delegates to a single
+outbound-only agent via a **signed** work manifest — HMAC-SHA256 over the
+canonical payload plus a content SHA-256 check, so a tampered or mis-signed
+manifest is rejected before anything runs. `NullExecutor` reports "unavailable"
+and rejects every run when nothing is installed.
+
+`content_service` content-addresses every playbook/bundle by SHA-256, seals it
+encrypted, and gates dispatch on size limits, safe archive extraction, YAML
+parsing, `--syntax-check`, and ansible-lint. `run_service` snapshots the target
+IDs at launch, builds an ephemeral inventory keyed by immutable Artemis asset
+IDs (no secrets in inventory), resolves credential references just in time, runs
+in a rootless private data dir, maps Runner events onto `JobEvent`s, and
+destroys decrypted secrets afterwards. Patch campaigns (`campaign_service`)
+layer canary + serial batches + a failure threshold over automation runs using
+parent/child jobs. Seven versioned starter playbooks ship in
+`artemis/automation_playbooks/`.
+
 ## Security baseline (P0.4)
 
 - **Secret encryption.** `crypto_service` seals every stored secret with

@@ -22,6 +22,7 @@ import pty
 import re
 import select
 import shutil
+import tempfile
 import signal
 import socket
 import struct
@@ -36,6 +37,8 @@ import urllib.request
 __version__ = '1.4.0'
 TELEMETRY_SCHEMA_VERSION = 3
 AGENT_CAPABILITIES = ['remote_shell', 'patch_status']
+if shutil.which('ansible-playbook'):
+    AGENT_CAPABILITIES.append('ansible_local')
 
 UNSUPPORTED = {'status': 'unsupported'}
 
@@ -894,6 +897,83 @@ def remote_shell_loop(server, key, stop_event=None):
         shell.close()
 
 
+def _work_signing_key(agent_key):
+    import hashlib
+    return hashlib.sha256(f'artemis-work:{agent_key}'.encode()).digest()
+
+
+def _verify_work(manifest, agent_key):
+    """HMAC-SHA256 over the canonical payload + content-digest check."""
+    import hashlib
+    import hmac as _hmac
+    payload = manifest.get('payload', {})
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()
+    expected = _hmac.new(_work_signing_key(agent_key), canonical, hashlib.sha256).hexdigest()
+    if not _hmac.compare_digest(expected, manifest.get('signature', '')):
+        return False, 'signature mismatch'
+    body_b64 = payload.get('content_b64')
+    if body_b64 is not None:
+        body = base64.b64decode(body_b64)
+        if manifest.get('content_digest') and hashlib.sha256(body).hexdigest() != manifest['content_digest']:
+            return False, 'content digest mismatch'
+    return True, None
+
+
+def _run_ansible_local(body_bytes, variables):
+    """Run the exact playbook against localhost with the local connection."""
+    workdir = tempfile.mkdtemp(prefix='artemis-work-')
+    try:
+        pb = os.path.join(workdir, 'playbook.yml')
+        with open(pb, 'wb') as fh:
+            fh.write(body_bytes)
+        inv = os.path.join(workdir, 'inventory')
+        with open(inv, 'w') as fh:
+            fh.write('localhost ansible_connection=local\n')
+        cmd = ['ansible-playbook', '-i', inv, pb]
+        for key, value in (variables or {}).items():
+            cmd += ['-e', f'{key}={value}']
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600,
+                              env={**os.environ, 'ANSIBLE_HOST_KEY_CHECKING': 'False'})
+        return {
+            'status': 'succeeded' if proc.returncode == 0 else 'failed',
+            'rc': proc.returncode,
+            'events': (proc.stdout or '').splitlines()[-200:],
+            'stderr_tail': (proc.stderr or '').splitlines()[-40:],
+        }
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def agent_work_loop(server, key, stop_event=None):
+    """Poll for signed typed work items and execute them locally."""
+    stop_event = stop_event or threading.Event()
+    while not stop_event.is_set():
+        resp = api_request(server, '/agents/work/poll', key=key, method='GET', quiet=True)
+        manifest = resp.get('work') if resp else None
+        if not manifest:
+            stop_event.wait(15)
+            continue
+
+        ok, reason = _verify_work(manifest, key)
+        if not ok:
+            api_request(server, '/agents/work/result',
+                        {'work_id': manifest['id'], 'status': 'rejected', 'reason': reason},
+                        key=key, method='POST', quiet=True)
+            continue
+
+        payload = manifest.get('payload', {})
+        try:
+            if manifest['kind'] == 'ansible_local':
+                body = base64.b64decode(payload['content_b64'])
+                result = _run_ansible_local(body, payload.get('variables'))
+            else:
+                result = {'status': 'failed', 'reason': f"unsupported kind {manifest['kind']}"}
+        except Exception as exc:
+            result = {'status': 'failed', 'reason': str(exc)[:300]}
+        result['work_id'] = manifest['id']
+        api_request(server, '/agents/work/result', result, key=key, method='POST', quiet=True)
+
+
 def do_register(server, name=None):
     """Register this agent with the server."""
     data = {
@@ -1005,6 +1085,9 @@ def main():
     if shell_enabled:
         threading.Thread(target=remote_shell_loop, args=(server, key), daemon=True).start()
         print("Remote shell polling enabled")
+    if 'ansible_local' in AGENT_CAPABILITIES and not args.disable_remote_shell:
+        threading.Thread(target=agent_work_loop, args=(server, key), daemon=True).start()
+        print("Signed agent work channel enabled")
     while True:
         try:
             do_report(server, key)

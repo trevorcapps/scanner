@@ -146,7 +146,7 @@ def execute(job):
     variables = json.loads(run.variables_json or '{}')
     _inject_credentials(variables, json.loads(run.credential_refs_json or '[]'))
 
-    executor = get_executor()
+    executor = _executor_for(run, hosts)
     job_service.mark_running(job, lease_seconds=3600)
 
     counts = {'ok': 0, 'changed': 0, 'failed': 0, 'unreachable': 0, 'skipped': 0}
@@ -174,12 +174,17 @@ def execute(job):
                 private_data_dir=pdd, event_handler=on_event,
                 cancel_check=lambda: job_service.is_cancelling(job.id),
                 check_mode=bool(run.check_mode),
-                options=json.loads(run.launch_options_json or '{}'),
+                options={**json.loads(run.launch_options_json or '{}'), 'job_id': job.id},
             )
     except ExecutorUnavailable as exc:
         return job_service.mark_failed(job, str(exc))
     finally:
         variables.clear()  # destroy decrypted secrets
+
+    if result.get('status') == 'delegated':
+        # An agent_local run finishes asynchronously via record_result().
+        job_service.emit_event(job, 'log', message='delivered signed manifest to agent')
+        return job
 
     summary = {'status': result.get('status'), 'rc': result.get('rc'),
                'host_summary': counts, 'stats': result.get('stats')}
@@ -200,6 +205,21 @@ def execute(job):
     if ok:
         return job_service.mark_result(job, summary)
     return job_service.mark_failed(job, json.dumps(summary))
+
+
+def _executor_for(run, hosts):
+    """agent_local when every target is an outbound-only agent that advertises
+    it; otherwise the default SSH Runner."""
+    from artemis.models.agent import Agent
+    from artemis.services.automation.agent_local import AgentLocalExecutor, agent_supports_local
+
+    if len(hosts) != 1:
+        return get_executor()
+    ips = [h['address'] for h in hosts]
+    agent = scoped(Agent).filter(Agent.ip.in_(ips), Agent.enabled == 1).first()
+    if agent and agent_supports_local(agent):
+        return AgentLocalExecutor(agent)
+    return get_executor()
 
 
 def _inject_credentials(variables, refs):
