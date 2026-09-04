@@ -25,6 +25,7 @@ from artemis.models.risk_snapshot import RiskSnapshot
 from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentShellSession
 from artemis.models.audit_event import AuditEvent
 from artemis.models.job_event import JobEvent
+from artemis.models.scan_profile import ScanExecutionProfile
 from artemis.models.organization import (
     Organization,
     OrganizationInvitation,
@@ -32,7 +33,7 @@ from artemis.models.organization import (
 )
 
 __all__ = [
-    'AuditEvent', 'JobEvent',
+    'AuditEvent', 'JobEvent', 'ScanExecutionProfile',
     'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',

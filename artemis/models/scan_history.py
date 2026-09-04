@@ -21,6 +21,9 @@ class ScanHistory(TenantMixin, db.Model):
     new_vulns = db.Column(db.Integer, default=0)
     error_message = db.Column(db.Text)
     summary_json = db.Column(db.Text)
+    # Stable observation identity index captured at completion, for the next
+    # run's delta comparison (see delta_service).
+    baseline_json = db.Column(db.Text)
 
     def to_dict(self):
         return {

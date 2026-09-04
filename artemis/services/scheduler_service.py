@@ -111,6 +111,30 @@ def _check_and_run(app):
         logger.exception("Report schedule tick failed")
 
 
+def _advance(sched, now_iso, db):
+    sched.next_run = calculate_next_run(sched)
+    sched.updated_at = now_iso
+    if sched.schedule_type == 'once':
+        sched.enabled = 0
+    db.session.commit()
+
+
+def _runs_missed(sched, now_iso):
+    """How many scheduled fire times have elapsed since next_run (>=1 = due)."""
+    if not sched.cron_expression:
+        return 1
+    try:
+        base = datetime.strptime(sched.next_run, '%Y-%m-%dT%H:%M:%SZ')
+        now = datetime.strptime(now_iso, '%Y-%m-%dT%H:%M:%SZ')
+        it = croniter(sched.cron_expression, base)
+        count = 1
+        while it.get_next(datetime) <= now and count < 50:
+            count += 1
+        return count
+    except (ValueError, KeyError):
+        return 1
+
+
 def dispatch_due_scans():
     """Beat entry point: create durable jobs for every due schedule/site.
 
@@ -126,28 +150,50 @@ def dispatch_due_scans():
     now_iso = _now_iso()
     dispatched = 0
 
+    from artemis.models.scan_profile import ScanExecutionProfile
+    from artemis.services.scan_profile_service import resolve_scan_options, within_window
+
     due = (ScheduledScan.query.execution_options(**{SKIP_TENANT_FILTER: True})
            .filter(ScheduledScan.enabled == 1, ScheduledScan.next_run <= now_iso).all())
     for sched in due:
         occurrence = f'sched-{sched.id}-{sched.next_run}'
         try:
             with use_organization(sched.organization_id):
+                profile = (db.session.get(ScanExecutionProfile, sched.execution_profile_id)
+                           if sched.execution_profile_id else None)
+
+                # Missed-run handling: a schedule that fell behind by more than
+                # one interval respects its policy.
+                behind = _runs_missed(sched, now_iso)
+                if profile is not None and not within_window(profile):
+                    if sched.missed_run_policy == 'skip':
+                        _advance(sched, now_iso, db)
+                        continue
+                if behind > 1 and sched.missed_run_policy == 'skip':
+                    logger.info('schedule %s skipped %s missed runs', sched.id, behind - 1)
+
+                if occurrence == sched.last_occurrence_key:
+                    _advance(sched, now_iso, db)
+                    continue
+
                 opts = json.loads(sched.scan_options_json) if sched.scan_options_json else {}
-                opts.update({'schedule_id': sched.id, 'profile': sched.profile_id or opts.get('profile', ''),
+                opts.update({'schedule_id': sched.id,
+                             'profile': sched.profile_id or opts.get('profile', ''),
                              'credential_ids': json.loads(sched.credential_ids_json or '[]')})
-                dispatch_adhoc_scan(sched.target, sched.scan_type or 'port', opts,
-                                    idempotency_key=occurrence)
+                opts = resolve_scan_options(profile, opts)
+
+                runs = behind if sched.missed_run_policy == 'catch_up' else 1
+                for n in range(max(1, min(runs, 5))):
+                    dispatch_adhoc_scan(sched.target, sched.scan_type or 'port', opts,
+                                        idempotency_key=f'{occurrence}-{n}')
                 sched.last_run = now_iso
                 sched.last_status = 'queued'
+                sched.last_occurrence_key = occurrence
                 dispatched += 1
         except Exception:
             logger.exception('Failed to dispatch scheduled scan %s', sched.id)
         finally:
-            sched.next_run = calculate_next_run(sched)
-            sched.updated_at = now_iso
-            if sched.schedule_type == 'once':
-                sched.enabled = 0
-            db.session.commit()
+            _advance(sched, now_iso, db)
 
     due_sites = (Site.query.execution_options(**{SKIP_TENANT_FILTER: True})
                  .filter(Site.schedule_enabled == 1, Site.next_run <= now_iso,
@@ -191,10 +237,19 @@ def record_schedule_history(schedule_id, result, status, duration_seconds=0):
         ports_found=result.get('ports_found', 0),
         vulns_found=result.get('vulns_found', 0),
     )
-    if status == 'success' and sched.compare_with_previous:
-        delta = _compute_delta(sched, result)
-        history.new_vulns = delta.get('new_vulns', 0)
-        result = {**result, 'delta': delta}
+    if status == 'success':
+        from artemis.services.delta_service import snapshot
+        from artemis.utils.network import expand_cidr
+        from artemis.utils.validation import is_cidr
+        ips = expand_cidr(sched.target, max_hosts=256) if is_cidr(sched.target) else [sched.target]
+        try:
+            history.baseline_json = json.dumps(snapshot(ips))
+        except Exception:  # noqa: BLE001
+            logger.exception('delta snapshot failed for schedule %s', schedule_id)
+        if sched.compare_with_previous:
+            delta = _compute_delta(sched, result)
+            history.new_vulns = delta.get('new_vulns', 0)
+            result = {**result, 'delta': delta}
     history.summary_json = json.dumps(result)
     if status != 'success':
         history.error_message = str(result.get('error', ''))[:1000]
@@ -455,31 +510,29 @@ def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
 
 
 def _compute_delta(sched, current_result):
-    """Compare current scan results with the previous run for the same scheduled scan."""
+    """Classify current vs previous observations by stable identity."""
     from artemis.models.scan_history import ScanHistory
+    from artemis.services.delta_service import compute_delta
+    from artemis.utils.network import expand_cidr
+    from artemis.utils.validation import is_cidr
 
     prev = ScanHistory.query.filter(
         ScanHistory.scheduled_scan_id == sched.id,
         ScanHistory.status == 'success',
+        ScanHistory.baseline_json.isnot(None),
     ).order_by(ScanHistory.id.desc()).first()
 
-    if not prev or not prev.summary_json:
-        return {'new_vulns': current_result.get('vulns_found', 0), 'removed_vulns': 0, 'note': 'no previous scan'}
-
-    try:
-        prev_data = json.loads(prev.summary_json)
-        prev_vulns = {v.get('id', v.get('name', '')) for v in prev_data.get('vulns', [])}
-        curr_vulns = {v.get('id', v.get('name', '')) for v in current_result.get('vulns', [])}
-        new = curr_vulns - prev_vulns
-        removed = prev_vulns - curr_vulns
-        return {
-            'new_vulns': len(new),
-            'removed_vulns': len(removed),
-            'new_vuln_ids': list(new),
-            'removed_vuln_ids': list(removed),
-        }
-    except Exception:
-        return {'new_vulns': 0, 'removed_vulns': 0, 'note': 'delta parse error'}
+    ips = expand_cidr(sched.target, max_hosts=256) if is_cidr(sched.target) else [sched.target]
+    baseline = None
+    if prev and prev.baseline_json:
+        try:
+            baseline = json.loads(prev.baseline_json)
+        except (TypeError, ValueError):
+            baseline = None
+    if baseline is None:
+        return {'new_vulns': current_result.get('vulns_found', 0), 'resolved_vulns': 0,
+                'reopened_vulns': 0, 'changed_vulns': 0, 'note': 'no previous baseline'}
+    return compute_delta(ips, baseline)
 
 
 def calculate_next_run(sched):
