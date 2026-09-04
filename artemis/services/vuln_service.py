@@ -127,6 +127,31 @@ def _emit_webhook(event, payload):
         logger.debug("webhook emit failed", exc_info=True)
 
 
+def _ingest_canonical(ip, vulnerabilities, scan_date, job_id=None):
+    """Fold Nuclei findings into the canonical finding model."""
+    try:
+        from artemis.services.finding_service import ingest_finding, resolve_absent
+        seen = set()
+        for vuln in vulnerabilities:
+            vid = vuln.get('vuln_id', '')
+            kind = 'cve' if vid.upper().startswith('CVE-') else 'template'
+            def_id = vid if kind == 'cve' else f'nuclei:{vid}'
+            seen.add(def_id)
+            ingest_finding(
+                definition_id=def_id, kind=kind, ip=ip, source='nuclei',
+                port=vuln.get('port'), protocol=vuln.get('protocol'),
+                severity=vuln.get('severity'), title=vuln.get('vuln_name'),
+                description=vuln.get('description'), cvss_score=vuln.get('cvss_score'),
+                cwe_id=vuln.get('cwe_id'), references=vuln.get('references'),
+                matched_at=vuln.get('matched_at'), job_id=job_id, observed_at=scan_date,
+                evidence={'template': vid, 'extracted': vuln.get('extracted_results')},
+            )
+        if seen:
+            resolve_absent(ip, seen_definition_ids=seen, source='nuclei', job_id=job_id)
+    except Exception:
+        logger.exception("canonical finding ingest failed for %s", ip)
+
+
 def store_vulnerabilities(ip, vulnerabilities):
     """Store Nuclei findings, enriching CVEs with NVD data. Returns the stored dicts."""
     scan_date = datetime.now().isoformat()
@@ -195,6 +220,9 @@ def store_vulnerabilities(ip, vulnerabilities):
         logger.info(f"Stored/updated {len(result)} vulnerabilities for {ip}")
         for finding in new_findings:
             _emit_webhook('vulnerability.discovered', finding)
+
+        # Canonical findings (P4.1) — dual-write; legacy table kept for compat.
+        _ingest_canonical(ip, vulnerabilities, scan_date)
         return result
     except Exception as e:
         db.session.rollback()

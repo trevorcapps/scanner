@@ -34,6 +34,11 @@ from artemis.models.asset_group import (
 )
 from artemis.models.discovery import DiscoveryScope
 from artemis.models.inventory_history import AssetTimelineEvent, SoftwareObservation
+from artemis.models.finding import (
+    FindingObservation,
+    FindingOccurrence,
+    VulnerabilityDefinition,
+)
 from artemis.models.organization import (
     Organization,
     OrganizationInvitation,
@@ -44,6 +49,7 @@ __all__ = [
     'AuditEvent', 'JobEvent', 'ScanExecutionProfile',
     'AssetTag', 'AssetGroup', 'AssetGroupMember', 'AssetReviewEvent', 'DiscoveryScope',
     'SoftwareObservation', 'AssetTimelineEvent',
+    'VulnerabilityDefinition', 'FindingOccurrence', 'FindingObservation',
     'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',

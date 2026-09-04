@@ -71,6 +71,26 @@ def store_auth_scan_results(ip, os_info, packages, cves, detection_source='auth-
     except Exception:
         logger.exception("inventory history update failed for %s", ip)
 
+    # Canonical findings (P4.1) — CVE matches become finding occurrences.
+    try:
+        from artemis.services.finding_service import ingest_finding, resolve_absent
+        src = 'agent' if detection_source == 'agent' else 'ssh'
+        seen = set()
+        for cve in cves:
+            seen.add(cve['cve_id'])
+            ingest_finding(
+                definition_id=cve['cve_id'], kind='cve', ip=ip, source=src,
+                component=cve.get('affected_cpe'), severity=cve.get('severity'),
+                cvss_score=cve.get('cvss_score'), description=cve.get('description'),
+                observed_at=scan_date,
+                evidence={'affected_cpe': cve.get('affected_cpe'),
+                          'has_exploit': bool(cve.get('has_exploit'))},
+            )
+        if seen:
+            resolve_absent(ip, seen_definition_ids=seen, source=src)
+    except Exception:
+        logger.exception("canonical finding ingest failed for %s", ip)
+
 
 def _enrich_asset_from_auth(ip, os_info, system):
     """Fold authenticated findings back onto the ``assets`` row + reclassify."""
