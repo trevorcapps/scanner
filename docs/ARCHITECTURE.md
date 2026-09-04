@@ -112,12 +112,90 @@ the systemd unit's existing `NoNewPrivileges`, `ProtectSystem=full`,
 
 ## Activity logging
 
-Operational logs continue to go through Python logging (stdout/journal in
-normal deployments). `log_service` also keeps the newest 500 in-process
-records. `GET /api/v1/logs` seeds the activity panel, while `scan_log`
-Socket.IO events append live scan output. The memory history is intentionally
-bounded and process-local; durable retention belongs in the container/service
-logging platform.
+Operational logs go through Python logging. `logging_setup.configure_logging`
+installs a single stdout handler that emits **line-delimited JSON** by default
+(plain text on a TTY; override with `ARTEMIS_LOG_FORMAT`). Every record carries
+`request_id`, and `job_id` / `org_id` when set on `flask.g`, so a request can be
+traced across web and worker. Container deployments rely on the runtime log
+driver for rotation; `ARTEMIS_LOG_FILE` adds a size-based `RotatingFileHandler`
+for non-container use. `log_service` still keeps the newest 500 records in
+process for `GET /api/v1/logs`, and `scan_log` Socket.IO events carry live scan
+output.
+
+## Tenancy (Phase 1)
+
+`Organization` is the tenant. `User` is a global identity; ordinary roles are
+per-organization via `OrganizationMembership`, and `User.platform_admin` grants
+audited cross-org administration. Every request and Socket.IO connection
+resolves exactly one active organization (`org_service.resolve_context`, from an
+`X-Organization` header / session / primary membership, or the API key's bound
+org) and fails closed when none applies.
+
+Every tenant-owned row carries a non-null `organization_id` (`TenantMixin`).
+`artemis.services.tenant` enforces isolation:
+
+- a `before_flush` hook stamps `organization_id` on new rows from the active
+  organization (or the Default organization outside a request);
+- a `do_orm_execute` hook adds `with_loader_criteria(TenantMixin, ...)` to every
+  ORM SELECT, so services are scoped automatically; opt out per statement with
+  `.execution_options(skip_tenant_filter=True)` for platform-admin cross-org
+  views;
+- background work (Celery tasks, the scheduler, report runner) sets the context
+  from the job/schedule's own `organization_id` via `use_organization` /
+  `set_task_organization`;
+- report artifacts are written under `REPORTS_DIR/org-<id>/` and downloads are
+  path-checked against that directory;
+- migration `c4d5e6f7a8b9` adds PostgreSQL RLS policies (ENABLE, not FORCE) as
+  defense in depth — inert until the app runs as a dedicated non-owner role with
+  `ARTEMIS_ENABLE_RLS=1`.
+
+## Automation (Phase 5)
+
+`AutomationExecutor` is the execution boundary (D11). `RunnerExecutor` embeds
+ansible-runner (optional `[automation]` extra) and runs operator-supplied
+content from an SSH execution node; `AgentLocalExecutor` delegates to a single
+outbound-only agent via a **signed** work manifest — HMAC-SHA256 over the
+canonical payload plus a content SHA-256 check, so a tampered or mis-signed
+manifest is rejected before anything runs. `NullExecutor` reports "unavailable"
+and rejects every run when nothing is installed.
+
+`content_service` content-addresses every playbook/bundle by SHA-256, seals it
+encrypted, and gates dispatch on size limits, safe archive extraction, YAML
+parsing, `--syntax-check`, and ansible-lint. `run_service` snapshots the target
+IDs at launch, builds an ephemeral inventory keyed by immutable Artemis asset
+IDs (no secrets in inventory), resolves credential references just in time, runs
+in a rootless private data dir, maps Runner events onto `JobEvent`s, and
+destroys decrypted secrets afterwards. Patch campaigns (`campaign_service`)
+layer canary + serial batches + a failure threshold over automation runs using
+parent/child jobs. Seven versioned starter playbooks ship in
+`artemis/automation_playbooks/`.
+
+## Security baseline (P0.4)
+
+- **Secret encryption.** `crypto_service` seals every stored secret with
+  per-secret AES-GCM data keys wrapped by a deployment KEK
+  (`ARTEMIS_ENCRYPTION_KEY`, or `ARTEMIS_ENCRYPTION_KEYS` for rotation).
+  `Credential` holds only `secret_enc` / `private_key_enc` envelopes; the
+  plaintext columns and filesystem `key_path` auth were removed. Scanners call
+  `resolve_credential_secrets()` at the point of use, which writes a
+  `secret.read` audit event.
+- **Production guard.** `security.validate_production_config` refuses to serve
+  `production` without `SECRET_KEY`, an encryption key, and an HTTPS assertion,
+  unless `ARTEMIS_ALLOW_INSECURE=1`.
+- **Transport.** `security.init_security` adds request-ID correlation, `ProxyFix`
+  (when `ARTEMIS_BEHIND_TLS_PROXY`), secure/SameSite cookies, HSTS/CSP/nosniff
+  headers, and a `MAX_CONTENT_LENGTH` cap. `docker-compose.tls.yml` puts Caddy
+  in front for ACME or bring-your-own-certificate TLS.
+- **Rate limiting.** `rate_limit_service` applies Redis-backed fixed-window
+  policies (`login`, `write`, `expensive`, `agent_report`, `shell_poll`) with a
+  deterministic in-memory backend for tests; over-budget callers get `429` with
+  `Retry-After`.
+- **Audit trail.** `audit_service` writes immutable `AuditEvent` rows for auth,
+  secret access, role changes, scan start/cancel, shell lifecycle, settings
+  changes, agent-key issue, and exports. `GET /api/v1/audit-events` is
+  admin-only.
+- **Permission matrix.** Credential, agent-key, settings, and shell
+  administration are `role_required('admin')`.
 
 ## Compatibility and cleanup boundaries
 

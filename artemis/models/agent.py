@@ -3,9 +3,10 @@
 import json
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Agent(db.Model):
+class Agent(TenantMixin, db.Model):
     __tablename__ = 'agents'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -23,6 +24,20 @@ class Agent(db.Model):
     capabilities_json = db.Column(db.Text)
     created_at = db.Column(db.Text)
     enabled = db.Column(db.Integer, default=1)
+
+    # P3.4 agent parity
+    host_platform = db.Column(db.String(16))          # linux | macos | other
+    telemetry_schema_version = db.Column(db.Integer)
+    reboot_required = db.Column(db.String(12))        # true | false | unsupported
+    pending_updates = db.Column(db.Integer)
+    security_updates = db.Column(db.Integer)
+    patch_status_json = db.Column(db.Text)
+    service_health_json = db.Column(db.Text)
+    uptime_seconds = db.Column(db.Integer)
+    # Fleet rollout
+    rollout_ring = db.Column(db.String(16), nullable=False, default='stable')  # canary|early|stable
+    upgrade_status = db.Column(db.String(16))         # up_to_date | pending | upgrading | failed
+    capability_health_json = db.Column(db.Text)
 
     @staticmethod
     def _decode(value):
@@ -57,6 +72,17 @@ class Agent(db.Model):
             'capabilities': capabilities,
             'created_at': self.created_at,
             'enabled': self.enabled,
+            'host_platform': self.host_platform,
+            'telemetry_schema_version': self.telemetry_schema_version,
+            'reboot_required': self.reboot_required,
+            'pending_updates': self.pending_updates,
+            'security_updates': self.security_updates,
+            'patch_status': self._decode(self.patch_status_json),
+            'service_health': self._decode(self.service_health_json),
+            'uptime_seconds': self.uptime_seconds,
+            'rollout_ring': self.rollout_ring,
+            'upgrade_status': self.upgrade_status,
+            'capability_health': self._decode(self.capability_health_json),
         }
         if include_key:
             result['agent_key'] = self.agent_key

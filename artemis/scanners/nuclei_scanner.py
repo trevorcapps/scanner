@@ -31,7 +31,7 @@ def check_nuclei_installed():
     return False
 
 
-def vuln_scan(ip, options=None, log_callback=None):
+def vuln_scan(ip, options=None, log_callback=None, cancel_check=None):
     """Execute Nuclei vulnerability scan on the given IP address.
 
     Args:
@@ -94,51 +94,30 @@ def vuln_scan(ip, options=None, log_callback=None):
             severity = options.get('severity', 'all') if options else 'all'
             log_callback(f"Starting vulnerability scan with {severity} severity levels...")
 
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1
-        )
+        from artemis.scanners._process import ProcessCancelled, ProcessTimeout, run_streaming
 
-        stderr_lines = []
         timeout = int(options.get('vuln_timeout', 600)) + 60 if options else 660
-        start_time = time.time()
+        stderr_lines = []
 
-        while True:
-            if time.time() - start_time > timeout:
-                process.kill()
-                raise subprocess.TimeoutExpired(cmd, timeout)
+        def _line(line):
+            line = line.strip()
+            if line:
+                stderr_lines.append(line)
+                if log_callback:
+                    log_callback(f"nuclei: {line}")
 
-            if process.poll() is not None:
-                break
-
-            try:
-                if process.stderr:
-                    line = process.stderr.readline()
-                    if line:
-                        line = line.strip()
-                        stderr_lines.append(line)
-                        # Forward every line of nuclei's live output to the
-                        # trace window so scans can be troubleshot in-place.
-                        if log_callback and line:
-                            log_callback(f"nuclei: {line}")
-                        logger.debug(f"Nuclei: {line}")
-                else:
-                    time.sleep(0.1)
-            except Exception:
-                time.sleep(0.1)
-
-        remaining_stderr = process.stderr.read() if process.stderr else ""
-        if remaining_stderr:
-            stderr_lines.append(remaining_stderr.strip())
+        try:
+            returncode, _ = run_streaming(
+                cmd, cancel_check=cancel_check, timeout=timeout, line_callback=_line,
+            )
+        except ProcessCancelled:
             if log_callback:
-                for line in remaining_stderr.strip().split('\n'):
-                    if line.strip():
-                        log_callback(f"Nuclei: {line.strip()}")
+                log_callback("nuclei: terminated (scan cancelled)")
+            raise ScanError("Vulnerability scan cancelled")
+        except ProcessTimeout:
+            raise subprocess.TimeoutExpired(cmd, timeout)
 
-        if process.returncode != 0:
+        if returncode not in (0, None):
             stderr_output = '\n'.join(stderr_lines)
             if 'error' in stderr_output.lower() and 'templates' not in stderr_output.lower():
                 logger.warning(f"Nuclei stderr: {stderr_output}")

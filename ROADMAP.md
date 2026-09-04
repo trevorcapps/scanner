@@ -22,7 +22,9 @@
 ### 2. **Authentication & Multi-Tenancy**
 - User auth (JWT/session-based) with role-based access (admin, analyst, read-only)
 - API key management for automation/integrations
-- Org/tenant isolation — Qualys and Nexpose are multi-tenant; Artemis needs to be too
+- [x] Org/tenant isolation — organizations, per-org roles, audited platform
+  admin, org-bound API keys, `organization_id` on every tenant table, an
+  automatic ORM query filter, per-org report artifacts, and PostgreSQL RLS
 
 ### 3. **REST API**
 - Proper versioned API (`/api/v1/`) for everything: scans, assets, vulns, reports
@@ -32,8 +34,10 @@
 
 ### 4. **Testing & CI/CD**
 - Unit tests, integration tests, scan simulation tests
-- GitHub Actions pipeline: lint → test → build → deploy
-- Code coverage tracking
+- [x] Split CI: Python lint/test, frontend type-check/build, PostgreSQL
+  migration + drift, PostgreSQL/Redis integration, Docker image smoke
+- [x] Enforced coverage floor, ratcheted per phase
+- [x] Signed image + SBOM on protected tags; deploy stays manually gated
 
 ---
 
@@ -140,13 +144,13 @@
 ## Quick Wins (Low Effort, High Impact)
 *Sprinkle these in between the big items.*
 
-- [ ] Add `requirements.txt` pinned versions + `pyproject.toml`
+- [x] `pyproject.toml` as the dependency source + hashed `requirements*.lock` files
 - [ ] Environment config (`.env` file, not hardcoded paths)
-- [ ] Rate limiting on the web UI
-- [ ] HTTPS by default (not just via reverse proxy)
+- [x] Rate limiting (Redis-backed, per-category, `429` + `Retry-After`)
+- [x] HTTPS deployment overlay (Caddy: ACME or BYO cert, HSTS, secure cookies)
 - [ ] Scan cancellation (currently no clean abort mechanism)
 - [ ] Input validation hardening (CIDR ranges, hostnames)
-- [ ] Logging to file with rotation
+- [x] Structured JSON logs with correlation IDs; optional rotating file handler
 - [ ] Docker Compose for one-command deployment
 - [ ] License file + contribution guidelines
 

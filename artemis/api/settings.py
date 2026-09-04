@@ -91,6 +91,10 @@ def api_put_setting(key):
         return {'error': 'Reserved key'}, 400
     data = request.get_json(silent=True) or {}
     set_setting(key, str(data.get('value', '')))
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SETTINGS_CHANGE, target_type='setting', target_id=key, commit=True,
+    )
     return {'success': True, 'key': key}
 
 

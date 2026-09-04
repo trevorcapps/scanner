@@ -15,7 +15,12 @@ def init_celery(app):
     class FlaskTask(Task):
         def __call__(self, *args, **kwargs):
             with app.app_context():
-                return self.run(*args, **kwargs)
+                try:
+                    return self.run(*args, **kwargs)
+                finally:
+                    # Never let one task's tenant context bleed into the next.
+                    from artemis.services.tenant import set_task_organization
+                    set_task_organization(None)
 
     celery = Celery(app.import_name, task_cls=FlaskTask)
     celery.conf.update(
@@ -31,6 +36,18 @@ def init_celery(app):
         result_serializer='json',
         accept_content=['json'],
         timezone='UTC',
+        beat_schedule={
+            'dispatch-due-work': {
+                'task': 'artemis.dispatch_due_work',
+                'schedule': float(app.config.get('DISPATCH_INTERVAL_SECONDS', 60)),
+                'options': {'expires': 55},
+            },
+            'sync-vuln-intel': {
+                'task': 'artemis.sync_intel',
+                'schedule': float(app.config.get('INTEL_SYNC_SECONDS', 86400)),
+                'options': {'expires': 3600},
+            },
+        },
     )
     celery.set_default()
     app.extensions['celery'] = celery

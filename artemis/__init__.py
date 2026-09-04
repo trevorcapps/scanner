@@ -9,7 +9,9 @@ from flask import Flask, render_template, send_from_directory, abort
 from artemis.config import config_map
 from artemis.extensions import db, migrate, socketio, init_celery
 from artemis.api import register_blueprints
+from artemis.logging_setup import configure_logging
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Ensure scanner root is on sys.path for legacy imports (device_type, nvd_feeds, etc.)
@@ -35,11 +37,15 @@ def create_app(config_name=None, start_background_services=True):
     from artemis.services.log_service import install_recent_log_handler
     install_recent_log_handler()
 
+    from artemis.security import init_security, validate_production_config
+    init_security(app)
+
     if config_name == 'production':
         if app.config['CELERY_BROKER_URL'] == 'memory://' or app.config['CELERY_TASK_ALWAYS_EAGER']:
             raise RuntimeError(
                 'Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode'
             )
+        validate_production_config(app)
 
     # Initialize extensions
     db.init_app(app)
@@ -52,8 +58,14 @@ def create_app(config_name=None, start_background_services=True):
     celery = init_celery(app)
     app.celery = celery
 
+    # Install the tenant write-stamp hook (organization_id on every new row).
+    from artemis.services import tenant  # noqa: F401
+
     # Register blueprints
     register_blueprints(app)
+
+    from artemis.api.errors import register_error_handlers
+    register_error_handlers(app)
 
     # Auth middleware — protect API routes
     _setup_auth_middleware(app)
@@ -112,8 +124,14 @@ def create_app(config_name=None, start_background_services=True):
         _init_database(app)
 
     if start_background_services and app.config.get('START_BACKGROUND_SERVICES', True):
-        from artemis.services.scheduler_service import start_scheduler
-        start_scheduler(app)
+        # Celery Beat (the "beat" container) owns due-work dispatch in
+        # production; the in-web-process scheduler thread remains the default
+        # for single-process local development.
+        if os.environ.get('ARTEMIS_USE_BEAT', '').lower() in ('1', 'true', 'yes', 'on'):
+            logger.info('Beat mode: in-process scheduler disabled')
+        else:
+            from artemis.services.scheduler_service import start_scheduler
+            start_scheduler(app)
 
     logger.info("Artemis app created successfully")
     return app
@@ -122,6 +140,7 @@ def create_app(config_name=None, start_background_services=True):
 def _setup_auth_middleware(app):
     """Add before_request auth check for API routes."""
     from flask import g, jsonify
+    from artemis.api.errors import _envelope
     from artemis.services.auth_service import _get_current_user, get_effective_role
     from artemis.models.user import User
 
@@ -137,6 +156,8 @@ def _setup_auth_middleware(app):
         '/api/v1/agents/deregister',
         '/api/v1/agents/shell/poll',
         '/api/v1/agents/shell/output',
+        '/api/v1/agents/work/poll',
+        '/api/v1/agents/work/result',
         '/api/agents/register',
         '/api/agents/report',
         '/api/agents/deregister',
@@ -156,6 +177,29 @@ def _setup_auth_middleware(app):
     READONLY_SELF_SERVICE_PREFIXES = ('/api/v1/api-keys', '/api/api-keys')
 
     @app.before_request
+    def rate_limit():
+        from flask import request
+        from artemis.services.rate_limit_service import enforce
+
+        path = request.path
+        if not path.startswith(('/api/', '/agent/')):
+            return None
+
+        if path.endswith('/agents/shell/poll') or path.endswith('/agents/shell/output'):
+            category = 'shell_poll'
+        elif path.endswith('/agents/report'):
+            category = 'agent_report'
+        elif '/auth/login' in path or '/auth/setup' in path or path.endswith('/setup'):
+            category = 'login'
+        elif request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return None
+        elif any(seg in path for seg in ('/scans', '/reports', '/exports', '/sync', '/scan-jobs')):
+            category = 'expensive'
+        else:
+            category = 'write'
+        return enforce(category)
+
+    @app.before_request
     def check_auth():
         from flask import request
         path = request.path
@@ -165,6 +209,11 @@ def _setup_auth_middleware(app):
             return None
 
         if path in PUBLIC_PATHS:
+            return None
+
+        # Agent work state is authenticated by X-Agent-Key, including the
+        # per-work UUID path used while a local subprocess is running.
+        if path.startswith('/api/v1/agents/work/'):
             return None
 
         # Skip auth for public endpoints
@@ -188,12 +237,21 @@ def _setup_auth_middleware(app):
                 "Auth failed for %s: cookie=%s, header=%s",
                 path, 'yes' if token else 'no', 'yes' if auth_header else 'no',
             )
-            return jsonify({'error': 'Authentication required'}), 401
+            return _envelope(401, 'Authentication required')
+
+        # Establish the active organization and the caller's role within it.
+        # Agent endpoints authenticate with X-Agent-Key and carry no user org.
+        if not path.startswith('/agent/') and '/agents/register' not in path:
+            from artemis.services.org_service import OrgContextError, resolve_context
+            try:
+                resolve_context(user)
+            except OrgContextError as exc:
+                return _envelope(exc.status, str(exc))
 
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             is_self_service = path in READONLY_SELF_SERVICE_PATHS or path.startswith(READONLY_SELF_SERVICE_PREFIXES)
             if get_effective_role(user) == 'readonly' and not is_self_service:
-                return jsonify({'error': 'Read-only credentials cannot modify resources'}), 403
+                return _envelope(403, 'Read-only credentials cannot modify resources')
 
 
 def _init_database(app):

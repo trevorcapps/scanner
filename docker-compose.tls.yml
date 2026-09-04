@@ -1,0 +1,44 @@
+# HTTPS reverse-proxy overlay (decision D7).
+#
+#   ARTEMIS_DOMAIN=artemis.example.com \
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Caddy terminates TLS on 443, redirects 80 -> 443, and proxies to the internal
+# HTTP-only gunicorn. It obtains a public ACME certificate for ARTEMIS_DOMAIN by
+# default; to use your own certificate instead, drop cert.pem / key.pem into
+# ./deploy/certs and set ARTEMIS_TLS=internal is not needed — see deploy/Caddyfile.
+#
+# The web container is told it is behind a TLS proxy so it emits secure cookies,
+# HSTS, and honours X-Forwarded-* from exactly one hop.
+
+services:
+  web:
+    environment:
+      ARTEMIS_BEHIND_TLS_PROXY: "1"
+      ARTEMIS_TRUSTED_PROXY_HOPS: "1"
+    # Stop publishing the app port on the host; only Caddy is public now.
+    ports: !reset []
+    expose:
+      - "5005"
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      ARTEMIS_DOMAIN: ${ARTEMIS_DOMAIN:?set ARTEMIS_DOMAIN for the TLS overlay}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

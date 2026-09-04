@@ -1,0 +1,11 @@
+# starter: linux-fact-refresh v1 — gather facts and report OS + package summary
+- hosts: targets
+  gather_facts: true
+  become: false
+  tasks:
+    - name: package facts
+      ansible.builtin.package_facts:
+      register: pkgs
+    - name: summarize
+      ansible.builtin.debug:
+        msg: "{{ ansible_distribution }} {{ ansible_distribution_version }} — {{ pkgs.ansible_facts.packages | length }} packages"

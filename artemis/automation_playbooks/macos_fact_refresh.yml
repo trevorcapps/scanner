@@ -1,0 +1,17 @@
+# starter: macos-fact-refresh v1
+- hosts: targets
+  gather_facts: true
+  tasks:
+    - name: software updates
+      ansible.builtin.command: softwareupdate -l
+      changed_when: false
+      register: su
+      failed_when: false
+    - name: homebrew outdated
+      ansible.builtin.command: brew outdated --quiet
+      changed_when: false
+      register: brew
+      failed_when: false
+    - name: report
+      ansible.builtin.debug:
+        msg: "macOS {{ ansible_distribution_version }}; su_lines={{ su.stdout_lines | default([]) | length }}; brew_outdated={{ brew.stdout_lines | default([]) | length }}"

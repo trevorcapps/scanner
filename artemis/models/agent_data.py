@@ -7,13 +7,17 @@ endpoint's inventory without walking the full AgentReport history.
 import json
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class AgentData(db.Model):
+class AgentData(TenantMixin, db.Model):
     __tablename__ = 'agent_data'
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'ip', name='uq_agent_data_org_ip'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    ip = db.Column(db.Text, unique=True, nullable=False, index=True)
+    ip = db.Column(db.Text, nullable=False, index=True)
     packages_json = db.Column(db.Text)
     package_count = db.Column(db.Integer, default=0)
     system_info_json = db.Column(db.Text)

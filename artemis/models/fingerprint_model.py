@@ -1,9 +1,10 @@
 """Fingerprint model."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Fingerprint(db.Model):
+class Fingerprint(TenantMixin, db.Model):
     __tablename__ = 'fingerprints'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -28,8 +29,8 @@ class Fingerprint(db.Model):
     scan_date = db.Column(db.Text)
 
     __table_args__ = (
-        db.UniqueConstraint('ip', 'port', 'protocol', 'signature_id',
-                            name='uq_fp_ip_port_proto_sig'),
+        db.UniqueConstraint('organization_id', 'ip', 'port', 'protocol', 'signature_id',
+                            name='uq_fp_org_ip_port_proto_sig'),
     )
 
     def to_dict(self):

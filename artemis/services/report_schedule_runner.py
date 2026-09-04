@@ -23,17 +23,20 @@ def next_cron(expr, base=None):
 
 
 def run_due_report_schedules(now_iso):
-    due = ReportSchedule.query.filter(
+    from artemis.services.tenant import SKIP_TENANT_FILTER, use_organization
+
+    due = ReportSchedule.query.execution_options(**{SKIP_TENANT_FILTER: True}).filter(
         ReportSchedule.enabled == 1,
         ReportSchedule.next_run.isnot(None),
         ReportSchedule.next_run <= now_iso,
     ).all()
     for sched in due:
-        _run_one(sched)
-        sched.last_run = now_iso
-        sched.next_run = next_cron(sched.cron_expression)
-        sched.updated_at = now_iso
-        db.session.commit()
+        with use_organization(sched.organization_id):
+            _run_one(sched)
+            sched.last_run = now_iso
+            sched.next_run = next_cron(sched.cron_expression)
+            sched.updated_at = now_iso
+            db.session.commit()
 
 
 def _run_one(sched):

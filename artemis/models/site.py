@@ -2,13 +2,17 @@
 
 import json
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Site(db.Model):
+class Site(TenantMixin, db.Model):
     __tablename__ = 'sites'
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'name', name='uq_site_org_name'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.Text, nullable=False, unique=True)
+    name = db.Column(db.Text, nullable=False)
     description = db.Column(db.Text)
     targets_json = db.Column(db.Text, default='[]')       # JSON list of IPs, CIDRs, hostnames
     excluded_targets_json = db.Column(db.Text, default='[]')  # Targets to skip

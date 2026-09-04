@@ -7,6 +7,7 @@ subscribed webhook and hands each off to the ``deliver_webhook`` Celery task
 
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from artemis.extensions import db
@@ -20,7 +21,11 @@ def _now_iso():
 
 
 def emit(event, payload):
-    """Queue ``event`` for every enabled webhook subscribed to it."""
+    """Queue ``event`` for every enabled webhook subscribed to it.
+
+    Each delivery carries a stable ``event_id`` so receivers can deduplicate and
+    request replay.
+    """
     try:
         hooks = Webhook.query.filter_by(enabled=True).all()
     except Exception as e:
@@ -31,12 +36,14 @@ def emit(event, payload):
     if not targets:
         return
 
-    body = json.dumps({'event': event, 'delivered_at': _now_iso(), 'data': payload},
-                      default=str)
-
     delivery_ids = []
     try:
         for hook in targets:
+            event_id = f'evt_{uuid.uuid4().hex}'
+            body = json.dumps({
+                'id': event_id, 'event': event, 'delivered_at': _now_iso(),
+                'data': payload,
+            }, default=str)
             d = WebhookDelivery(webhook_id=hook.id, event=event,
                                 payload_json=body, status='pending',
                                 created_at=_now_iso())

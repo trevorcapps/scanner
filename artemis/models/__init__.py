@@ -23,8 +23,42 @@ from artemis.models.webhook import Webhook, WebhookDelivery
 from artemis.models.report import Report, ReportSchedule
 from artemis.models.risk_snapshot import RiskSnapshot
 from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentShellSession
+from artemis.models.audit_event import AuditEvent
+from artemis.models.job_event import JobEvent
+from artemis.models.scan_profile import ScanExecutionProfile
+from artemis.models.asset_group import (
+    AssetGroup,
+    AssetGroupMember,
+    AssetReviewEvent,
+    AssetTag,
+)
+from artemis.models.discovery import DiscoveryScope
+from artemis.models.inventory_history import AssetTimelineEvent, SoftwareObservation
+from artemis.models.finding import (
+    FindingObservation,
+    FindingOccurrence,
+    VulnerabilityDefinition,
+)
+from artemis.models.disposition import Disposition, SuppressionRule
+from artemis.models.automation import (
+    AutomationContent, AutomationRun, ExecutionEnvironment, MaintenanceWindow,
+)
+from artemis.models.campaign import PatchCampaign
+from artemis.models.agent_work import AgentWork
+from artemis.models.organization import (
+    Organization,
+    OrganizationInvitation,
+    OrganizationMembership,
+)
 
 __all__ = [
+    'AuditEvent', 'JobEvent', 'ScanExecutionProfile',
+    'AssetTag', 'AssetGroup', 'AssetGroupMember', 'AssetReviewEvent', 'DiscoveryScope',
+    'SoftwareObservation', 'AssetTimelineEvent',
+    'VulnerabilityDefinition', 'FindingOccurrence', 'FindingObservation',
+    'Disposition', 'SuppressionRule',
+    'AutomationContent', 'AutomationRun', 'ExecutionEnvironment', 'MaintenanceWindow', 'PatchCampaign', 'AgentWork',
+    'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',
     'ScheduledScan', 'ScanHistory', 'Agent', 'AgentReport', 'AgentData',

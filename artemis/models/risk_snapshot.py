@@ -1,13 +1,17 @@
 """RiskSnapshot model — one row per day capturing environment vulnerability posture."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class RiskSnapshot(db.Model):
+class RiskSnapshot(TenantMixin, db.Model):
     __tablename__ = 'risk_snapshots'
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'snapshot_date', name='uq_risk_snapshot_org_date'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_date = db.Column(db.Text, unique=True)   # YYYY-MM-DD
+    snapshot_date = db.Column(db.Text)   # YYYY-MM-DD
     assets = db.Column(db.Integer, default=0)
     affected_hosts = db.Column(db.Integer, default=0)
     critical = db.Column(db.Integer, default=0)

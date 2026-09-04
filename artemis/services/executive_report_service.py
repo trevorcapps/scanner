@@ -361,7 +361,10 @@ def build_report(scope, kind='executive', fmt='pdf', generated_by=None, schedule
     now = datetime.now(timezone.utc)
     stamp = now.strftime('%Y%m%d-%H%M%S')
 
-    reports_dir = current_app.config['REPORTS_DIR']
+    # Artifacts are stored beneath a per-organization directory so a path can
+    # never be reused across tenants and a stray download cannot cross orgs.
+    from artemis.services.tenant import current_org_id
+    reports_dir = os.path.join(current_app.config['REPORTS_DIR'], f"org-{current_org_id()}")
     os.makedirs(reports_dir, exist_ok=True)
 
     rec = Report(

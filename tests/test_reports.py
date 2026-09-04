@@ -64,7 +64,12 @@ class ReportingTests(unittest.TestCase):
 
     def test_build_html_report(self):
         from artemis.services.executive_report_service import build_report
+        from artemis.services.org_service import ensure_default_organization
+        from artemis.services.tenant import use_organization
         with self.ctx():
+            org_id = ensure_default_organization().id
+            db.session.commit()
+        with self.ctx(), use_organization(org_id):
             rec = build_report({'type': 'environment'}, kind='full', fmt='html')
             self.assertEqual(rec.status, 'ready', rec.error)
             self.assertTrue(os.path.isfile(rec.file_path))

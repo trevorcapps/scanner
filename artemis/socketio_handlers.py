@@ -29,7 +29,12 @@ from artemis.services.fingerprint_service import (
     store_fingerprints, store_fpx_results, store_raw_fingerprints, get_fingerprint_engine,
 )
 from artemis.services.vuln_service import store_vulnerabilities, get_vulnerabilities
-from artemis.services.auth_scan_service import store_auth_scan_results, get_all_credentials, get_credential
+from artemis.services.auth_scan_service import (
+    get_all_credentials,
+    get_credential,
+    resolve_credential_secrets,
+    store_auth_scan_results,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +56,40 @@ _exploit_module = None
 
 @socketio.on('connect')
 def handle_connect(auth=None):
-    """Reject Socket.IO clients that did not pass the normal auth checks."""
+    """Reject Socket.IO clients that did not pass the normal auth checks.
+
+    Also resolve the active organization so every socket action is tenant-scoped.
+    """
     from artemis.models.user import User
     from artemis.services.auth_service import _get_current_user
+    from artemis.services.org_service import OrgContextError, resolve_context
 
     if User.query.count() == 0:
         return True
-    return _get_current_user() is not None
+    user = _get_current_user()
+    if user is None:
+        return False
+    try:
+        resolve_context(user)
+    except OrgContextError:
+        return False
+    return True
 
 
 def _require_socket_role(min_role='analyst'):
     from artemis.models.user import User
     from artemis.services.auth_service import ROLE_HIERARCHY, _get_current_user, get_effective_role
+    from artemis.services.org_service import OrgContextError, resolve_context
 
     if User.query.count() == 0:
         return True
     user = _get_current_user()
+    if user is not None:
+        try:
+            resolve_context(user)
+        except OrgContextError:
+            emit('scan_error', {'error': 'No organization context'})
+            return False
     if not user or ROLE_HIERARCHY.get(get_effective_role(user), 0) < ROLE_HIERARCHY[min_role]:
         emit('scan_error', {'error': 'Insufficient permissions'})
         return False
@@ -457,6 +480,32 @@ def scan_target(target, sid, scan_options=None):
             active_scans.pop(sid, None)
 
 
+@socketio.on('subscribe_job')
+def handle_subscribe_job(data):
+    """Join the event room for one durable job (authorised, tenant-scoped)."""
+    from flask_socketio import join_room
+    from artemis.models.scan_job import ScanJob
+    from artemis.services.tenant import scoped_get
+
+    if not _require_socket_role('readonly'):
+        return
+    job_id = (data or {}).get('job_id', '')
+    job = scoped_get(ScanJob, job_id) if job_id else None
+    if not job:
+        emit('job_error', {'error': 'Job not found'})
+        return
+    join_room(f'job:{job.id}')
+    emit('job_subscribed', {'job_id': job.id, 'status': job.status})
+
+
+@socketio.on('unsubscribe_job')
+def handle_unsubscribe_job(data):
+    from flask_socketio import leave_room
+    job_id = (data or {}).get('job_id', '')
+    if job_id:
+        leave_room(f'job:{job_id}')
+
+
 @socketio.on('start_scan')
 def handle_start_scan(data):
     if not _require_socket_role():
@@ -845,10 +894,11 @@ def handle_start_auth_scan(data):
                                 def log_cb(msg, level='info'):
                                     emit_log(sid, msg, level)
 
+                                secrets = resolve_credential_secrets(cred['id'], reason='socket_auth_scan')
                                 result = run_authenticated_scan(
                                     host=ip, port=ssh_port, username=cred['username'],
-                                    password=cred['password'] if cred_type == 'ssh_password' else None,
-                                    key_path=cred['key_path'] if cred_type == 'ssh_key' else None,
+                                    password=secrets.get('password') if cred_type == 'ssh_password' else None,
+                                    key_data=secrets.get('key_data') if cred_type == 'ssh_key' else None,
                                     nvd_api_key=nvd_api_key, log_callback=log_cb
                                 )
 

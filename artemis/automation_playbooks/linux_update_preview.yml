@@ -1,0 +1,19 @@
+# starter: linux-update-preview v1 — list pending updates without applying them
+- hosts: targets
+  gather_facts: true
+  become: true
+  tasks:
+    - name: apt — simulate upgrade
+      ansible.builtin.command: apt-get -s upgrade
+      register: apt_preview
+      changed_when: false
+      when: ansible_pkg_mgr in ('apt', 'apt_rpm')
+    - name: dnf — check-update
+      ansible.builtin.command: dnf -q check-update
+      register: dnf_preview
+      failed_when: dnf_preview.rc not in (0, 100)
+      changed_when: false
+      when: ansible_pkg_mgr == 'dnf'
+    - name: report
+      ansible.builtin.debug:
+        msg: "{{ (apt_preview.stdout_lines | default([]) | select('match', '^Inst ') | list | length) if ansible_pkg_mgr == 'apt' else (dnf_preview.stdout_lines | default([]) | length) }} update(s) pending"

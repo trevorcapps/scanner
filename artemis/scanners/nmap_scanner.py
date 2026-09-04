@@ -110,40 +110,30 @@ def scan(ip, options=None, log_callback=None, cancel_check=None):
     if log_callback:
         log_callback(f"$ {printable}")
 
+    from artemis.scanners._process import ProcessCancelled, ProcessTimeout, run_streaming
+
     tail = []
     try:
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-        except FileNotFoundError:
-            raise ScanError("nmap is not installed or not on PATH")
-
-        assert proc.stdout is not None
-        for raw in proc.stdout:
-            line = raw.rstrip()
-            if not line:
-                continue
+        def _line(line):
             tail.append(line)
             if len(tail) > 40:
                 tail.pop(0)
             if log_callback:
                 log_callback(f"nmap: {line}")
-            if cancel_check and cancel_check():
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                if log_callback:
-                    log_callback("nmap: terminated (scan cancelled)")
-                raise ScanError("Scan cancelled")
 
-        returncode = proc.wait()
+        try:
+            returncode, _ = run_streaming(
+                cmd, cancel_check=cancel_check, line_callback=_line,
+                timeout=(options or {}).get('_max_seconds'),
+            )
+        except FileNotFoundError:
+            raise ScanError("nmap is not installed or not on PATH")
+        except ProcessCancelled:
+            if log_callback:
+                log_callback("nmap: terminated (scan cancelled)")
+            raise ScanError("Scan cancelled")
+        except ProcessTimeout:
+            raise ScanError("Nmap scan timed out")
 
         if not os.path.exists(xml_path) or os.path.getsize(xml_path) == 0:
             detail = tail[-1] if tail else f"nmap exited with code {returncode}"

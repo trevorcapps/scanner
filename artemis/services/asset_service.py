@@ -22,7 +22,8 @@ def _emit_webhook(event, payload):
         logger.debug("webhook emit failed", exc_info=True)
 
 
-def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None):
+def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None,
+                     source='scan'):
     """Create or update an asset row. Non-None fields overwrite; others are kept.
 
     Returns True when a new asset row was created, else False.
@@ -48,14 +49,26 @@ def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vend
         asset = Asset.query.filter_by(ip=ip).first()
         created = asset is None
         if created:
-            asset = Asset(ip=ip, first_seen=now, scan_count=0)
+            asset = Asset(ip=ip, first_seen=now, scan_count=0,
+                          first_seen_source=source, lifecycle='active')
             db.session.add(asset)
+        elif asset.lifecycle == 'decommissioned':
+            # A decommissioned host reappeared — never silently reactivate it.
+            _record_review(asset, 'decommissioned_reappeared', {'ip': ip, 'seen_at': now})
+            asset.last_seen = now
+            asset.last_seen_source = source
+            db.session.commit()
+            return False
 
-        for field, value in updates.items():
-            if value is not None:
-                setattr(asset, field, value)
+        # Discovery-sourced fields never clobber operator-owned values.
+        asset.apply_discovery(**{k: v for k, v in updates.items() if k != 'aliases_json'})
+        if updates.get('aliases_json') is not None:
+            asset.aliases_json = updates['aliases_json']
         asset.last_seen = now
+        asset.last_seen_source = source
         asset.scan_count = (asset.scan_count or 0) + 1
+        if asset.lifecycle == 'stale':
+            asset.lifecycle = 'active'
         db.session.commit()
         if created:
             _emit_webhook('asset.discovered', {
@@ -67,6 +80,14 @@ def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vend
         db.session.rollback()
         logger.error(f"Database error storing asset info for {ip}: {e}")
         return False
+
+
+def _record_review(asset, kind, detail):
+    from artemis.models.asset_group import AssetReviewEvent
+    db.session.add(AssetReviewEvent(
+        asset_id=asset.id, kind=kind, detail_json=json.dumps(detail),
+        created_at=datetime.now().isoformat(),
+    ))
 
 
 def get_asset_details(ip):

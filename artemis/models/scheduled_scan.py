@@ -1,16 +1,22 @@
 """ScheduledScan model — recurring and one-time scan schedules."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class ScheduledScan(db.Model):
+class ScheduledScan(TenantMixin, db.Model):
     __tablename__ = 'scheduled_scans'
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, nullable=False)
     target = db.Column(db.Text, nullable=False)
     scan_type = db.Column(db.Text, default='port')
-    profile_id = db.Column(db.Text)
+    profile_id = db.Column(db.Text)                       # legacy: nuclei template tag string
+    execution_profile_id = db.Column(
+        db.Integer, db.ForeignKey('scan_execution_profiles.id', ondelete='SET NULL'), index=True,
+    )
+    missed_run_policy = db.Column(db.String(16), nullable=False, default='skip')
+    last_occurrence_key = db.Column(db.String(128))
     schedule_type = db.Column(db.Text, nullable=False)
     cron_expression = db.Column(db.Text)
     schedule_hour = db.Column(db.Integer, default=2)
@@ -37,6 +43,8 @@ class ScheduledScan(db.Model):
             'target': self.target,
             'scan_type': self.scan_type,
             'profile_id': self.profile_id,
+            'execution_profile_id': self.execution_profile_id,
+            'missed_run_policy': self.missed_run_policy,
             'schedule_type': self.schedule_type,
             'cron_expression': self.cron_expression,
             'schedule_hour': self.schedule_hour,

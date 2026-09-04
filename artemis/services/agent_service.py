@@ -132,7 +132,48 @@ def _emit_webhook(event, payload):
 
 
 def process_report(agent, data):
-    """Process and store an agent report."""
+    """Process and store an agent report, scoped to the agent's organization."""
+    from artemis.services.tenant import use_organization
+
+    with use_organization(agent.organization_id):
+        return _process_report(agent, data)
+
+
+MIN_SUPPORTED_AGENT = '1.2.0'
+CURRENT_AGENT_VERSION = '1.4.0'
+
+
+def _version_tuple(value):
+    try:
+        return tuple(int(x) for x in str(value or '0').split('.')[:3])
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def _capability_health(data):
+    """Per-collector health from the agent's own telemetry block."""
+    collectors = (data.get('telemetry') or {}).get('collectors') or {}
+    health = {}
+    for name, meta in collectors.items():
+        health[name] = meta.get('status', 'unknown')
+    return health
+
+
+def _set_upgrade_status(agent):
+    from artemis.services.auth_scan_service import get_setting
+
+    target = get_setting('agent_target_version', CURRENT_AGENT_VERSION) or CURRENT_AGENT_VERSION
+    have = _version_tuple(agent.agent_version)
+    if have < _version_tuple(MIN_SUPPORTED_AGENT):
+        agent.upgrade_status = 'unsupported'
+    elif have < _version_tuple(target):
+        agent.upgrade_status = agent.upgrade_status if agent.upgrade_status in (
+            'upgrading', 'failed') else 'pending'
+    else:
+        agent.upgrade_status = 'up_to_date'
+
+
+def _process_report(agent, data):
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     report = AgentReport(
@@ -159,6 +200,28 @@ def process_report(agent, data):
         agent.agent_version = data['agent_version']
     if isinstance(data.get('capabilities'), list):
         agent.capabilities_json = json.dumps(data['capabilities'])
+
+    # P3.4: patch/update state, service health, platform, rollout status
+    agent.host_platform = data.get('host_platform') or agent.host_platform
+    if data.get('telemetry_schema_version') is not None:
+        agent.telemetry_schema_version = data['telemetry_schema_version']
+    patch_status = data.get('patch_status')
+    if isinstance(patch_status, dict):
+        agent.patch_status_json = json.dumps(patch_status)
+        rr = patch_status.get('reboot_required')
+        agent.reboot_required = ('true' if rr is True else 'false' if rr is False
+                                 else 'unsupported')
+        agent.pending_updates = patch_status.get('pending_updates') \
+            if isinstance(patch_status.get('pending_updates'), int) else None
+        agent.security_updates = patch_status.get('security_updates') \
+            if isinstance(patch_status.get('security_updates'), int) else None
+    if isinstance(data.get('service_health'), dict):
+        agent.service_health_json = json.dumps(data['service_health'])
+    sys_info = data.get('system_info') or {}
+    if isinstance(sys_info.get('uptime_seconds'), int):
+        agent.uptime_seconds = sys_info['uptime_seconds']
+    agent.capability_health_json = json.dumps(_capability_health(data))
+    _set_upgrade_status(agent)
 
     agent.last_checkin = now
     agent.status = 'active'
@@ -217,7 +280,7 @@ def _sync_agent_to_asset(agent, data):
 
         mac_address = data.get('mac_address', '')
         store_asset_info(agent.ip, dns_info=dns_info, os_info=asset_os,
-                         mac_address=mac_address, mac_vendor=None)
+                         mac_address=mac_address, mac_vendor=None, source='agent')
 
         # Store listening ports as scan data so they show in asset details
         ports = data.get('ports', [])

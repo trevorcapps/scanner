@@ -62,6 +62,35 @@ def store_auth_scan_results(ip, os_info, packages, cves, detection_source='auth-
 
     _enrich_asset_from_auth(ip, os_info, system)
 
+    # Historical inventory: observation intervals + timeline (P3.3).
+    try:
+        from artemis.services.inventory_service import record_inventory
+        record_inventory(ip, [{'name': p['name'], 'version': p.get('version'),
+                               'cpe': p.get('cpe')} for p in packages],
+                         source='agent' if detection_source == 'agent' else 'auth-scan')
+    except Exception:
+        logger.exception("inventory history update failed for %s", ip)
+
+    # Canonical findings (P4.1) — CVE matches become finding occurrences.
+    try:
+        from artemis.services.finding_service import ingest_finding, resolve_absent
+        src = 'agent' if detection_source == 'agent' else 'ssh'
+        seen = set()
+        for cve in cves:
+            seen.add(cve['cve_id'])
+            ingest_finding(
+                definition_id=cve['cve_id'], kind='cve', ip=ip, source=src,
+                component=cve.get('affected_cpe'), severity=cve.get('severity'),
+                cvss_score=cve.get('cvss_score'), description=cve.get('description'),
+                observed_at=scan_date,
+                evidence={'affected_cpe': cve.get('affected_cpe'),
+                          'has_exploit': bool(cve.get('has_exploit'))},
+            )
+        if seen:
+            resolve_absent(ip, seen_definition_ids=seen, source=src)
+    except Exception:
+        logger.exception("canonical finding ingest failed for %s", ip)
+
 
 def _enrich_asset_from_auth(ip, os_info, system):
     """Fold authenticated findings back onto the ``assets`` row + reclassify."""
@@ -108,13 +137,10 @@ def get_cve_matches(ip):
 # --------------- Credentials ---------------
 
 def _credential_dict(c, full=True):
-    d = {
-        'id': c.id, 'name': c.name, 'cred_type': c.cred_type, 'username': c.username,
-        'key_path': c.key_path or '', 'password': c.password or '',
-    }
-    if full:
-        d['created_at'] = c.created_at
-        d['updated_at'] = c.updated_at
+    d = c.to_dict()
+    if not full:
+        d.pop('created_at', None)
+        d.pop('updated_at', None)
     return d
 
 
@@ -123,27 +149,81 @@ def get_all_credentials():
 
 
 def get_credential(cred_id):
+    """Safe (secret-free) view of one credential."""
     c = db.session.get(Credential, cred_id)
     return _credential_dict(c, full=False) if c else None
 
 
-def save_credential(name, cred_type, username, key_path='', password='', cred_id=None):
+def resolve_credential_secrets(cred_id, *, reason='auth_scan'):
+    """Return {username, cred_type, password, key_data} with real secret values.
+
+    Every call writes a ``secret.read`` audit event. Use only at the point a
+    scanner actually needs to authenticate.
+    """
+    from artemis.services import audit_service
+
+    c = db.session.get(Credential, cred_id)
+    if not c:
+        return None
+    try:
+        payload = {
+            'id': c.id,
+            'name': c.name,
+            'username': c.username,
+            'cred_type': c.cred_type,
+            'password': c.reveal_secret() if c.cred_type == 'ssh_password' else (c.reveal_secret() or None),
+            'key_data': c.reveal_private_key() if c.cred_type == 'ssh_key' else None,
+        }
+        audit_service.record(
+            audit_service.SECRET_READ, target_type='credential', target_id=c.id,
+            detail={'name': c.name, 'reason': reason},
+        )
+        return payload
+    except Exception:
+        audit_service.record(
+            audit_service.SECRET_READ, outcome='failure',
+            target_type='credential', target_id=c.id, detail={'reason': reason},
+        )
+        raise
+
+
+def save_credential(name, cred_type, username, key_path='', password='', cred_id=None,
+                    private_key=None):
     """Create or update a credential set. Returns its id."""
+    from artemis.services import audit_service, crypto_service
+
+    if not crypto_service.is_configured():
+        raise ValueError(
+            "Secret encryption is not configured; set ARTEMIS_ENCRYPTION_KEY before storing credentials"
+        )
+
     now = datetime.now().isoformat()
     try:
+        creating = not cred_id
         if cred_id:
             c = db.session.get(Credential, cred_id)
             if not c:
                 raise ValueError(f"Credential {cred_id} not found")
-            c.name, c.cred_type, c.username = name, cred_type, username
-            c.key_path, c.password, c.updated_at = key_path, password, now
         else:
             if Credential.query.filter_by(name=name).first():
                 raise ValueError(f"Credential name '{name}' already exists")
-            c = Credential(name=name, cred_type=cred_type, username=username,
-                           key_path=key_path, password=password,
-                           created_at=now, updated_at=now)
+            c = Credential(created_at=now)
             db.session.add(c)
+
+        c.name, c.cred_type, c.username = name, cred_type, username
+        c.key_path = key_path or None
+        c.updated_at = now
+        # Only overwrite secrets when a new value is supplied (blank == keep).
+        if password:
+            c.set_secret(password)
+        if private_key:
+            c.set_private_key(private_key)
+
+        db.session.flush()
+        audit_service.record(
+            audit_service.SECRET_WRITE, target_type='credential', target_id=c.id,
+            detail={'name': name, 'created': creating},
+        )
         db.session.commit()
         return c.id
     except ValueError:

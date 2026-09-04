@@ -16,6 +16,15 @@
 x-app-env: &app-env
   FLASK_CONFIG: production
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  # 32-byte base64 key that wraps stored secrets. Required unless ARTEMIS_ALLOW_INSECURE=1.
+  ARTEMIS_ENCRYPTION_KEY: ${ARTEMIS_ENCRYPTION_KEY:-}
+  ARTEMIS_ENCRYPTION_KEYS: ${ARTEMIS_ENCRYPTION_KEYS:-}
+  ARTEMIS_ALLOW_INSECURE: ${ARTEMIS_ALLOW_INSECURE:-}
+  ARTEMIS_BEHIND_TLS_PROXY: ${ARTEMIS_BEHIND_TLS_PROXY:-}
+  ARTEMIS_LOG_FORMAT: ${ARTEMIS_LOG_FORMAT:-json}
+  # Celery Beat drives scheduled-scan / report dispatch; disables the in-process
+  # scheduler thread in the web container.
+  ARTEMIS_USE_BEAT: "1"
   DATABASE_URL: postgresql+psycopg://artemis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@${DB_HOST:-postgres}:5432/artemis
   REDIS_URL: redis://${REDIS_HOST:-redis}:6379/0
   CELERY_BROKER_URL: redis://${REDIS_HOST:-redis}:6379/0
@@ -39,12 +48,12 @@ x-app-build: &app-build
     context: .
     dockerfile: Dockerfile
     args:
-      NUCLEI_VERSION: ${NUCLEI_VERSION:-}
+      NUCLEI_VERSION: ${NUCLEI_VERSION:-3.11.1}
   image: artemis-scanner:local
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.6-alpine@sha256:1d04b9ba1d4996401f2552b51beda8187f175c0645c091e4781134fc9c9a3eef
     environment:
       POSTGRES_USER: artemis
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -59,7 +68,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -113,6 +122,21 @@ services:
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    <<: *app-build
+    command: ["beat"]
+    environment:
+      <<: *app-env
+      START_BACKGROUND_SERVICES: "false"
     depends_on:
       postgres:
         condition: service_healthy

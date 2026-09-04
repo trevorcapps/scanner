@@ -4,6 +4,7 @@ import json
 import secrets
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 # Events a webhook may subscribe to.
 WEBHOOK_EVENTS = (
@@ -13,6 +14,15 @@ WEBHOOK_EVENTS = (
     'agent.registered',
     'agent.report.received',
     'site.scan.completed',
+    # P2.4 — job + finding + asset lifecycle, and integration health
+    'job.completed',
+    'job.failed',
+    'finding.resolved',
+    'finding.reopened',
+    'endpoint.job.failed',
+    'disposition.approved',
+    'asset.decommissioned',
+    'integration.failed',
     'ping',
 )
 
@@ -21,7 +31,7 @@ def generate_webhook_secret():
     return secrets.token_urlsafe(32)
 
 
-class Webhook(db.Model):
+class Webhook(TenantMixin, db.Model):
     __tablename__ = 'webhooks'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -53,6 +63,7 @@ class Webhook(db.Model):
     def to_dict(self, include_secret=False):
         d = {
             'id': self.id,
+            'organization_id': self.organization_id,
             'url': self.url,
             'events': self.events,
             'enabled': bool(self.enabled),
@@ -67,7 +78,7 @@ class Webhook(db.Model):
         return d
 
 
-class WebhookDelivery(db.Model):
+class WebhookDelivery(TenantMixin, db.Model):
     __tablename__ = 'webhook_deliveries'
 
     id = db.Column(db.Integer, primary_key=True)

@@ -117,7 +117,16 @@ def create_user(username, password, email=None, role='analyst', display_name=Non
         created_at=_now_iso(),
     )
     user.set_password(password)
+    # The very first user administers the platform.
+    if User.query.count() == 0:
+        user.platform_admin = 1
     db.session.add(user)
+    db.session.flush()
+
+    # Every user is a member of the Default organization with their seed role.
+    from artemis.services.org_service import add_member, ensure_default_organization
+    add_member(ensure_default_organization(), user, role if role in ('admin', 'analyst', 'readonly') else 'analyst')
+
     db.session.commit()
     logger.info(f"Created user: {username} (role={role})")
     return user
@@ -145,21 +154,40 @@ def create_default_admin():
 
 # ==================== API Key Management ====================
 
-def generate_api_key(user_id, name='default', role=None):
-    """Generate a new API key for a user. Returns the raw key (only shown once)."""
+def generate_api_key(user_id, name='default', role=None, organization_id=None):
+    """Generate a new API key for a user. Returns the raw key (only shown once).
+
+    The key is bound to one organization: the caller's active organization by
+    default. ``role`` is capped to the user's role in that organization.
+    """
     user = db.session.get(User, user_id)
     if not user:
         raise ValueError('User not found')
+
+    if organization_id is None:
+        organization_id = getattr(g, 'organization_id', None)
+    if organization_id is None:
+        from artemis.services.org_service import ensure_default_organization
+        organization_id = ensure_default_organization().id
+
+    from artemis.services.org_service import membership
+    member = membership(user, organization_id)
+    org_role = member.role if member else ('admin' if getattr(user, 'platform_admin', 0) else user.role)
+    if role is None:
+        role = org_role
+    elif ROLE_HIERARCHY.get(role, 0) > ROLE_HIERARCHY.get(org_role, 0):
+        role = org_role
 
     raw_key = 'art_' + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
     api_key = ApiKey(
         user_id=user_id,
+        organization_id=organization_id,
         key_hash=key_hash,
         key_prefix=raw_key[:12],
         name=name,
-        role=role or user.role,
+        role=role,
         created_at=_now_iso(),
         enabled=1,
     )
@@ -225,6 +253,8 @@ def _get_current_user():
             g.current_user = user
             g.auth_method = 'api_key'
             g.api_key_role = api_key.role
+            g.api_key_name = api_key.name
+            g.api_key_organization_id = api_key.organization_id
             return user
 
     # Session cookie (for browser UI)
@@ -242,16 +272,26 @@ def _get_current_user():
 
 
 def get_effective_role(user=None):
-    """Return a role capped by both the user and API-key permissions."""
+    """Return the caller's effective role, capped by API-key permissions.
+
+    When an organization context has been resolved for the request, the role is
+    the caller's membership role in that organization; otherwise it falls back to
+    the legacy ``User.role``. Platform admins are always ``admin``.
+    """
     user = user or getattr(g, 'current_user', None)
     if user is None:
         return None
-    user_level = ROLE_HIERARCHY.get(user.role, 0)
+
+    if getattr(g, 'is_platform_admin', False) or getattr(user, 'platform_admin', 0):
+        base_role = 'admin'
+    else:
+        base_role = getattr(g, 'org_role', None) or user.role
+
     key_role = getattr(g, 'api_key_role', None)
     if key_role is None:
-        return user.role
-    key_level = min(user_level, ROLE_HIERARCHY.get(key_role, 0))
-    return next((role for role, level in ROLE_HIERARCHY.items() if level == key_level), None)
+        return base_role
+    capped = min(ROLE_HIERARCHY.get(base_role, 0), ROLE_HIERARCHY.get(key_role, 0))
+    return next((role for role, level in ROLE_HIERARCHY.items() if level == capped), None)
 
 
 def login_required(f):

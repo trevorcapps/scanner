@@ -157,6 +157,11 @@ def create_agent_shell_session(aid):
         )
     except (ShellSessionError, TypeError, ValueError) as exc:
         return jsonify({'error': str(exc)}), 409
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SHELL_OPEN, target_type='shell_session', target_id=session.id,
+        detail={'agent_id': agent.id, 'agent': agent.hostname}, commit=True,
+    )
     return jsonify({'session': session.to_dict()}), 201
 
 
@@ -221,7 +226,79 @@ def close_agent_shell_session(session_id):
     session = _owned_shell_session(session_id)
     if not session:
         return jsonify({'error': 'Shell session not found'}), 404
-    return jsonify({'session': request_close(session).to_dict()}), 202
+    closed = request_close(session)
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SHELL_CLOSE, target_type='shell_session', target_id=session_id,
+        detail={'agent_id': session.agent_id}, commit=True,
+    )
+    return jsonify({'session': closed.to_dict()}), 202
+
+
+@agents_bp.route('/agents/fleet', methods=['GET'])
+@role_required('analyst')
+def fleet_view():
+    """Fleet summary: rollout rings, versions, patch state, capability health."""
+    agents = Agent.query.filter_by(enabled=1).all()
+    rings = {}
+    reboots = pending = 0
+    for a in agents:
+        rings[a.rollout_ring or 'stable'] = rings.get(a.rollout_ring or 'stable', 0) + 1
+        if a.reboot_required == 'true':
+            reboots += 1
+        if isinstance(a.pending_updates, int):
+            pending += a.pending_updates
+    return jsonify({
+        'agents': [a.to_dict() for a in agents],
+        'summary': {
+            'total': len(agents),
+            'by_ring': rings,
+            'reboot_required': reboots,
+            'pending_updates_total': pending,
+            'min_supported_version': _min_supported(),
+            'target_version': _target_version(),
+        },
+    })
+
+
+def _min_supported():
+    from artemis.services.agent_service import MIN_SUPPORTED_AGENT
+    return MIN_SUPPORTED_AGENT
+
+
+def _target_version():
+    from artemis.services.auth_scan_service import get_setting
+    from artemis.services.agent_service import CURRENT_AGENT_VERSION
+    return get_setting('agent_target_version', CURRENT_AGENT_VERSION) or CURRENT_AGENT_VERSION
+
+
+@agents_bp.route('/agents/<int:aid>/rollout-ring', methods=['PUT'])
+@role_required('admin')
+def set_rollout_ring(aid):
+    agent = db.get_or_404(Agent, aid)
+    ring = (request.get_json(silent=True) or {}).get('ring')
+    if ring not in ('canary', 'early', 'stable'):
+        return jsonify({'error': 'ring must be canary, early, or stable'}), 400
+    agent.rollout_ring = ring
+    db.session.commit()
+    from artemis.services import audit_service
+    audit_service.record('agent.rollout_ring', target_type='agent', target_id=aid,
+                         detail={'ring': ring}, commit=True)
+    return jsonify({'agent': agent.to_dict()})
+
+
+@agents_bp.route('/agents/target-version', methods=['PUT'])
+@role_required('admin')
+def set_target_version():
+    from artemis.services.auth_scan_service import set_setting
+    version = (request.get_json(silent=True) or {}).get('version', '').strip()
+    if not version:
+        return jsonify({'error': 'version is required'}), 400
+    set_setting('agent_target_version', version)
+    from artemis.services import audit_service
+    audit_service.record('agent.target_version', target_type='setting',
+                         target_id='agent_target_version', detail={'version': version}, commit=True)
+    return jsonify({'target_version': version})
 
 
 @agents_bp.route('/agents', methods=['GET'])
@@ -260,6 +337,7 @@ def get_agent(aid):
 
 
 @agents_bp.route('/agents/<int:aid>', methods=['DELETE'])
+@role_required('admin')
 def delete_agent(aid):
     """Deregister an agent from the console.
 
@@ -272,11 +350,17 @@ def delete_agent(aid):
 
 
 @agents_bp.route('/agents/<int:aid>/generate-key', methods=['POST'])
+@role_required('admin')
 def regenerate_key(aid):
-    """Regenerate agent API key."""
+    """Regenerate agent API key. Admin only — this is agent-key administration."""
     agent = Agent.query.get_or_404(aid)
     agent.agent_key = generate_agent_key()
     db.session.commit()
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.AGENT_KEY_ISSUE, target_type='agent', target_id=aid,
+        detail={'agent': agent.hostname, 'rotated': True}, commit=True,
+    )
     return jsonify({'agent_id': aid, 'agent_key': agent.agent_key})
 
 

@@ -1,0 +1,16 @@
+# starter: linux-controlled-reboot v1 — reboot with return-to-service validation
+- hosts: targets
+  gather_facts: false
+  become: true
+  serial: "{{ batch_size | default(1) }}"
+  max_fail_percentage: "{{ max_fail_percentage | default(0) }}"
+  tasks:
+    - name: reboot and wait
+      ansible.builtin.reboot:
+        reboot_timeout: "{{ reboot_timeout | default(600) }}"
+        test_command: "{{ validation_command | default('uptime') }}"
+    - name: post-reboot service check
+      ansible.builtin.command: "{{ item }}"
+      loop: "{{ validation_services | default([]) | map('regex_replace', '^(.*)$', 'systemctl is-active \\1') | list }}"
+      changed_when: false
+      register: svc_check

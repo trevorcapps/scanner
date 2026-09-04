@@ -1,9 +1,10 @@
 """Scan model — port scan results."""
 
 from artemis.extensions import db
+from artemis.models._tenant import TenantMixin
 
 
-class Scan(db.Model):
+class Scan(TenantMixin, db.Model):
     __tablename__ = 'scans'
 
     id = db.Column(db.Integer, primary_key=True)
