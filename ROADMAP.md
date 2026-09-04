@@ -22,7 +22,9 @@
 ### 2. **Authentication & Multi-Tenancy**
 - User auth (JWT/session-based) with role-based access (admin, analyst, read-only)
 - API key management for automation/integrations
-- Org/tenant isolation — Qualys and Nexpose are multi-tenant; Artemis needs to be too
+- [~] Org/tenant isolation — Phase 1: organizations, per-org memberships/roles,
+  audited platform admin, API keys bound to one org (tenant `organization_id`
+  columns and enforced scoping land in P1.2–P1.3)
 
 ### 3. **REST API**
 - Proper versioned API (`/api/v1/`) for everything: scans, assets, vulns, reports

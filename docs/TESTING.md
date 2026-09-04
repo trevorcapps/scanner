@@ -59,6 +59,7 @@ publishes the image with CycloneDX SBOMs. It never deploys.
 | `test_feed_caches.py` | NVD feed metadata schema and native ExploitDB CSV caching/lookups |
 | `test_reports.py` | report scopes, rendering, and report records |
 | `test_security_baseline.py` | envelope encryption, production config guard, audit trail, rate limiting, transport headers |
+| `test_organizations.py` | memberships, per-org roles, platform admin, API-key org binding, org switch |
 | `test_webhooks.py` | delivery signing, retries, filters, and CRUD |
 
 ## Test design conventions

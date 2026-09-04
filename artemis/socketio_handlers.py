@@ -56,22 +56,40 @@ _exploit_module = None
 
 @socketio.on('connect')
 def handle_connect(auth=None):
-    """Reject Socket.IO clients that did not pass the normal auth checks."""
+    """Reject Socket.IO clients that did not pass the normal auth checks.
+
+    Also resolve the active organization so every socket action is tenant-scoped.
+    """
     from artemis.models.user import User
     from artemis.services.auth_service import _get_current_user
+    from artemis.services.org_service import OrgContextError, resolve_context
 
     if User.query.count() == 0:
         return True
-    return _get_current_user() is not None
+    user = _get_current_user()
+    if user is None:
+        return False
+    try:
+        resolve_context(user)
+    except OrgContextError:
+        return False
+    return True
 
 
 def _require_socket_role(min_role='analyst'):
     from artemis.models.user import User
     from artemis.services.auth_service import ROLE_HIERARCHY, _get_current_user, get_effective_role
+    from artemis.services.org_service import OrgContextError, resolve_context
 
     if User.query.count() == 0:
         return True
     user = _get_current_user()
+    if user is not None:
+        try:
+            resolve_context(user)
+        except OrgContextError:
+            emit('scan_error', {'error': 'No organization context'})
+            return False
     if not user or ROLE_HIERARCHY.get(get_effective_role(user), 0) < ROLE_HIERARCHY[min_role]:
         emit('scan_error', {'error': 'Insufficient permissions'})
         return False

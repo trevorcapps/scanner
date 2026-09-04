@@ -219,6 +219,15 @@ def _setup_auth_middleware(app):
             )
             return jsonify({'error': 'Authentication required'}), 401
 
+        # Establish the active organization and the caller's role within it.
+        # Agent endpoints authenticate with X-Agent-Key and carry no user org.
+        if not path.startswith('/agent/') and '/agents/register' not in path:
+            from artemis.services.org_service import OrgContextError, resolve_context
+            try:
+                resolve_context(user)
+            except OrgContextError as exc:
+                return jsonify({'error': str(exc)}), exc.status
+
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             is_self_service = path in READONLY_SELF_SERVICE_PATHS or path.startswith(READONLY_SELF_SERVICE_PREFIXES)
             if get_effective_role(user) == 'readonly' and not is_self_service:

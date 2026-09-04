@@ -24,9 +24,15 @@ from artemis.models.report import Report, ReportSchedule
 from artemis.models.risk_snapshot import RiskSnapshot
 from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentShellSession
 from artemis.models.audit_event import AuditEvent
+from artemis.models.organization import (
+    Organization,
+    OrganizationInvitation,
+    OrganizationMembership,
+)
 
 __all__ = [
     'AuditEvent',
+    'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',
     'ScheduledScan', 'ScanHistory', 'Agent', 'AgentReport', 'AgentData',

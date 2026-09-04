@@ -11,7 +11,12 @@ class User(db.Model):
     username = db.Column(db.Text, unique=True, nullable=False)
     email = db.Column(db.Text, unique=True)
     password_hash = db.Column(db.Text, nullable=False)
+    # Legacy default role. Ordinary authorization is per-organization via
+    # OrganizationMembership; this is retained as the seed role for a user's
+    # membership in the Default organization and as a fallback.
     role = db.Column(db.Text, default='analyst')  # admin, analyst, readonly
+    # Cross-organization platform administrator (decision D1). Audited.
+    platform_admin = db.Column(db.Integer, nullable=False, default=0)
     display_name = db.Column(db.Text)
     enabled = db.Column(db.Integer, default=1)
     created_at = db.Column(db.Text)
@@ -34,6 +39,7 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'role': self.role,
+            'platform_admin': bool(self.platform_admin),
             'display_name': self.display_name,
             'enabled': self.enabled,
             'created_at': self.created_at,

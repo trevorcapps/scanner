@@ -15,6 +15,7 @@ from artemis.api.webhooks import webhooks_bp
 from artemis.api.openapi import docs_bp
 from artemis.api.dashboard import dashboard_bp
 from artemis.api.audit import audit_bp
+from artemis.api.organizations import organizations_bp
 
 
 def register_blueprints(app):
@@ -41,6 +42,7 @@ def register_blueprints(app):
     app.register_blueprint(docs_bp, url_prefix='/api/v1')
     app.register_blueprint(dashboard_bp, url_prefix='/api/v1')
     app.register_blueprint(audit_bp, url_prefix='/api/v1')
+    app.register_blueprint(organizations_bp, url_prefix='/api/v1')
 
     # Legacy (backward compat) — same blueprints, no version prefix
     app.register_blueprint(assets_bp, url_prefix='/api', name='assets_legacy')
