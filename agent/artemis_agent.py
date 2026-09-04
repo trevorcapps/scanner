@@ -13,20 +13,29 @@ Zero external dependencies — stdlib only. Python 3.8+.
 """
 
 import argparse
+import base64
+import fcntl
 import json
 import os
 import platform
+import pty
 import re
+import select
 import shutil
+import signal
 import socket
+import struct
 import subprocess
 import sys
+import termios
+import threading
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
-__version__ = '1.2.0'
+__version__ = '1.3.0'
 TELEMETRY_SCHEMA_VERSION = 2
+AGENT_CAPABILITIES = ['remote_shell']
 
 DEFAULT_INTERVAL = 21600  # 6 hours
 CONFIG_PATHS = ['/etc/artemis/agent.conf', os.path.expanduser('~/.artemis/agent.conf')]
@@ -147,7 +156,10 @@ def get_packages():
         for line in out.strip().split('\n'):
             parts = line.split('\t')
             if len(parts) >= 2:
-                packages.append({'name': parts[0], 'version': parts[1], 'arch': parts[2] if len(parts) > 2 else '', 'manager': 'dpkg'})
+                packages.append({
+                    'name': parts[0], 'version': parts[1],
+                    'arch': parts[2] if len(parts) > 2 else '', 'manager': 'dpkg',
+                })
         if packages:
             return packages
     except (FileNotFoundError, subprocess.SubprocessError):
@@ -162,7 +174,10 @@ def get_packages():
         for line in out.strip().split('\n'):
             parts = line.split('\t')
             if len(parts) >= 2:
-                packages.append({'name': parts[0], 'version': parts[1], 'arch': parts[2] if len(parts) > 2 else '', 'manager': 'rpm'})
+                packages.append({
+                    'name': parts[0], 'version': parts[1],
+                    'arch': parts[2] if len(parts) > 2 else '', 'manager': 'rpm',
+                })
         if packages:
             return packages
     except (FileNotFoundError, subprocess.SubprocessError):
@@ -439,7 +454,10 @@ def get_storage_telemetry():
 
 def get_service_status():
     """Check status of common services."""
-    services = ['sshd', 'ssh', 'nginx', 'apache2', 'httpd', 'docker', 'postgresql', 'mysql', 'mariadb', 'redis-server', 'redis', 'cron', 'fail2ban']
+    services = [
+        'sshd', 'ssh', 'nginx', 'apache2', 'httpd', 'docker', 'postgresql',
+        'mysql', 'mariadb', 'redis-server', 'redis', 'cron', 'fail2ban',
+    ]
     result = []
     for svc in services:
         try:
@@ -488,6 +506,7 @@ def collect_report():
     report = {
         'telemetry_schema_version': TELEMETRY_SCHEMA_VERSION,
         'agent_version': __version__,
+        'capabilities': AGENT_CAPABILITIES,
         'report_type': 'full',
         'hostname': get_hostname(),
         'ip': get_primary_ip(),
@@ -512,25 +531,254 @@ def collect_report():
     return report
 
 
-def api_call(server, endpoint, data=None, key=None):
-    """Make an API call to the Artemis server."""
+def api_request(server, endpoint, data=None, key=None, method='POST', quiet=False):
+    """Make an authenticated JSON request to the Artemis server."""
     url = f"{server.rstrip('/')}/api/v1{endpoint}"
-    body = json.dumps(data).encode() if data else None
+    body = json.dumps(data).encode() if data is not None else None
     headers = {'Content-Type': 'application/json'}
     if key:
         headers['X-Agent-Key'] = key
 
-    req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ''
-        print(f"HTTP {e.code}: {body}", file=sys.stderr)
+        if not quiet:
+            response_body = e.read().decode() if e.fp else ''
+            print(f"HTTP {e.code}: {response_body}", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        if not quiet:
+            print(f"Error: {e}", file=sys.stderr)
         return None
+
+
+def api_call(server, endpoint, data=None, key=None):
+    """Backward-compatible POST helper for registration and reports."""
+    return api_request(server, endpoint, data=data, key=key, method='POST')
+
+
+class RemotePty:
+    """One local shell attached to a POSIX pseudo-terminal."""
+
+    def __init__(self, session_id, cols=120, rows=32):
+        self.session_id = session_id
+        self.pid = None
+        self.fd = None
+        self.exit_code = None
+        self.start(cols, rows)
+
+    def start(self, cols, rows):
+        pid, fd = pty.fork()
+        if pid == 0:
+            shell = shutil.which('bash') or shutil.which('sh') or '/bin/sh'
+            env = os.environ.copy()
+            env.update({'TERM': 'xterm-256color', 'HISTFILE': '/dev/null', 'ARTEMIS_REMOTE_SHELL': '1'})
+            os.execvpe(shell, [shell, '-l'], env)
+        self.pid = pid
+        self.fd = fd
+        os.set_blocking(fd, False)
+        self.resize(cols, rows)
+
+    def resize(self, cols, rows):
+        if self.fd is None:
+            return
+        size = struct.pack('HHHH', max(5, int(rows)), max(20, int(cols)), 0, 0)
+        fcntl.ioctl(self.fd, termios.TIOCSWINSZ, size)
+
+    def write(self, data):
+        if self.fd is None or not data:
+            return
+        remaining = memoryview(data)
+        deadline = time.monotonic() + 2
+        while remaining:
+            _, writable, _ = select.select([], [self.fd], [], 0.25)
+            if not writable:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('PTY input timed out')
+                continue
+            try:
+                written = os.write(self.fd, remaining)
+            except BlockingIOError:
+                continue
+            remaining = remaining[written:]
+
+    def read(self, maximum=64 * 1024):
+        if self.fd is None:
+            return b''
+        output = bytearray()
+        while len(output) < maximum:
+            ready, _, _ = select.select([self.fd], [], [], 0)
+            if not ready:
+                break
+            try:
+                chunk = os.read(self.fd, min(8192, maximum - len(output)))
+            except (BlockingIOError, OSError):
+                break
+            if not chunk:
+                break
+            output.extend(chunk)
+        return bytes(output)
+
+    def poll(self):
+        if self.pid is None or self.exit_code is not None:
+            return self.exit_code
+        try:
+            waited, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            self.exit_code = 0
+            return self.exit_code
+        if waited:
+            if os.WIFEXITED(status):
+                self.exit_code = os.WEXITSTATUS(status)
+            elif os.WIFSIGNALED(status):
+                self.exit_code = -os.WTERMSIG(status)
+            else:
+                self.exit_code = 0
+        return self.exit_code
+
+    def close(self):
+        if self.pid is not None and self.poll() is None:
+            try:
+                os.kill(self.pid, signal.SIGHUP)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + 2
+            while self.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if self.poll() is None:
+                try:
+                    os.kill(self.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.poll()
+        if self.fd is not None:
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
+            self.fd = None
+        return self.exit_code
+
+
+def _send_shell_event(server, key, session_id, event, **fields):
+    return api_request(
+        server,
+        '/agents/shell/output',
+        {'session_id': session_id, 'event': event, **fields},
+        key=key,
+        method='POST',
+        quiet=True,
+    )
+
+
+def remote_shell_loop(server, key, stop_event=None):
+    """Poll for operator-owned sessions and bridge them to a local PTY."""
+    stop_event = stop_event or threading.Event()
+    shell = None
+    pending_output = bytearray()
+    finished = None
+    while not stop_event.is_set():
+        response = api_request(
+            server, '/agents/shell/poll', key=key, method='GET', quiet=True,
+        )
+        remote = response.get('session') if response else None
+
+        if finished is not None:
+            same_session = remote and remote.get('id') == finished['session_id']
+            if response is not None and not same_session:
+                # The controller already accepted the final event, even if its
+                # response was lost before the agent received it.
+                finished = None
+                pending_output.clear()
+            else:
+                if pending_output:
+                    chunk = bytes(pending_output[:64 * 1024])
+                    result = _send_shell_event(
+                        server, key, finished['session_id'], 'output',
+                        data=base64.b64encode(chunk).decode('ascii'),
+                    )
+                    if result is not None:
+                        del pending_output[:len(chunk)]
+                if not pending_output:
+                    result = _send_shell_event(
+                        server, key, finished['session_id'], finished['event'],
+                        **finished['fields'],
+                    )
+                    if result is not None:
+                        finished = None
+                stop_event.wait(0.35)
+                continue
+
+        if response is not None and remote is None and shell is not None:
+            shell.close()
+            shell = None
+            pending_output.clear()
+
+        if remote and remote.get('status') == 'closing' and shell is None:
+            _send_shell_event(server, key, remote['id'], 'closed')
+        elif remote and (shell is None or shell.session_id != remote['id']):
+            if shell is not None:
+                shell.close()
+                pending_output.clear()
+            try:
+                shell = RemotePty(remote['id'], remote.get('cols', 120), remote.get('rows', 32))
+                _send_shell_event(server, key, remote['id'], 'started')
+            except Exception as exc:
+                finished = {
+                    'session_id': remote['id'], 'event': 'error',
+                    'fields': {'error': str(exc)},
+                }
+                shell = None
+
+        if remote and shell is not None:
+            if remote.get('status') == 'closing':
+                pending_output.extend(shell.read())
+                exit_code = shell.close()
+                finished = {
+                    'session_id': remote['id'], 'event': 'closed',
+                    'fields': {'exit_code': exit_code},
+                }
+                shell = None
+            else:
+                try:
+                    if remote.get('status') == 'requested':
+                        _send_shell_event(server, key, remote['id'], 'started')
+                    shell.resize(remote.get('cols', 120), remote.get('rows', 32))
+                    for item in remote.get('inputs', []):
+                        shell.write(base64.b64decode(item.get('data', ''), validate=True))
+                    if len(pending_output) < 64 * 1024:
+                        pending_output.extend(shell.read(64 * 1024 - len(pending_output)))
+                    if pending_output:
+                        chunk = bytes(pending_output[:64 * 1024])
+                        result = _send_shell_event(
+                            server, key, remote['id'], 'output',
+                            data=base64.b64encode(chunk).decode('ascii'),
+                        )
+                        if result is not None:
+                            del pending_output[:len(chunk)]
+                    exit_code = shell.poll()
+                    if exit_code is not None:
+                        pending_output.extend(shell.read())
+                        shell.close()
+                        finished = {
+                            'session_id': remote['id'], 'event': 'exited',
+                            'fields': {'exit_code': exit_code},
+                        }
+                        shell = None
+                except Exception as exc:
+                    shell.close()
+                    finished = {
+                        'session_id': remote['id'], 'event': 'error',
+                        'fields': {'error': str(exc)},
+                    }
+                    shell = None
+
+        stop_event.wait(0.35 if shell is not None else 2.0)
+
+    if shell is not None:
+        shell.close()
 
 
 def do_register(server, name=None):
@@ -540,6 +788,7 @@ def do_register(server, name=None):
         'ip': get_primary_ip(),
         'os_info': get_os_info(),
         'agent_version': __version__,
+        'capabilities': AGENT_CAPABILITIES,
         'name': name or get_hostname(),
     }
     result = api_call(server, '/agents/register', data)
@@ -560,7 +809,7 @@ def do_register(server, name=None):
 
 def do_report(server, key):
     """Collect and send a report."""
-    print(f"Collecting system data...")
+    print("Collecting system data...")
     report = collect_report()
     pkg_count = len(report.get('packages', []))
     port_count = len(report.get('ports', []))
@@ -608,6 +857,8 @@ def main():
                         help='With --deregister, leave the local config file in place')
     parser.add_argument('--interval', type=int, help=f'Report interval in seconds (default: {DEFAULT_INTERVAL})')
     parser.add_argument('--version', action='version', version=f'artemis-agent {__version__}')
+    parser.add_argument('--disable-remote-shell', action='store_true',
+                        help='Disable polling for admin-initiated remote shell sessions')
     args = parser.parse_args()
 
     cfg = load_config()
@@ -637,6 +888,10 @@ def main():
 
     # Continuous mode
     print(f"Artemis Agent v{__version__} starting (interval: {interval}s)")
+    shell_enabled = not args.disable_remote_shell and cfg.get('remote_shell_enabled', True)
+    if shell_enabled:
+        threading.Thread(target=remote_shell_loop, args=(server, key), daemon=True).start()
+        print("Remote shell polling enabled")
     while True:
         try:
             do_report(server, key)

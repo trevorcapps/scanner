@@ -9,9 +9,10 @@ CONFIG_DIR="/etc/artemis"
 SERVER=""
 NAME=""
 INTERVAL="21600"
+UPGRADE=false
 
 usage() {
-    echo "Usage: $0 --server <url> [--name <name>] [--interval <seconds>]"
+    echo "Usage: $0 --server <url> [--name <name>] [--interval <seconds>] [--upgrade]"
     exit 1
 }
 
@@ -20,6 +21,7 @@ while [[ $# -gt 0 ]]; do
         --server) SERVER="${2:-}"; shift 2 ;;
         --name) NAME="${2:-}"; shift 2 ;;
         --interval) INTERVAL="${2:-}"; shift 2 ;;
+        --upgrade) UPGRADE=true; shift ;;
         *) usage ;;
     esac
 done
@@ -65,9 +67,17 @@ fi
 "${ROOT[@]}" install -d -m 0755 "$AGENT_DIR" "$CONFIG_DIR"
 "${ROOT[@]}" install -m 0755 "$TMP_AGENT" "$AGENT_DIR/artemis_agent.py"
 
-register_args=(--server "$SERVER" --register)
-[[ -n "$NAME" ]] && register_args+=(--name "$NAME")
-"${ROOT[@]}" "$PYTHON" "$AGENT_DIR/artemis_agent.py" "${register_args[@]}"
+if [[ "$UPGRADE" == true ]]; then
+    [[ -f "$CONFIG_DIR/agent.conf" ]] || {
+        echo "Cannot upgrade: $CONFIG_DIR/agent.conf does not exist"
+        exit 1
+    }
+    echo "registration preserved"
+else
+    register_args=(--server "$SERVER" --register)
+    [[ -n "$NAME" ]] && register_args+=(--name "$NAME")
+    "${ROOT[@]}" "$PYTHON" "$AGENT_DIR/artemis_agent.py" "${register_args[@]}"
+fi
 
 SERVICE_FILE="$(mktemp)"
 cat > "$SERVICE_FILE" <<EOF
@@ -92,7 +102,10 @@ EOF
 
 "${ROOT[@]}" install -m 0644 "$SERVICE_FILE" /etc/systemd/system/artemis-agent.service
 "${ROOT[@]}" systemctl daemon-reload
-"${ROOT[@]}" systemctl enable --now artemis-agent.service
+"${ROOT[@]}" systemctl enable artemis-agent.service
+# `enable --now` leaves an already-running process untouched. Always restart
+# so upgrades begin executing the newly installed agent immediately.
+"${ROOT[@]}" systemctl restart artemis-agent.service
 
 echo "status   $("${ROOT[@]}" systemctl is-active artemis-agent.service)"
 echo "agent    $AGENT_DIR/artemis_agent.py"

@@ -22,6 +22,7 @@ from artemis.models.api_key import ApiKey
 from artemis.models.webhook import Webhook, WebhookDelivery
 from artemis.models.report import Report, ReportSchedule
 from artemis.models.risk_snapshot import RiskSnapshot
+from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentShellSession
 
 __all__ = [
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
@@ -30,4 +31,5 @@ __all__ = [
     'Site', 'SiteScan', 'ScanJob', 'User', 'ApiKey',
     'Webhook', 'WebhookDelivery',
     'Report', 'ReportSchedule', 'RiskSnapshot',
+    'AgentShellSession', 'AgentShellInput', 'AgentShellOutput',
 ]

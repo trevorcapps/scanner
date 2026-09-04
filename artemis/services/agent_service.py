@@ -107,6 +107,7 @@ def register_agent(data):
         ip=data.get('ip', ''),
         os_info_json=json.dumps(data.get('os_info', {})) if data.get('os_info') else None,
         agent_version=data.get('agent_version', ''),
+        capabilities_json=json.dumps(data.get('capabilities', [])),
         checkin_interval=data.get('checkin_interval', 21600),
         status='active',
         created_at=now,
@@ -156,6 +157,8 @@ def process_report(agent, data):
         agent.system_info_json = json.dumps(data['system_info'])
     if data.get('agent_version'):
         agent.agent_version = data['agent_version']
+    if isinstance(data.get('capabilities'), list):
+        agent.capabilities_json = json.dumps(data['capabilities'])
 
     agent.last_checkin = now
     agent.status = 'active'

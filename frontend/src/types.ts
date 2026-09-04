@@ -66,6 +66,24 @@ export interface AssetDetail extends AssetSummary {
   } | null;
 }
 
+export interface AgentShellSession {
+  id: string;
+  agent_id: number;
+  user_id: number | null;
+  status: 'requested' | 'running' | 'closing' | 'closed' | 'failed' | 'expired';
+  cols: number;
+  rows: number;
+  output_bytes: number;
+  created_at: string;
+  started_at: string | null;
+  last_activity_at: string;
+  last_agent_poll_at: string | null;
+  expires_at: string;
+  closed_at: string | null;
+  exit_code: number | null;
+  error_message: string | null;
+}
+
 export interface UnifiedVuln {
   cve_id: string;
   vuln_name: string;

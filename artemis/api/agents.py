@@ -3,7 +3,7 @@
 import logging
 import os
 
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, g, jsonify, request, send_file
 
 from artemis.extensions import db
 from artemis.models.agent import Agent
@@ -15,6 +15,18 @@ from artemis.services.agent_service import (
     process_report,
     register_agent,
     summarize_agent,
+)
+from artemis.services.auth_service import role_required
+from artemis.services.agent_shell_service import (
+    ShellSessionError,
+    create_session,
+    get_output,
+    get_session,
+    poll_agent,
+    queue_input,
+    record_agent_event,
+    request_close,
+    resize_session,
 )
 
 _AGENT_DIR = os.path.join(
@@ -92,6 +104,124 @@ def agent_report():
         'status': 'accepted',
         'vulns_matched': report.vulns_matched,
     })
+
+
+@agents_bp.route('/agents/shell/poll', methods=['GET'])
+def agent_shell_poll():
+    """Agent-authenticated outbound poll for a pending PTY session."""
+    agent = _get_agent_by_key()
+    if not agent:
+        return jsonify({'error': 'Invalid or missing agent key'}), 401
+    return jsonify({'session': poll_agent(agent)})
+
+
+@agents_bp.route('/agents/shell/output', methods=['POST'])
+def agent_shell_output():
+    """Agent-authenticated PTY output and lifecycle events."""
+    agent = _get_agent_by_key()
+    if not agent:
+        return jsonify({'error': 'Invalid or missing agent key'}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        session = record_agent_event(
+            agent,
+            data.get('session_id', ''),
+            data.get('event', ''),
+            data_b64=data.get('data'),
+            exit_code=data.get('exit_code'),
+            error=data.get('error'),
+        )
+    except ShellSessionError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'session': session.to_dict()})
+
+
+def _owned_shell_session(session_id):
+    user = getattr(g, 'current_user', None)
+    return get_session(session_id, user_id=user.id if user else None)
+
+
+@agents_bp.route('/agents/<int:aid>/shell-sessions', methods=['POST'])
+@role_required('admin')
+def create_agent_shell_session(aid):
+    """Start an admin-owned remote PTY session on an active agent."""
+    agent = db.get_or_404(Agent, aid)
+    data = request.get_json(silent=True) or {}
+    user = getattr(g, 'current_user', None)
+    try:
+        session = create_session(
+            agent,
+            user_id=user.id if user else None,
+            cols=data.get('cols', 120),
+            rows=data.get('rows', 32),
+        )
+    except (ShellSessionError, TypeError, ValueError) as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({'session': session.to_dict()}), 201
+
+
+@agents_bp.route('/agent-shell-sessions/<session_id>', methods=['GET'])
+@role_required('admin')
+def get_agent_shell_session(session_id):
+    """Return lifecycle state for an operator-owned shell session."""
+    session = _owned_shell_session(session_id)
+    if not session:
+        return jsonify({'error': 'Shell session not found'}), 404
+    return jsonify({'session': session.to_dict()})
+
+
+@agents_bp.route('/agent-shell-sessions/<session_id>/input', methods=['POST'])
+@role_required('admin')
+def input_agent_shell_session(session_id):
+    """Queue a base64-encoded input chunk for the remote PTY."""
+    session = _owned_shell_session(session_id)
+    if not session:
+        return jsonify({'error': 'Shell session not found'}), 404
+    try:
+        queue_input(session, (request.get_json(silent=True) or {}).get('data'))
+    except ShellSessionError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'accepted': True}), 202
+
+
+@agents_bp.route('/agent-shell-sessions/<session_id>/resize', methods=['POST'])
+@role_required('admin')
+def resize_agent_shell_session(session_id):
+    """Update the requested PTY dimensions."""
+    session = _owned_shell_session(session_id)
+    if not session:
+        return jsonify({'error': 'Shell session not found'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        resize_session(session, data.get('cols'), data.get('rows'))
+    except (ShellSessionError, TypeError, ValueError) as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'session': session.to_dict()})
+
+
+@agents_bp.route('/agent-shell-sessions/<session_id>/output', methods=['GET'])
+@role_required('admin')
+def output_agent_shell_session(session_id):
+    """Read ordered PTY output chunks after a global sequence ID."""
+    session = _owned_shell_session(session_id)
+    if not session:
+        return jsonify({'error': 'Shell session not found'}), 404
+    rows = get_output(
+        session,
+        after=request.args.get('after', 0, type=int),
+        limit=request.args.get('limit', 200, type=int),
+    )
+    return jsonify({'output': rows, 'session': session.to_dict()})
+
+
+@agents_bp.route('/agent-shell-sessions/<session_id>', methods=['DELETE'])
+@role_required('admin')
+def close_agent_shell_session(session_id):
+    """Request cooperative PTY termination on the agent."""
+    session = _owned_shell_session(session_id)
+    if not session:
+        return jsonify({'error': 'Shell session not found'}), 404
+    return jsonify({'session': request_close(session).to_dict()}), 202
 
 
 @agents_bp.route('/agents', methods=['GET'])

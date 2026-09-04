@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
+import { RemoteShellModal } from '@/components/RemoteShellModal';
 import { PageHeading, Panel, Stat, StatusDot, Spinner } from '@/components/ui/primitives';
+import { useAuth } from '@/hooks/useAuth';
 import { useAgent, useAgentActions, useAgentTelemetry } from '@/hooks/useResources';
+import { api } from '@/lib/api';
 import { formatDate, relativeTime } from '@/lib/format';
 import { toast } from '@/stores/toast';
+import type { AgentShellSession } from '@/types';
 
 export default function Agents() {
   const tele = useAgentTelemetry();
@@ -80,6 +84,8 @@ export default function Agents() {
       <Panel title="Deploy / remove" className="mt-4">
         <p className="eyebrow mb-1">Install</p>
         <CommandBlock cmd={`curl -fsSL ${origin}/agent/install.sh | bash -s -- --server ${origin}`} />
+        <p className="eyebrow mb-1 mt-3">Upgrade an existing agent</p>
+        <CommandBlock cmd={`curl -fsSL ${origin}/agent/install.sh | sudo bash -s -- --server ${origin} --upgrade`} />
         <p className="eyebrow mb-1 mt-3">Uninstall</p>
         <CommandBlock cmd={`curl -fsSL ${origin}/agent/uninstall.sh | bash`} />
       </Panel>
@@ -90,6 +96,8 @@ export default function Agents() {
 function AgentInspector({ id }: { id: number | null }) {
   const { data, isLoading } = useAgent(id);
   const { remove, regenKey } = useAgentActions();
+  const { user } = useAuth();
+  const [shellSession, setShellSession] = useState<AgentShellSession | null>(null);
   const a = data;
 
   if (isLoading || !a) {
@@ -110,77 +118,114 @@ function AgentInspector({ id }: { id: number | null }) {
   const net = report.network ?? {};
   const sockets = net.sockets ?? {};
   const storage = (report.storage?.filesystems ?? [])[0] ?? {};
+  const shellCapable = Array.isArray(a.capabilities) && a.capabilities.includes('remote_shell');
+
+  const launchShell = async () => {
+    try {
+      const result = await api.post<{ session: AgentShellSession }>(
+        `/api/v1/agents/${a.id}/shell-sessions`,
+        { cols: 120, rows: 32 },
+      );
+      setShellSession(result.session);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not open remote shell');
+    }
+  };
 
   return (
-    <Panel
-      title={a.hostname || a.ip || 'agent'}
-      meta={a.status}
-      actions={
-        <div className="flex gap-1.5">
-          <button
-            className="btn px-2 py-1"
-            onClick={() =>
-              regenKey.mutate(a.id, {
-                onSuccess: (r) =>
-                  toast.info(`New key: ${(r as { agent_key: string }).agent_key.slice(0, 12)}…`),
-              })
-            }
-          >
-            Regen key
-          </button>
-          <button
-            className="btn-danger px-2 py-1"
-            onClick={() => {
-              if (confirm(`Remove agent ${a.hostname || a.ip} from the console?`))
-                remove.mutate(a.id, { onSuccess: () => toast.success('Agent removed') });
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      }
-    >
-      <div className="grid gap-4 md:grid-cols-3">
-        <Block title="Identity">
-          <KV k="IP" v={a.ip} />
-          <KV k="MAC" v={a.mac_address} />
-          <KV k="OS" v={a.os} />
-          <KV k="Kernel" v={a.os_info?.kernel} />
-          <KV k="Agent" v={a.version} />
-          <KV k="Last check-in" v={relativeTime(a.last_checkin)} />
-        </Block>
-        <Block title="Resources">
-          <KV k="CPU" v={cpu.usage_percent != null ? `${cpu.usage_percent}%` : '—'} />
-          <KV k="Memory" v={mem.used_percent != null ? `${mem.used_percent}%` : '—'} />
-          <KV k="Root FS" v={storage.used_percent != null ? `${storage.used_percent}%` : '—'} />
-          <KV k="Processes" v={proc.total} />
-          <KV k="Threads" v={proc.threads} />
-        </Block>
-        <Block title="Inventory">
-          <KV k="Packages" v={a.package_count} />
-          <KV k="Open ports" v={a.port_count} />
-          <KV k="CVE matches" v={a.vulns_matched} />
-          <KV k="TCP established" v={sockets.tcp_established} />
-          <KV k="Reported" v={formatDate(a.latest_report_at)} />
-        </Block>
-      </div>
-
-      {(proc.top ?? []).length > 0 && (
-        <div className="mt-4">
-          <div className="eyebrow mb-2 border-b border-line-soft pb-1">Resource leaders</div>
-          <div className="space-y-0.5 font-mono text-2xs text-text-soft">
-            {(proc.top as any[]).slice(0, 10).map((p) => (
-              <div key={p.pid} className="flex gap-2">
-                <span className="w-14 text-muted">{p.pid}</span>
-                <span className="flex-1 truncate">{p.command}</span>
-                <span className="text-blue">{Number(p.cpu_percent).toFixed(1)}%</span>
-                <span className="text-cyan">{Number(p.memory_percent).toFixed(1)}%</span>
-              </div>
-            ))}
+    <>
+      <Panel
+        title={a.hostname || a.ip || 'agent'}
+        meta={a.status}
+        actions={
+          <div className="flex gap-1.5">
+            {user?.role === 'admin' && (
+              <button
+                className="btn border-amber/50 px-2 py-1 text-amber"
+                onClick={() => void launchShell()}
+                disabled={a.status !== 'active' || !shellCapable || !!shellSession}
+                title={
+                  !shellCapable
+                    ? `Agent ${a.version || 'unknown'} must be upgraded to 1.3.0 or newer`
+                    : a.status !== 'active'
+                      ? `Agent is ${a.status}`
+                      : 'Open a root-context terminal on this agent'
+                }
+              >
+                {shellCapable ? 'Remote shell' : 'Shell requires upgrade'}
+              </button>
+            )}
+            <button
+              className="btn px-2 py-1"
+              onClick={() =>
+                regenKey.mutate(a.id, {
+                  onSuccess: (r) =>
+                    toast.info(`New key: ${(r as { agent_key: string }).agent_key.slice(0, 12)}…`),
+                })
+              }
+            >
+              Regen key
+            </button>
+            <button
+              className="btn-danger px-2 py-1"
+              onClick={() => {
+                if (confirm(`Remove agent ${a.hostname || a.ip} from the console?`))
+                  remove.mutate(a.id, { onSuccess: () => toast.success('Agent removed') });
+              }}
+            >
+              Delete
+            </button>
           </div>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <Block title="Identity">
+            <KV k="IP" v={a.ip} />
+            <KV k="MAC" v={a.mac_address} />
+            <KV k="OS" v={a.os} />
+            <KV k="Kernel" v={a.os_info?.kernel} />
+            <KV k="Agent" v={a.version} />
+            <KV k="Capabilities" v={(a.capabilities ?? []).join(', ') || 'none reported'} />
+            <KV k="Last check-in" v={relativeTime(a.last_checkin)} />
+          </Block>
+          <Block title="Resources">
+            <KV k="CPU" v={cpu.usage_percent != null ? `${cpu.usage_percent}%` : '—'} />
+            <KV k="Memory" v={mem.used_percent != null ? `${mem.used_percent}%` : '—'} />
+            <KV k="Root FS" v={storage.used_percent != null ? `${storage.used_percent}%` : '—'} />
+            <KV k="Processes" v={proc.total} />
+            <KV k="Threads" v={proc.threads} />
+          </Block>
+          <Block title="Inventory">
+            <KV k="Packages" v={a.package_count} />
+            <KV k="Open ports" v={a.port_count} />
+            <KV k="CVE matches" v={a.vulns_matched} />
+            <KV k="TCP established" v={sockets.tcp_established} />
+            <KV k="Reported" v={formatDate(a.latest_report_at)} />
+          </Block>
         </div>
-      )}
-    </Panel>
+
+        {(proc.top ?? []).length > 0 && (
+          <div className="mt-4">
+            <div className="eyebrow mb-2 border-b border-line-soft pb-1">Resource leaders</div>
+            <div className="space-y-0.5 font-mono text-2xs text-text-soft">
+              {(proc.top as any[]).slice(0, 10).map((p) => (
+                <div key={p.pid} className="flex gap-2">
+                  <span className="w-14 text-muted">{p.pid}</span>
+                  <span className="flex-1 truncate">{p.command}</span>
+                  <span className="text-blue">{Number(p.cpu_percent).toFixed(1)}%</span>
+                  <span className="text-cyan">{Number(p.memory_percent).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Panel>
+      <RemoteShellModal
+        session={shellSession}
+        targetLabel={a.hostname || a.ip || `agent ${a.id}`}
+        onClose={() => setShellSession(null)}
+      />
+    </>
   );
 }
 

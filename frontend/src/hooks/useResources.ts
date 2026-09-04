@@ -95,7 +95,12 @@ export function useAgentTelemetry() {
   });
 }
 export const useAgent = (id: number | null) =>
-  useQuery({ queryKey: ['agent', id], queryFn: () => api.get<any>(`/api/v1/agents/${id}`), enabled: !!id });
+  useQuery({
+    queryKey: ['agent', id],
+    queryFn: () => api.get<any>(`/api/v1/agents/${id}`),
+    enabled: !!id,
+    refetchInterval: 20_000,
+  });
 
 /* ---- Auth-scan detail for an asset ---- */
 export interface HostFacts {

@@ -20,6 +20,7 @@ class Agent(db.Model):
     status = db.Column(db.Text, default='active')
     agent_version = db.Column(db.Text)
     system_info_json = db.Column(db.Text)
+    capabilities_json = db.Column(db.Text)
     created_at = db.Column(db.Text)
     enabled = db.Column(db.Integer, default=1)
 
@@ -35,6 +36,9 @@ class Agent(db.Model):
     def to_dict(self, include_key=False):
         os_info = self._decode(self.os_info_json)
         system_info = self._decode(self.system_info_json)
+        capabilities = self._decode(self.capabilities_json)
+        if not isinstance(capabilities, list):
+            capabilities = []
         result = {
             'id': self.id,
             'name': self.name,
@@ -50,6 +54,7 @@ class Agent(db.Model):
             'version': self.agent_version,
             'agent_version': self.agent_version,
             'system_info': system_info,
+            'capabilities': capabilities,
             'created_at': self.created_at,
             'enabled': self.enabled,
         }
