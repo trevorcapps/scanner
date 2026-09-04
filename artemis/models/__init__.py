@@ -26,6 +26,12 @@ from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentS
 from artemis.models.audit_event import AuditEvent
 from artemis.models.job_event import JobEvent
 from artemis.models.scan_profile import ScanExecutionProfile
+from artemis.models.asset_group import (
+    AssetGroup,
+    AssetGroupMember,
+    AssetReviewEvent,
+    AssetTag,
+)
 from artemis.models.organization import (
     Organization,
     OrganizationInvitation,
@@ -34,6 +40,7 @@ from artemis.models.organization import (
 
 __all__ = [
     'AuditEvent', 'JobEvent', 'ScanExecutionProfile',
+    'AssetTag', 'AssetGroup', 'AssetGroupMember', 'AssetReviewEvent',
     'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',
