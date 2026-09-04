@@ -60,9 +60,12 @@ def _check_and_run(app):
         ScheduledScan.next_run <= now_iso,
     ).all()
 
+    from artemis.services.tenant import use_organization
+
     for sched in due:
         try:
-            _execute_scheduled_scan(app, sched)
+            with use_organization(sched.organization_id):
+                _execute_scheduled_scan(app, sched)
         except Exception:
             logger.exception(f"Failed to execute scheduled scan {sched.id}")
         finally:

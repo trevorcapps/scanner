@@ -60,6 +60,7 @@ publishes the image with CycloneDX SBOMs. It never deploys.
 | `test_reports.py` | report scopes, rendering, and report records |
 | `test_security_baseline.py` | envelope encryption, production config guard, audit trail, rate limiting, transport headers |
 | `test_organizations.py` | memberships, per-org roles, platform admin, API-key org binding, org switch |
+| `test_tenant_isolation.py` | two-org matrix: scoped lists, cross-org 404, auto-filtered direct queries, same-IP coexistence |
 | `test_webhooks.py` | delivery signing, retries, filters, and CRUD |
 
 ## Test design conventions

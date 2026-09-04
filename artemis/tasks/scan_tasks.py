@@ -39,6 +39,8 @@ def run_site_scan_job(self, job_id):
     job = db.session.get(ScanJob, job_id)
     if not job:
         raise LookupError(f'Scan job {job_id} does not exist')
+    from artemis.services.tenant import set_task_organization
+    set_task_organization(job.organization_id)
     if job.status in ('cancel_requested', 'cancelled'):
         _set_job(job, status='cancelled', completed_at=_now_iso())
         return job.to_dict()
@@ -99,6 +101,8 @@ def run_adhoc_scan_job(self, job_id):
     job = db.session.get(ScanJob, job_id)
     if not job:
         raise LookupError(f'Scan job {job_id} does not exist')
+    from artemis.services.tenant import set_task_organization
+    set_task_organization(job.organization_id)
     if job.status in ('cancel_requested', 'cancelled'):
         _set_job(job, status='cancelled', completed_at=_now_iso())
         return job.to_dict()

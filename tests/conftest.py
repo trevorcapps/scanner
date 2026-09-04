@@ -22,12 +22,14 @@ os.environ.setdefault(
 
 @pytest.fixture(autouse=True)
 def _reset_security_singletons():
-    from artemis.services import crypto_service, rate_limit_service
+    from artemis.services import crypto_service, rate_limit_service, tenant
 
     crypto_service.reset_cache()
     rate_limit_service.reset_state()
+    tenant._fallback.org_id = None
     yield
     rate_limit_service.reset_state()
+    tenant._fallback.org_id = None
 
 
 @pytest.fixture(autouse=True, scope="session")

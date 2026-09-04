@@ -7,7 +7,7 @@ import time
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, request, send_file, g
+from flask import Blueprint, current_app, request, send_file, g
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -194,7 +194,8 @@ def get_report(report_id):
       responses: {200: {description: Report}, 404: {description: Not found}}
       security: [{bearerAuth: []}]
     """
-    rec = db.session.get(Report, report_id)
+    from artemis.services.tenant import scoped_get
+    rec = scoped_get(Report, report_id)
     if not rec:
         return {'error': 'Not found'}, 404
     return {'report': rec.to_dict()}
@@ -212,8 +213,13 @@ def download_report(report_id):
       responses: {200: {description: File}, 404: {description: Not found}}
       security: [{bearerAuth: []}]
     """
-    rec = db.session.get(Report, report_id)
+    from artemis.services.tenant import current_org_id, scoped_get
+    rec = scoped_get(Report, report_id)
     if not rec or not rec.file_path or not os.path.isfile(rec.file_path):
+        return {'error': 'Report file not available'}, 404
+    # Defence in depth: the file must live under this org's artifact directory.
+    org_dir = os.path.realpath(os.path.join(current_app.config['REPORTS_DIR'], f"org-{current_org_id()}"))
+    if not os.path.realpath(rec.file_path).startswith(org_dir + os.sep):
         return {'error': 'Report file not available'}, 404
     mimetype = 'application/pdf' if rec.fmt == 'pdf' else 'text/html'
     dl = f"{re.sub(r'[^A-Za-z0-9._-]+', '-', rec.title)}.{rec.fmt}"

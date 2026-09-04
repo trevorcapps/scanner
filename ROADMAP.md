@@ -22,9 +22,9 @@
 ### 2. **Authentication & Multi-Tenancy**
 - User auth (JWT/session-based) with role-based access (admin, analyst, read-only)
 - API key management for automation/integrations
-- [~] Org/tenant isolation — Phase 1: organizations, per-org memberships/roles,
-  audited platform admin, API keys bound to one org (tenant `organization_id`
-  columns and enforced scoping land in P1.2–P1.3)
+- [x] Org/tenant isolation — organizations, per-org roles, audited platform
+  admin, org-bound API keys, `organization_id` on every tenant table, an
+  automatic ORM query filter, per-org report artifacts, and PostgreSQL RLS
 
 ### 3. **REST API**
 - Proper versioned API (`/api/v1/`) for everything: scans, assets, vulns, reports

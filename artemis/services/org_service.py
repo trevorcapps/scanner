@@ -152,6 +152,9 @@ def resolve_context(user):
     g.organization_id = org.id
     g.org_role = role
     g.is_platform_admin = is_platform_admin
+
+    from artemis.services.tenant import bind_rls_org
+    bind_rls_org(org.id)
     return org
 
 

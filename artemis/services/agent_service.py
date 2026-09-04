@@ -132,7 +132,14 @@ def _emit_webhook(event, payload):
 
 
 def process_report(agent, data):
-    """Process and store an agent report."""
+    """Process and store an agent report, scoped to the agent's organization."""
+    from artemis.services.tenant import use_organization
+
+    with use_organization(agent.organization_id):
+        return _process_report(agent, data)
+
+
+def _process_report(agent, data):
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     report = AgentReport(

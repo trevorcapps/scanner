@@ -122,6 +122,33 @@ for non-container use. `log_service` still keeps the newest 500 records in
 process for `GET /api/v1/logs`, and `scan_log` Socket.IO events carry live scan
 output.
 
+## Tenancy (Phase 1)
+
+`Organization` is the tenant. `User` is a global identity; ordinary roles are
+per-organization via `OrganizationMembership`, and `User.platform_admin` grants
+audited cross-org administration. Every request and Socket.IO connection
+resolves exactly one active organization (`org_service.resolve_context`, from an
+`X-Organization` header / session / primary membership, or the API key's bound
+org) and fails closed when none applies.
+
+Every tenant-owned row carries a non-null `organization_id` (`TenantMixin`).
+`artemis.services.tenant` enforces isolation:
+
+- a `before_flush` hook stamps `organization_id` on new rows from the active
+  organization (or the Default organization outside a request);
+- a `do_orm_execute` hook adds `with_loader_criteria(TenantMixin, ...)` to every
+  ORM SELECT, so services are scoped automatically; opt out per statement with
+  `.execution_options(skip_tenant_filter=True)` for platform-admin cross-org
+  views;
+- background work (Celery tasks, the scheduler, report runner) sets the context
+  from the job/schedule's own `organization_id` via `use_organization` /
+  `set_task_organization`;
+- report artifacts are written under `REPORTS_DIR/org-<id>/` and downloads are
+  path-checked against that directory;
+- migration `c4d5e6f7a8b9` adds PostgreSQL RLS policies (ENABLE, not FORCE) as
+  defense in depth — inert until the app runs as a dedicated non-owner role with
+  `ARTEMIS_ENABLE_RLS=1`.
+
 ## Security baseline (P0.4)
 
 - **Secret encryption.** `crypto_service` seals every stored secret with
