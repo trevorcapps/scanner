@@ -126,6 +126,36 @@ def run_adhoc_scan_job(self, job_id):
         raise
 
 
+@shared_task(bind=True, name='artemis.discovery', max_retries=1,
+             acks_late=True, reject_on_worker_lost=True)
+def run_discovery_job(self, job_id):
+    """Bounded liveness sweep of an approved discovery scope."""
+    from artemis.models.discovery import DiscoveryScope
+    from artemis.services.discovery_service import run_scope
+
+    job = _load_job(job_id)
+    if job_service.is_cancelling(job.id):
+        return job_service.mark_cancelled(job).to_dict()
+
+    opts = job._decode(job.options_json) or {}
+    scope = db.session.get(DiscoveryScope, opts.get('scope_id'))
+    if not scope:
+        return job_service.mark_failed(job, 'discovery scope no longer exists').to_dict()
+
+    job_service.mark_running(job, attempt=self.request.retries + 1)
+    try:
+        summary = run_scope(
+            scope,
+            cancel_check=lambda: job_service.is_cancelling(job.id),
+            log=lambda m: job_service.emit_event(job, 'log', message=str(m)[:500]),
+        )
+        return job_service.mark_result(job, summary).to_dict()
+    except Exception as exc:
+        logger.exception('Discovery job %s failed', job.id)
+        job_service.mark_failed(job, exc)
+        raise
+
+
 @shared_task(name='artemis.dispatch_due_work')
 def dispatch_due_work():
     """Celery Beat singleton: turn due schedules and expired leases into jobs.
