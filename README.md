@@ -14,6 +14,7 @@ A web-based network vulnerability scanner and asset fingerprinting platform powe
   - URL path probing for known endpoints
 - **Vulnerability Scanning** — Nuclei-based with NVD enrichment (CVSS, CWE, references)
 - **Agent Inventory Matching** — Agent package reports are CPE-normalized and matched against the local NVD cache
+- **Agent Remote Shell** — Admin-only browser PTY sessions over the agent's outbound HTTPS channel
 - **Asset Management** — Track scanned hosts, scan history, technology stacks
 - **Operator Activity Log** — Recent backend history plus live WebSocket scan output
 

@@ -28,12 +28,14 @@ exception-policy rules can be ratcheted in incrementally.
 | Suite | Use cases |
 |---|---|
 | `test_agent_reporting.py` | Agent package normalization, local NVD matching, unified source attribution, empty-cache behavior |
+| `test_agent_shell.py` | Admin authorization, agent transport, lifecycle/limits, capability exposure, and a real local PTY |
 | `test_agent_telemetry.py` | Endpoint collection contract and secret-safe serializers |
 | `test_activity_logs.py` | In-memory history and authenticated log API |
 | `test_auth_scan.py` | SSH host facts, version normalization, CPE resolution, auth scan API validation |
 | `test_tier1_foundation.py` | roles, API keys, Socket.IO auth, durable job lifecycle/cancellation |
 | `test_api_coverage.py` | core REST resources, permissions, scan profiles, settings redaction |
 | `test_dashboard_api.py` | aggregation, sorting, filtering, pagination, topology integrity |
+| `test_feed_caches.py` | NVD feed metadata schema and native ExploitDB CSV caching/lookups |
 | `test_reports.py` | report scopes, rendering, and report records |
 | `test_webhooks.py` | delivery signing, retries, filters, and CRUD |
 

@@ -22,7 +22,8 @@ The principal code boundaries are:
 
 PostgreSQL is the production system of record. SQLite is supported for local
 development and tests. `NVD_CACHE_PATH` is a separate, rebuildable SQLite
-read-cache containing NVD CVEs and CPE matches; it is not application state.
+read-cache containing NVD CVEs, CPE matches, feed metadata, and ExploitDB CVE
+references; it is not application state.
 
 ## Scan flows
 
@@ -78,6 +79,37 @@ check-in latency bounded and avoids rate-limit failures. If the local feed is
 empty, inventory is still stored and `vulns_matched` is zero until a later
 report is processed after feed sync.
 
+### Remote shell capability
+
+Agent 1.3 advertises the `remote_shell` capability and runs a low-frequency
+outbound poll alongside telemetry collection. An administrator can open a
+session from the selected agent's inspector on the Agents tab. The server
+queues terminal input; the agent starts a local login shell attached to a
+POSIX PTY and returns output as base64 chunks. No inbound listener or SSH
+service is required.
+
+Shell sessions are admin-only and tied to the creating user and agent. Only one
+session may be active per agent. Sessions have a 15-minute hard limit, a
+5-minute operator-idle limit, 16 KiB input chunks, and 1 MiB total output.
+Delivered input is deleted immediately. Output is retained for reconnects and
+removed after 24 hours; lifecycle metadata remains for audit. Agents can opt
+out with `--disable-remote-shell` or `"remote_shell_enabled": false` in their
+configuration.
+
+Existing installations can be upgraded without re-registering:
+
+```bash
+curl -fsSL https://SERVER/agent/install.sh | \
+  sudo bash -s -- --server https://SERVER --upgrade
+```
+
+After restart, the next agent report advertises the new capability and enables
+the selected agent's Remote shell button.
+
+The installed service runs as root, so the PTY has root identity, subject to
+the systemd unit's existing `NoNewPrivileges`, `ProtectSystem=full`,
+`ProtectHome=read-only`, and `PrivateTmp` restrictions.
+
 ## Activity logging
 
 Operational logs continue to go through Python logging (stdout/journal in
@@ -110,3 +142,6 @@ adding new persistence logic to the legacy modules. Migrations in
   owns the source label.
 - Credentials are application database fields today; the roadmap's external
   secret-vault integration remains security-relevant work.
+- Remote-shell transport uses short HTTPS polling. A future dedicated broker or
+  authenticated WebSocket channel would reduce latency and database churn at
+  larger agent fleet sizes.

@@ -42,13 +42,14 @@
 
 ### 5. **Scheduled & Recurring Scans**
 - Cron-style scheduling per target/group
-- Scan policies (time windows, rate limits, excluded hosts)
+- Scan execution profiles (time windows, rate limits, excluded hosts)
 - Scan comparison / delta reports ("what changed since last scan")
 
 ### 6. **Agent-Based Scanning**
 - Lightweight agent for internal hosts (like Qualys Cloud Agent)
 - Authenticated scans are good, but agents give continuous visibility without SSH creds everywhere
-- Package inventory, patch status, config compliance
+- Package inventory, patch status, reboot state, and fleet health
+- Low-latency remote shell and typed endpoint-management jobs
 
 ### 7. **Vulnerability Intelligence**
 - EPSS scores (Exploit Prediction Scoring) alongside CVSS
@@ -63,10 +64,16 @@
 - Software inventory tracking over time (not just point-in-time)
 - Asset decommission tracking
 
-### 9. **Compliance Frameworks**
-- CIS Benchmarks, DISA STIGs, PCI-DSS, HIPAA mappings
-- Policy-based checks ("all SSH must use key auth", "no TLS < 1.2")
-- Compliance score dashboards per framework
+### 9. **Fleet Management & Orchestration**
+- Treat agents and managed endpoints as first-class fleet resources, with groups,
+  tags, health, inventory history, and rollout rings
+- Run ad-hoc Ansible playbooks initially, then reusable Git-backed job templates,
+  against assets, groups, or agent-local targets with preview, canary,
+  serial-batch, pause, cancel, and retry controls
+- Manage software updates, services, reboots, agent upgrades, and repeatable
+  operator workflows with per-host results and live task logs
+- Use an outbound persistent agent channel for responsive shell sessions and
+  durable typed work; retain HTTPS polling only as a compatibility fallback
 
 ---
 
@@ -115,8 +122,8 @@
 
 ### 15. **Container & Cloud Scanning**
 - Docker image scanning (Trivy/Grype integration)
-- Kubernetes cluster assessment
-- Cloud config auditing (AWS/Azure/GCP misconfigs)
+- Kubernetes workload/image inventory and vulnerability correlation
+- Cloud instance/workload discovery and vulnerability correlation
 
 ### 16. **Credential Vault**
 - Encrypted credential storage (not plaintext in scan profiles)
@@ -125,7 +132,7 @@
 
 ### 17. **False Positive Management**
 - Mark vulns as false positive with evidence/notes
-- Exception policies (accept risk with approval workflow)
+- Risk-acceptance rules with approval and expiry workflows
 - Auto-suppress known FPs across future scans
 
 ---
@@ -151,5 +158,5 @@
 |-------|-------|-----------|
 | **Phase 1** | Architecture refactor, PostgreSQL, API, Auth | 4-6 weeks |
 | **Phase 2** | Scheduled scans, asset management, vuln intel | 4-6 weeks |
-| **Phase 3** | Reporting, dashboard, compliance | 4-6 weeks |
+| **Phase 3** | Reporting, dashboard, fleet orchestration | 6-8 weeks |
 | **Phase 4** | Distributed engines, integrations, cloud | Ongoing |
