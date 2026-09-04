@@ -135,18 +135,29 @@ def set_status(occurrence_id, status, *, reason=None):
     return occ
 
 
-def list_findings(status=None, severity=None, kev_only=False, limit=200, ip=None):
+def list_findings(status=None, severity=None, kev_only=False, limit=200, ip=None,
+                  include_suppressed=False):
     q = scoped(FindingOccurrence)
     if status:
         q = q.filter(FindingOccurrence.status == status)
+    elif not include_suppressed:
+        q = q.filter(FindingOccurrence.status.in_(('open', 'reopened')))
     if ip:
         q = q.filter(FindingOccurrence.ip == ip)
     if severity:
         q = q.join(VulnerabilityDefinition).filter(VulnerabilityDefinition.severity == severity)
     if kev_only:
         q = q.join(VulnerabilityDefinition).filter(VulnerabilityDefinition.kev == 1)
-    return q.order_by(FindingOccurrence.priority_score.desc().nullslast(),
+    rows = q.order_by(FindingOccurrence.priority_score.desc().nullslast(),
                       FindingOccurrence.last_seen.desc()).limit(min(limit, 2000)).all()
+    if include_suppressed:
+        return rows
+    try:
+        from artemis.services.disposition_service import active_rules, is_suppressed
+        rules = active_rules()
+        return [r for r in rows if not is_suppressed(r, rules)]
+    except Exception:  # noqa: BLE001
+        return rows
 
 
 def _webhook(event, occ):

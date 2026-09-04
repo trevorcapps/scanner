@@ -188,6 +188,15 @@ def dispatch_due_work():
         run_due_report_schedules(now)
     except Exception:
         logger.exception('report schedule dispatch failed')
+    try:
+        from artemis.models.organization import Organization
+        from artemis.services.disposition_service import expire_due
+        from artemis.services.tenant import SKIP_TENANT_FILTER, use_organization
+        for org in Organization.query.execution_options(**{SKIP_TENANT_FILTER: True}).all():
+            with use_organization(org.id):
+                expire_due()
+    except Exception:
+        logger.exception('disposition expiry failed')
     logger.info('dispatch_due_work: %s scans dispatched, %s leases reconciled',
                 dispatched, reconciled)
     return {'dispatched': dispatched, 'reconciled': reconciled}

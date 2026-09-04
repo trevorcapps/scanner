@@ -39,6 +39,7 @@ from artemis.models.finding import (
     FindingOccurrence,
     VulnerabilityDefinition,
 )
+from artemis.models.disposition import Disposition, SuppressionRule
 from artemis.models.organization import (
     Organization,
     OrganizationInvitation,
@@ -50,6 +51,7 @@ __all__ = [
     'AssetTag', 'AssetGroup', 'AssetGroupMember', 'AssetReviewEvent', 'DiscoveryScope',
     'SoftwareObservation', 'AssetTimelineEvent',
     'VulnerabilityDefinition', 'FindingOccurrence', 'FindingObservation',
+    'Disposition', 'SuppressionRule',
     'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',
