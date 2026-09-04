@@ -10,7 +10,6 @@ paramiko
 mac-vendor-lookup
 python-Wappalyzer
 wap
-cve-searchsploit
 lxml
 requests
 setuptools

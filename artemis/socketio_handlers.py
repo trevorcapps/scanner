@@ -925,8 +925,14 @@ def handle_start_nvd_sync(data):
                     _nvd_module.sync_cpe_dictionary(socketio=socketio)
 
             if _exploit_module:
-                _exploit_module.ensure_exploit_db()
-                socketio.emit('nvd_sync_progress', {'status': 'running', 'message': 'ExploitDB mapping updated'})
+                exploit_ready = _exploit_module.ensure_exploit_db(force=True)
+                socketio.emit('nvd_sync_progress', {
+                    'status': 'running' if exploit_ready else 'error',
+                    'message': (
+                        'ExploitDB mapping ready' if exploit_ready
+                        else 'ExploitDB mapping could not be downloaded; see server logs'
+                    ),
+                })
 
         except Exception as e:
             socketio.emit('nvd_sync_progress', {'status': 'error', 'message': str(e)})

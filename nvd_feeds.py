@@ -8,6 +8,7 @@ CPE match data in local SQLite for offline vulnerability lookups.
 import re
 import json
 import gzip
+import os
 import time
 import sqlite3
 import hashlib
@@ -29,7 +30,7 @@ def _get_db_path():
     global _db_path
     if _db_path is None:
         from vuln_scan import DB_PATH
-        _db_path = DB_PATH
+        _db_path = os.environ.get('NVD_CACHE_PATH') or DB_PATH
     return _db_path
 
 
@@ -82,6 +83,22 @@ def init_nvd_tables(db_path=None):
     )''')
     cursor.execute('''CREATE INDEX IF NOT EXISTS idx_cpe_products_product
                       ON cpe_products(product)''')
+
+    # Feed bookkeeping belongs to this derived SQLite cache. Application
+    # settings live in PostgreSQL, but legacy feed code intentionally uses the
+    # same key/value shape for hashes and refresh timestamps.
+    cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS exploitdb_refs (
+        cve_id TEXT NOT NULL,
+        exploit_id TEXT NOT NULL,
+        PRIMARY KEY (cve_id, exploit_id)
+    )''')
+    cursor.execute('''CREATE INDEX IF NOT EXISTS idx_exploitdb_refs_cve
+                      ON exploitdb_refs(cve_id)''')
 
     conn.commit()
     conn.close()
@@ -447,6 +464,11 @@ def get_nvd_sync_status(db_path=None):
     conn = sqlite3.connect(path)
     cursor = conn.cursor()
     try:
+        cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )''')
+        conn.commit()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nvd_cves'")
         if not cursor.fetchone():
             return {'total_cves': 0, 'last_sync': None}
