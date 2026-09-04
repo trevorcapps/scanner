@@ -43,6 +43,7 @@ from artemis.models.disposition import Disposition, SuppressionRule
 from artemis.models.automation import (
     AutomationContent, AutomationRun, ExecutionEnvironment, MaintenanceWindow,
 )
+from artemis.models.campaign import PatchCampaign
 from artemis.models.organization import (
     Organization,
     OrganizationInvitation,
@@ -55,7 +56,7 @@ __all__ = [
     'SoftwareObservation', 'AssetTimelineEvent',
     'VulnerabilityDefinition', 'FindingOccurrence', 'FindingObservation',
     'Disposition', 'SuppressionRule',
-    'AutomationContent', 'AutomationRun', 'ExecutionEnvironment', 'MaintenanceWindow',
+    'AutomationContent', 'AutomationRun', 'ExecutionEnvironment', 'MaintenanceWindow', 'PatchCampaign',
     'Organization', 'OrganizationMembership', 'OrganizationInvitation',
     'Scan', 'Asset', 'Vulnerability', 'Fingerprint', 'Credential',
     'CveMatch', 'InstalledSoftware', 'AssetOsDetails', 'Setting',

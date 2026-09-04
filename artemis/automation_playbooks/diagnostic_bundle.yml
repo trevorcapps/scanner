@@ -1,0 +1,17 @@
+# starter: diagnostic-bundle v1 — collect a bounded diagnostic snapshot
+- hosts: targets
+  gather_facts: true
+  become: true
+  tasks:
+    - name: journal tail
+      ansible.builtin.command: journalctl -n 500 --no-pager
+      changed_when: false
+      register: jrnl
+    - name: disk + memory
+      ansible.builtin.command: "{{ item }}"
+      loop: ["df -h", "free -m", "systemctl --failed --no-legend"]
+      changed_when: false
+      register: sysinfo
+    - name: emit (truncated)
+      ansible.builtin.debug:
+        msg: "{{ jrnl.stdout[-2000:] }}"

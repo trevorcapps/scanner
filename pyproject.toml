@@ -72,6 +72,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["artemis*"]
 
+[tool.setuptools.package-data]
+artemis = ["automation_playbooks/*.yml"]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 120

@@ -1,0 +1,27 @@
+# starter: linux-package-update v1 — batched OS package update, serial rollout
+- hosts: targets
+  gather_facts: true
+  become: true
+  serial: "{{ batch_size | default('100%') }}"
+  max_fail_percentage: "{{ max_fail_percentage | default(0) }}"
+  tasks:
+    - name: apt upgrade
+      ansible.builtin.apt:
+        upgrade: "{{ apt_upgrade_type | default('safe') }}"
+        update_cache: true
+      when: ansible_pkg_mgr == 'apt'
+      register: apt_result
+    - name: dnf upgrade
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        security: "{{ security_only | default(false) }}"
+      when: ansible_pkg_mgr == 'dnf'
+      register: dnf_result
+    - name: reboot-required?
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_flag
+    - name: report
+      ansible.builtin.debug:
+        msg: "updated; reboot_required={{ reboot_flag.stat.exists }}"

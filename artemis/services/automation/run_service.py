@@ -183,7 +183,21 @@ def execute(job):
 
     summary = {'status': result.get('status'), 'rc': result.get('rc'),
                'host_summary': counts, 'stats': result.get('stats')}
-    if result.get('status') == 'successful' and counts['failed'] == 0 and counts['unreachable'] == 0:
+    ok = (result.get('status') == 'successful' and counts['failed'] == 0
+          and counts['unreachable'] == 0)
+
+    # Feed per-host outcomes back to a patch campaign, if this run belongs to one.
+    campaign_id = json.loads(run.launch_options_json or '{}').get('campaign_id')
+    if campaign_id:
+        try:
+            from artemis.services.automation.campaign_service import record_batch_outcome
+            outcome = {aid: ('success' if ok else 'failed')
+                       for aid in json.loads(run.target_snapshot_json or '[]')}
+            record_batch_outcome(campaign_id, job.id, outcome)
+        except Exception:  # noqa: BLE001
+            logger.debug('campaign outcome callback failed', exc_info=True)
+
+    if ok:
         return job_service.mark_result(job, summary)
     return job_service.mark_failed(job, json.dumps(summary))
 

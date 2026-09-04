@@ -104,6 +104,55 @@ def get_content(content_id):
     return jsonify({'content': content.to_dict()})   # metadata only, never the body
 
 
+@automation_bp.route('/automation/starters', methods=['GET'])
+def list_starters():
+    from artemis.services.automation.starters import list_starters as _list
+    return jsonify({'starters': _list()})
+
+
+@automation_bp.route('/automation/campaigns', methods=['GET'])
+def list_campaigns():
+    from artemis.models.campaign import PatchCampaign
+    from artemis.services.tenant import scoped
+    rows = scoped(PatchCampaign).order_by(PatchCampaign.created_at.desc()).limit(100).all()
+    return jsonify({'campaigns': [c.to_dict() for c in rows]})
+
+
+@automation_bp.route('/automation/campaigns', methods=['POST'])
+@role_required('analyst')
+def create_campaign():
+    from artemis.services.automation.campaign_service import create_campaign as _create
+    try:
+        campaign = _create(request.get_json(silent=True) or {}, created_by=_uid())
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'campaign': campaign.to_dict()}), 201
+
+
+@automation_bp.route('/automation/campaigns/<int:cid>', methods=['GET'])
+def get_campaign(cid):
+    from artemis.models.campaign import PatchCampaign
+    from artemis.services.tenant import scoped_get
+    campaign = scoped_get(PatchCampaign, cid)
+    if not campaign:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'campaign': campaign.to_dict()})
+
+
+@automation_bp.route('/automation/campaigns/<int:cid>/<action>', methods=['POST'])
+@role_required('analyst')
+def campaign_action(cid, action):
+    from artemis.services.automation import campaign_service
+    fn = {'preview': campaign_service.preview, 'start': campaign_service.start,
+          'advance': campaign_service.advance, 'cancel': campaign_service.cancel}.get(action)
+    if not fn:
+        return jsonify({'error': 'unknown action'}), 400
+    result = fn(cid)
+    if result is None:
+        return jsonify({'error': 'Not found or invalid state'}), 404
+    return jsonify({'result': result.to_dict()})
+
+
 @automation_bp.route('/automation/execution-environments', methods=['GET'])
 def list_envs():
     from artemis.services.automation.run_service import list_environments
