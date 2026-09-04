@@ -1,6 +1,7 @@
 """Celery task that delivers a single WebhookDelivery with HMAC signing + retry."""
 
 import hmac
+import json
 import logging
 import hashlib
 import urllib.request
@@ -45,10 +46,15 @@ def deliver_webhook(self, delivery_id):
         return
 
     body = delivery.payload_json.encode()
+    try:
+        event_id = json.loads(delivery.payload_json).get('id', '')
+    except (TypeError, ValueError):
+        event_id = ''
     headers = {
         'Content-Type': 'application/json',
         'User-Agent': 'Artemis-Webhook/1.0',
         'X-Artemis-Event': delivery.event,
+        'X-Artemis-Event-Id': event_id,
         'X-Artemis-Delivery': str(delivery.id),
         'X-Artemis-Signature': _sign(hook.secret, body),
     }

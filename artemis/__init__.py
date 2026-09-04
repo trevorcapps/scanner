@@ -64,6 +64,9 @@ def create_app(config_name=None, start_background_services=True):
     # Register blueprints
     register_blueprints(app)
 
+    from artemis.api.errors import register_error_handlers
+    register_error_handlers(app)
+
     # Auth middleware — protect API routes
     _setup_auth_middleware(app)
 
@@ -137,6 +140,7 @@ def create_app(config_name=None, start_background_services=True):
 def _setup_auth_middleware(app):
     """Add before_request auth check for API routes."""
     from flask import g, jsonify
+    from artemis.api.errors import _envelope
     from artemis.services.auth_service import _get_current_user, get_effective_role
     from artemis.models.user import User
 
@@ -226,7 +230,7 @@ def _setup_auth_middleware(app):
                 "Auth failed for %s: cookie=%s, header=%s",
                 path, 'yes' if token else 'no', 'yes' if auth_header else 'no',
             )
-            return jsonify({'error': 'Authentication required'}), 401
+            return _envelope(401, 'Authentication required')
 
         # Establish the active organization and the caller's role within it.
         # Agent endpoints authenticate with X-Agent-Key and carry no user org.
@@ -235,12 +239,12 @@ def _setup_auth_middleware(app):
             try:
                 resolve_context(user)
             except OrgContextError as exc:
-                return jsonify({'error': str(exc)}), exc.status
+                return _envelope(exc.status, str(exc))
 
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             is_self_service = path in READONLY_SELF_SERVICE_PATHS or path.startswith(READONLY_SELF_SERVICE_PREFIXES)
             if get_effective_role(user) == 'readonly' and not is_self_service:
-                return jsonify({'error': 'Read-only credentials cannot modify resources'}), 403
+                return _envelope(403, 'Read-only credentials cannot modify resources')
 
 
 def _init_database(app):

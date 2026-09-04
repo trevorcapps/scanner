@@ -158,6 +158,15 @@ def mark_running(job, attempt=1, lease_seconds=1800):
     emit_event(job, 'started', message='job started', current=0)
 
 
+def _webhook(event, job, extra):
+    try:
+        from artemis.services.webhook_service import emit
+        emit(event, {'job_id': job.id, 'job_type': job.job_type, 'target': job.target,
+                     'status': job.status, **(extra or {})})
+    except Exception:  # noqa: BLE001
+        logger.debug('webhook emit for %s failed', event, exc_info=True)
+
+
 def _already_terminal(job):
     if job.status in TERMINAL_STATES:
         logger.info('job %s already %s; ignoring transition', job.id, job.status)
@@ -176,6 +185,7 @@ def mark_result(job, result):
     job.lease_expires_at = None
     db.session.commit()
     emit_event(job, 'result', message='job completed', data=result)
+    _webhook('job.completed', job, result)
     return job
 
 
@@ -188,6 +198,7 @@ def mark_failed(job, message):
     job.lease_expires_at = None
     db.session.commit()
     emit_event(job, 'failure', message=str(message)[:500], level='error')
+    _webhook('job.failed', job, {'error': job.error_message})
     return job
 
 

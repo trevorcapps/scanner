@@ -14,6 +14,15 @@ WEBHOOK_EVENTS = (
     'agent.registered',
     'agent.report.received',
     'site.scan.completed',
+    # P2.4 — job + finding + asset lifecycle, and integration health
+    'job.completed',
+    'job.failed',
+    'finding.resolved',
+    'finding.reopened',
+    'endpoint.job.failed',
+    'disposition.approved',
+    'asset.decommissioned',
+    'integration.failed',
     'ping',
 )
 

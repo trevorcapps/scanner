@@ -101,9 +101,18 @@ def init_security(app):
         g.request_id = incoming[:64] if incoming else uuid.uuid4().hex
         g.request_start = time.monotonic()
 
+    # Legacy surface. Announce a removal date so integrations can migrate.
+    legacy_sunset = os.environ.get("ARTEMIS_LEGACY_SUNSET", "Wed, 01 Jul 2026 00:00:00 GMT")
+
     @app.after_request
     def _finish_request(response):
         response.headers.setdefault("X-Request-ID", getattr(g, "request_id", ""))
+        path = request.path
+        if (path.startswith("/api/") and not path.startswith("/api/v1/")) or path == "/classic":
+            response.headers["Deprecation"] = "true"
+            response.headers["Sunset"] = legacy_sunset
+            response.headers.setdefault(
+                "Link", '</api/v1>; rel="successor-version"')
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

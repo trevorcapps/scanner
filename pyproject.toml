@@ -77,6 +77,6 @@ source = ["artemis", "agent"]
 omit = ["*/tests/*", "*/migrations/*"]
 
 [tool.coverage.report]
-# Ratcheted per phase; never lower. P0.3 baseline ~51%, P0.4 ~54%.
-fail_under = 52
+# Ratcheted per phase; never lower. P0.4 ~54%, P2 ~57%.
+fail_under = 54
 show_missing = true
