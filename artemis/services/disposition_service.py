@@ -38,11 +38,30 @@ def create_disposition(data, requested_by=None):
     definition_id = data.get('definition_id')
     target_id = data.get('target_id')
 
-    if scope == 'occurrence' and target_id:
-        occ = scoped_get(FindingOccurrence, int(target_id))
-        if occ:
-            fingerprint = occ.fingerprint
-            definition_id = definition_id or occ.definition_id
+    if target_id is not None:
+        try:
+            target_id = int(target_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('target_id must be an integer') from exc
+
+    if scope == 'occurrence':
+        if not target_id:
+            raise ValueError('target_id is required for occurrence scope')
+        occ = scoped_get(FindingOccurrence, target_id)
+        if not occ:
+            raise ValueError('finding occurrence not found')
+        fingerprint = occ.fingerprint
+        definition_id = definition_id or occ.definition_id
+    elif scope == 'asset' and target_id:
+        from artemis.models.asset import Asset
+        if not scoped_get(Asset, target_id):
+            raise ValueError('asset not found')
+    elif scope == 'group' and target_id:
+        from artemis.models.asset_group import AssetGroup
+        if not scoped_get(AssetGroup, target_id):
+            raise ValueError('asset group not found')
+    elif scope in ('asset', 'group'):
+        raise ValueError(f'target_id is required for {scope} scope')
 
     disp = Disposition(
         disposition_type=dtype, scope=scope, target_id=target_id,
@@ -94,7 +113,12 @@ def _apply(disp, approver_id, auto):
             occ.status = target_status
 
     # organization / group-wide dispositions also spawn a reusable rule.
-    if disp.scope in ('organization', 'group') or disp.disposition_type == 'false_positive':
+    # A reusable rule without a selector matches every finding. Group rules
+    # without a definition/fingerprint are represented by the current status
+    # updates below, but must never become an unbounded organization rule.
+    has_selector = bool(disp.definition_id or disp.fingerprint)
+    if disp.scope == 'organization' or (disp.scope == 'group' and has_selector) \
+            or (disp.disposition_type == 'false_positive' and has_selector):
         db.session.add(SuppressionRule(
             name=f'{disp.disposition_type}:{disp.definition_id or disp.scope}',
             definition_id=disp.definition_id, fingerprint=disp.fingerprint,
@@ -109,6 +133,11 @@ def _matching_occurrences(disp):
         return q.filter(FindingOccurrence.fingerprint == disp.fingerprint).all()
     if disp.scope == 'asset' and disp.target_id:
         return q.filter(FindingOccurrence.asset_id == disp.target_id).all()
+    if disp.scope == 'group' and disp.target_id:
+        from artemis.models.asset_group import AssetGroupMember
+        asset_ids = [row.asset_id for row in scoped(AssetGroupMember).filter(
+            AssetGroupMember.group_id == disp.target_id).all()]
+        return q.filter(FindingOccurrence.asset_id.in_(asset_ids)).all() if asset_ids else []
     if disp.definition_id:
         return q.filter(FindingOccurrence.definition_id == disp.definition_id).all()
     return []

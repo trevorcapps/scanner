@@ -29,16 +29,27 @@ def create_campaign(data, created_by=None):
     if not candidates:
         raise ValueError('no candidate hosts resolved')
 
+    excluded = set(data.get('excluded_ids') or [])
+    canary = set(data.get('canary_ids') or [])
+    if not excluded.issubset(candidates) or not canary.issubset(set(candidates) - excluded):
+        raise ValueError('excluded_ids and canary_ids must be eligible candidate hosts')
+    batch_size = int(data.get('batch_size', 10))
+    max_fail_percentage = int(data.get('max_fail_percentage', 0))
+    if batch_size < 1:
+        raise ValueError('batch_size must be at least 1')
+    if not 0 <= max_fail_percentage <= 100:
+        raise ValueError('max_fail_percentage must be between 0 and 100')
+
     campaign = PatchCampaign(
         name=(data.get('name') or 'campaign').strip(),
         starter_id=starter_id, content_id=content_id,
         status='planned',
         candidate_ids_json=json.dumps(candidates),
-        excluded_ids_json=json.dumps(data.get('excluded_ids') or []),
-        canary_ids_json=json.dumps(data.get('canary_ids') or []),
-        batch_size=int(data.get('batch_size', 10)),
+        excluded_ids_json=json.dumps(sorted(excluded)),
+        canary_ids_json=json.dumps(sorted(canary)),
+        batch_size=batch_size,
         pause_between_batches=int(data.get('pause_between_batches', 0)),
-        max_fail_percentage=int(data.get('max_fail_percentage', 0)),
+        max_fail_percentage=max_fail_percentage,
         coordinate_reboot=1 if data.get('coordinate_reboot', True) else 0,
         maintenance_window_id=data.get('maintenance_window_id'),
         variables_json=json.dumps(data.get('variables') or {}),
@@ -96,7 +107,7 @@ def _launch_batch(campaign, asset_ids, *, check_mode=False, parent_job_id=None):
         check_mode=check_mode, serial=campaign.batch_size,
         max_fail_percentage=campaign.max_fail_percentage,
         launch_options={'campaign_id': campaign_id, 'parent_job_id': parent_job_id},
-        launched_by=campaign.created_by,
+        launched_by=campaign.created_by, parent_job_id=parent_job_id,
     )
     return run, job
 
@@ -114,7 +125,7 @@ def preview(campaign_id):
 def start(campaign_id):
     """Kick off canary (if any) then hand the rest to advance()."""
     campaign = scoped_get(PatchCampaign, campaign_id)
-    if not campaign or campaign.status in ('completed', 'cancelled'):
+    if not campaign or campaign.status not in ('planned', 'previewing'):
         return None
     campaign.started_at = campaign.started_at or _now()
     parent = job_service.create_job('campaign', target=campaign.name,
@@ -196,4 +207,10 @@ def cancel(campaign_id):
     if campaign and campaign.status not in ('completed', 'cancelled'):
         campaign.status = 'cancelled'
         db.session.commit()
+        if campaign.parent_job_id:
+            from artemis.models.scan_job import ScanJob
+            for job in scoped(ScanJob).filter(
+                    ScanJob.parent_job_id == campaign.parent_job_id,
+                    ~ScanJob.status.in_(job_service.TERMINAL_STATES)).all():
+                job_service.cancel_job(job)
     return campaign

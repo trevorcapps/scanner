@@ -45,6 +45,13 @@ class DispositionTests(unittest.TestCase):
         self.assertTrue(FindingObservation.query.filter(
             FindingObservation.evidence_json.like('%banner-proof%')).count())
 
+    def test_missing_occurrence_is_rejected_without_global_suppression(self):
+        with self.assertRaises(ValueError):
+            svc.create_disposition({"type": "false_positive", "scope": "occurrence",
+                                    "target_id": 999999, "rationale": "bad id"},
+                                   requested_by=self.u.id)
+        self.assertEqual(SuppressionRule.query.count(), 0)
+
     def test_risk_acceptance_requires_approval(self):
         disp = svc.create_disposition({"type": "risk_accepted", "scope": "occurrence",
                                        "target_id": self.occ.id, "rationale": "accepted till Q3",

@@ -16,7 +16,7 @@ from artemis.extensions import db
 from artemis.models._tenant import TenantMixin
 
 WORK_KINDS = ('inventory_refresh', 'ansible_local')
-WORK_STATES = ('queued', 'delivered', 'running', 'succeeded', 'failed', 'rejected', 'expired')
+WORK_STATES = ('queued', 'delivered', 'running', 'succeeded', 'failed', 'rejected', 'expired', 'cancelled')
 
 
 class AgentWork(TenantMixin, db.Model):

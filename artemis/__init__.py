@@ -211,6 +211,11 @@ def _setup_auth_middleware(app):
         if path in PUBLIC_PATHS:
             return None
 
+        # Agent work state is authenticated by X-Agent-Key, including the
+        # per-work UUID path used while a local subprocess is running.
+        if path.startswith('/api/v1/agents/work/'):
+            return None
+
         # Skip auth for public endpoints
         for prefix in PUBLIC_PREFIXES:
             if path.startswith(prefix):

@@ -247,6 +247,17 @@ def cancel_job(job):
     db.session.commit()
     emit_event(job, 'cancel', message='cancellation requested' if was_running else 'job cancelled')
 
+    # Stop queued/delivered agent-local work as well. The agent observes this
+    # state through its work-state poll and terminates the local subprocess.
+    try:
+        from artemis.models.agent_work import AgentWork
+        AgentWork.query.filter(AgentWork.job_id == job.id,
+                               AgentWork.status.in_(('queued', 'delivered', 'running'))).update(
+            {'status': 'cancelled'}, synchronize_session=False)
+        db.session.commit()
+    except Exception:  # noqa: BLE001 - cancellation must remain best-effort
+        logger.exception('failed to cancel delegated agent work for %s', job.id)
+
     if job.task_id:
         try:
             current_app.extensions['celery'].control.revoke(job.task_id, terminate=False)

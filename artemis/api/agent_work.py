@@ -35,3 +35,17 @@ def result():
     if not work:
         return jsonify({'error': 'work item not found'}), 404
     return jsonify({'work': work.to_dict()})
+
+
+@agent_work_bp.route('/agents/work/<work_id>/state', methods=['GET'])
+def state(work_id):
+    """Allow a running agent job to observe server-side cancellation."""
+    agent = _agent()
+    if not agent:
+        return jsonify({'error': 'Invalid or missing agent key'}), 401
+    from artemis.services.tenant import use_organization
+    with use_organization(agent.organization_id):
+        work = agent_local.get_work(agent, work_id)
+    if not work:
+        return jsonify({'error': 'work item not found'}), 404
+    return jsonify({'status': work.status})

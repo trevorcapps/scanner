@@ -74,9 +74,8 @@ def build_inventory(hosts):
 def launch_run(*, content_raw=None, content_id=None, content_kind='playbook',
                filename=None, targets, variables=None, credential_refs=None,
                execution_environment_id=None, check_mode=False, serial=None,
-               max_fail_percentage=None, launch_options=None, launched_by=None):
-    executor = get_executor()
-
+               max_fail_percentage=None, launch_options=None, launched_by=None,
+               parent_job_id=None):
     if content_id:
         content = scoped_get(
             __import__('artemis.models.automation', fromlist=['AutomationContent']).AutomationContent,
@@ -93,6 +92,7 @@ def launch_run(*, content_raw=None, content_id=None, content_kind='playbook',
 
     job = job_service.create_job('ansible_run', target=f'{len(hosts)} host(s)',
                                  requested_by=launched_by,
+                                 parent_job_id=parent_job_id,
                                  options={'content_digest': content.digest,
                                           'check_mode': check_mode})
     job.task_id = f'ansible-{job.id}'
@@ -118,6 +118,9 @@ def launch_run(*, content_raw=None, content_id=None, content_kind='playbook',
                                  'variables': list((variables or {}).keys())},
                          commit=True)
 
+    # Choose by target before checking availability. An outbound-only agent
+    # must not require ansible-runner to be installed on the controller.
+    executor = _executor_for(run, hosts)
     if not executor.available():
         job_service.mark_failed(job, 'no automation executor available')
         return run, job
@@ -143,10 +146,14 @@ def execute(job):
     hosts = _resolve_targets({'asset_ids': json.loads(run.target_snapshot_json)})
     inventory = build_inventory(hosts)
 
-    variables = json.loads(run.variables_json or '{}')
-    _inject_credentials(variables, json.loads(run.credential_refs_json or '[]'))
-
     executor = _executor_for(run, hosts)
+    variables = json.loads(run.variables_json or '{}')
+    credential_refs = json.loads(run.credential_refs_json or '[]')
+    # Agent-local execution encrypts credential values into the work manifest;
+    # injecting them into the ordinary variable map would persist them in the
+    # manifest and expose them to process listings.
+    if not getattr(executor, 'handles_credentials', False):
+        _inject_credentials(variables, credential_refs)
     job_service.mark_running(job, lease_seconds=3600)
 
     counts = {'ok': 0, 'changed': 0, 'failed': 0, 'unreachable': 0, 'skipped': 0}
@@ -174,7 +181,8 @@ def execute(job):
                 private_data_dir=pdd, event_handler=on_event,
                 cancel_check=lambda: job_service.is_cancelling(job.id),
                 check_mode=bool(run.check_mode),
-                options={**json.loads(run.launch_options_json or '{}'), 'job_id': job.id},
+                options={**json.loads(run.launch_options_json or '{}'),
+                         'job_id': job.id, 'credential_refs': credential_refs},
             )
     except ExecutorUnavailable as exc:
         return job_service.mark_failed(job, str(exc))

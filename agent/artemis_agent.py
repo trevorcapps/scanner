@@ -15,6 +15,7 @@ Zero external dependencies — stdlib only. Python 3.8+.
 import argparse
 import base64
 import fcntl
+import hashlib
 import json
 import os
 import platform
@@ -913,13 +914,45 @@ def _verify_work(manifest, agent_key):
         return False, 'signature mismatch'
     body_b64 = payload.get('content_b64')
     if body_b64 is not None:
-        body = base64.b64decode(body_b64)
+        try:
+            body = base64.b64decode(body_b64, validate=True)
+        except (ValueError, TypeError):
+            return False, 'invalid content encoding'
         if manifest.get('content_digest') and hashlib.sha256(body).hexdigest() != manifest['content_digest']:
             return False, 'content digest mismatch'
     return True, None
 
 
-def _run_ansible_local(body_bytes, variables):
+def _decrypt_work_secrets(manifest, agent_key):
+    box = (manifest.get('payload') or {}).get('secret_box')
+    if not box:
+        return {}
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        secret_key = hashlib.sha256(f'artemis-work-secrets:{agent_key}'.encode()).digest()
+        nonce = base64.b64decode(box['nonce_b64'], validate=True)
+        ciphertext = base64.b64decode(box['ciphertext_b64'], validate=True)
+        plaintext = AESGCM(secret_key).decrypt(
+            nonce, ciphertext, b'artemis-agent-work-secrets-v1')
+        values = json.loads(plaintext.decode('utf-8'))
+        return values if isinstance(values, dict) else {}
+    except Exception as exc:
+        raise ValueError(f'secret payload could not be decrypted: {exc}') from exc
+
+
+def _redact_lines(text, variables):
+    lines = (text or '').splitlines()
+    secrets = [str(value) for value in (variables or {}).values()
+               if isinstance(value, (str, int, float)) and len(str(value)) >= 3]
+    redacted = []
+    for line in lines:
+        for secret in secrets:
+            line = line.replace(secret, '***')
+        redacted.append(line)
+    return redacted
+
+
+def _run_ansible_local(body_bytes, variables, cancel_check=None, check_mode=False):
     """Run the exact playbook against localhost with the local connection."""
     workdir = tempfile.mkdtemp(prefix='artemis-work-')
     try:
@@ -928,17 +961,38 @@ def _run_ansible_local(body_bytes, variables):
             fh.write(body_bytes)
         inv = os.path.join(workdir, 'inventory')
         with open(inv, 'w') as fh:
-            fh.write('localhost ansible_connection=local\n')
-        cmd = ['ansible-playbook', '-i', inv, pb]
-        for key, value in (variables or {}).items():
-            cmd += ['-e', f'{key}={value}']
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600,
-                              env={**os.environ, 'ANSIBLE_HOST_KEY_CHECKING': 'False'})
+            fh.write('[targets]\nlocalhost ansible_connection=local\n')
+        vars_path = os.path.join(workdir, 'extravars.json')
+        with open(vars_path, 'w') as fh:
+            json.dump(variables or {}, fh)
+        os.chmod(vars_path, 0o600)
+        cmd = ['ansible-playbook', '-i', inv, pb, '-e', f'@{vars_path}']
+        if check_mode:
+            cmd.append('--check')
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env={**os.environ, 'ANSIBLE_HOST_KEY_CHECKING': 'False'})
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=1)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel_check and cancel_check():
+                    proc.terminate()
+                    try:
+                        stdout, stderr = proc.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        stdout, stderr = proc.communicate()
+                    return {
+                        'status': 'cancelled', 'rc': proc.returncode,
+                        'events': _redact_lines(stdout, variables)[-200:],
+                        'stderr_tail': _redact_lines(stderr, variables)[-40:],
+                    }
         return {
             'status': 'succeeded' if proc.returncode == 0 else 'failed',
             'rc': proc.returncode,
-            'events': (proc.stdout or '').splitlines()[-200:],
-            'stderr_tail': (proc.stderr or '').splitlines()[-40:],
+            'events': _redact_lines(stdout, variables)[-200:],
+            'stderr_tail': _redact_lines(stderr, variables)[-40:],
         }
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
@@ -965,7 +1019,14 @@ def agent_work_loop(server, key, stop_event=None):
         try:
             if manifest['kind'] == 'ansible_local':
                 body = base64.b64decode(payload['content_b64'])
-                result = _run_ansible_local(body, payload.get('variables'))
+                variables = dict(payload.get('variables') or {})
+                variables.update(_decrypt_work_secrets(manifest, key))
+                result = _run_ansible_local(
+                    body, variables,
+                    cancel_check=lambda: bool((api_request(
+                        server, f"/agents/work/{manifest['id']}/state",
+                        key=key, method='GET', quiet=True) or {}).get('status') == 'cancelled'),
+                    check_mode=bool(payload.get('check_mode')))
             else:
                 result = {'status': 'failed', 'reason': f"unsupported kind {manifest['kind']}"}
         except Exception as exc:
@@ -1085,7 +1146,7 @@ def main():
     if shell_enabled:
         threading.Thread(target=remote_shell_loop, args=(server, key), daemon=True).start()
         print("Remote shell polling enabled")
-    if 'ansible_local' in AGENT_CAPABILITIES and not args.disable_remote_shell:
+    if 'ansible_local' in AGENT_CAPABILITIES:
         threading.Thread(target=agent_work_loop, args=(server, key), daemon=True).start()
         print("Signed agent work channel enabled")
     while True:

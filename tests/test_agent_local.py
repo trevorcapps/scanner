@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from agent import artemis_agent
 from artemis import create_app
@@ -69,6 +70,25 @@ class AgentLocalTests(unittest.TestCase):
         ok, _ = artemis_agent._verify_work(work.manifest(), "wrong-key")
         self.assertFalse(ok)
 
+    def test_secret_variables_are_encrypted_in_manifest(self):
+        job = self._job()
+        work = agent_local.create_work(
+            self.agent, job_id=job.id, kind="ansible_local", content_body=PLAYBOOK,
+            content_digest=hashlib.sha256(PLAYBOOK.encode()).hexdigest(),
+            variables={"ordinary": "value"},
+            secret_variables={"ansible_password": "do-not-persist"},
+        )
+        self.assertNotIn("do-not-persist", work.payload_json)
+        self.assertIn("secret_box", work.manifest()["payload"])
+        self.assertEqual(
+            artemis_agent._decrypt_work_secrets(work.manifest(), "secret-key"),
+            {"ansible_password": "do-not-persist"},
+        )
+        self.assertEqual(
+            artemis_agent._redact_lines("password=do-not-persist", {"p": "do-not-persist"}),
+            ["password=***"],
+        )
+
     def test_tampered_content_is_rejected_by_digest(self):
         job = self._job()
         work = agent_local.create_work(self.agent, job_id=job.id, kind="ansible_local",
@@ -96,6 +116,25 @@ class AgentLocalTests(unittest.TestCase):
         })
         self.assertEqual(AgentWork.query.one().status, "succeeded")
         self.assertEqual(db.session.get(ScanJob, job.id).status, "success")
+
+    def test_expired_delivery_is_requeued(self):
+        job = self._job()
+        work = agent_local.create_work(self.agent, job_id=job.id, kind="ansible_local",
+                                       content_body=PLAYBOOK)
+        work.status = "delivered"
+        work.delivered_at = (datetime.now(timezone.utc) - timedelta(
+            seconds=agent_local.WORK_LEASE_SECONDS + 1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        db.session.commit()
+        polled = agent_local.poll_work(self.agent)
+        self.assertEqual(polled["id"], work.id)
+        self.assertEqual(db.session.get(AgentWork, work.id).status, "delivered")
+
+    def test_cancelling_parent_cancels_queued_work(self):
+        job = self._job()
+        agent_local.create_work(self.agent, job_id=job.id, kind="ansible_local",
+                                content_body=PLAYBOOK)
+        job_service.cancel_job(job)
+        self.assertEqual(AgentWork.query.one().status, "cancelled")
 
     def test_rejected_result_fails_the_job(self):
         job = self._job()
