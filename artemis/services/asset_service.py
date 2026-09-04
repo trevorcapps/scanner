@@ -22,7 +22,8 @@ def _emit_webhook(event, payload):
         logger.debug("webhook emit failed", exc_info=True)
 
 
-def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None):
+def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vendor=None,
+                     source='scan'):
     """Create or update an asset row. Non-None fields overwrite; others are kept.
 
     Returns True when a new asset row was created, else False.
@@ -49,13 +50,13 @@ def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vend
         created = asset is None
         if created:
             asset = Asset(ip=ip, first_seen=now, scan_count=0,
-                          first_seen_source='scan', lifecycle='active')
+                          first_seen_source=source, lifecycle='active')
             db.session.add(asset)
         elif asset.lifecycle == 'decommissioned':
             # A decommissioned host reappeared — never silently reactivate it.
             _record_review(asset, 'decommissioned_reappeared', {'ip': ip, 'seen_at': now})
             asset.last_seen = now
-            asset.last_seen_source = 'scan'
+            asset.last_seen_source = source
             db.session.commit()
             return False
 
@@ -64,7 +65,7 @@ def store_asset_info(ip, dns_info=None, os_info=None, mac_address=None, mac_vend
         if updates.get('aliases_json') is not None:
             asset.aliases_json = updates['aliases_json']
         asset.last_seen = now
-        asset.last_seen_source = 'scan'
+        asset.last_seen_source = source
         asset.scan_count = (asset.scan_count or 0) + 1
         if asset.lifecycle == 'stale':
             asset.lifecycle = 'active'

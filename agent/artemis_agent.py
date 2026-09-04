@@ -33,9 +33,29 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = '1.3.0'
-TELEMETRY_SCHEMA_VERSION = 2
-AGENT_CAPABILITIES = ['remote_shell']
+__version__ = '1.4.0'
+TELEMETRY_SCHEMA_VERSION = 3
+AGENT_CAPABILITIES = ['remote_shell', 'patch_status']
+
+UNSUPPORTED = {'status': 'unsupported'}
+
+
+def _platform():
+    system = platform.system().lower()
+    if system == 'linux':
+        return 'linux'
+    if system == 'darwin':
+        return 'macos'
+    return system or 'other'
+
+
+def _run(cmd, timeout=20):
+    """Run a command, returning (rc, stdout) or (None, '') if the tool is absent."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return proc.returncode, proc.stdout
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None, ''
 
 DEFAULT_INTERVAL = 21600  # 6 hours
 CONFIG_PATHS = ['/etc/artemis/agent.conf', os.path.expanduser('~/.artemis/agent.conf')]
@@ -215,6 +235,93 @@ def get_packages():
         pass
 
     return packages
+
+
+def get_patch_status():
+    """Reboot-required flag and pending-update counts, per platform.
+
+    Fields that a platform cannot answer return ``"unsupported"`` rather than a
+    misleading zero.
+    """
+    plat = _platform()
+    status = {
+        'platform': plat,
+        'reboot_required': 'unsupported',
+        'reboot_required_reason': None,
+        'pending_updates': 'unsupported',
+        'security_updates': 'unsupported',
+        'package_manager': None,
+    }
+
+    if plat == 'linux':
+        if os.path.exists('/var/run/reboot-required'):
+            status['reboot_required'] = True
+            try:
+                with open('/var/run/reboot-required.pkgs') as fh:
+                    status['reboot_required_reason'] = fh.read().strip()[:500]
+            except OSError:
+                pass
+        elif os.path.exists('/proc/sys/kernel'):
+            status['reboot_required'] = False
+
+        if shutil.which('apt-get'):
+            status['package_manager'] = 'apt'
+            rc, out = _run(['apt-get', '-s', 'upgrade'])
+            if rc is not None:
+                pending = [ln for ln in out.splitlines() if ln.startswith('Inst ')]
+                status['pending_updates'] = len(pending)
+                status['security_updates'] = sum(
+                    1 for ln in pending if 'security' in ln.lower())
+        elif shutil.which('dnf'):
+            status['package_manager'] = 'dnf'
+            rc, out = _run(['dnf', '-q', 'check-update'])
+            # dnf check-update exits 100 when updates are available
+            if rc in (0, 100):
+                status['pending_updates'] = sum(
+                    1 for ln in out.splitlines() if ln and not ln.startswith(('Obsoleting', 'Last')))
+            rc2, out2 = _run(['dnf', '-q', 'updateinfo', 'list', 'security'])
+            if rc2 is not None:
+                status['security_updates'] = len([ln for ln in out2.splitlines() if ln.strip()])
+            if shutil.which('needs-restarting'):
+                rc3, _ = _run(['needs-restarting', '-r'])
+                if rc3 is not None:
+                    status['reboot_required'] = rc3 != 0
+        elif shutil.which('rpm'):
+            status['package_manager'] = 'rpm'
+
+    elif plat == 'macos':
+        status['package_manager'] = 'softwareupdate'
+        rc, out = _run(['softwareupdate', '-l'], timeout=90)
+        if rc is not None:
+            lines = [ln for ln in out.splitlines() if ln.strip().startswith('*')]
+            status['pending_updates'] = len(lines)
+            status['security_updates'] = sum(1 for ln in lines if 'security' in ln.lower())
+            status['reboot_required'] = any('restart' in ln.lower() for ln in out.splitlines())
+        if shutil.which('brew'):
+            rc, out = _run(['brew', 'outdated', '--quiet'])
+            if rc is not None and isinstance(status['pending_updates'], int):
+                status['pending_updates'] += len([ln for ln in out.splitlines() if ln.strip()])
+
+    return status
+
+
+def get_service_health():
+    """launchd on macOS, systemd on Linux — a light health snapshot."""
+    plat = _platform()
+    if plat == 'linux' and shutil.which('systemctl'):
+        rc, out = _run(['systemctl', 'is-system-running'])
+        rc2, failed = _run(['systemctl', '--failed', '--no-legend', '--plain'])
+        return {
+            'manager': 'systemd',
+            'state': out.strip() or 'unknown',
+            'failed_units': [ln.split()[0] for ln in failed.splitlines() if ln.strip()][:50],
+        }
+    if plat == 'macos' and shutil.which('launchctl'):
+        rc, out = _run(['launchctl', 'list'])
+        crashed = [ln.split('\t')[-1] for ln in out.splitlines()[1:]
+                   if ln and ln.split('\t')[1] not in ('0', '-')]
+        return {'manager': 'launchd', 'state': 'ok', 'failed_units': crashed[:50]}
+    return {'manager': 'unsupported', 'state': 'unsupported', 'failed_units': []}
 
 
 def get_open_ports():
@@ -516,12 +623,18 @@ def collect_report():
         'ports': collect('ports', get_open_ports, []),
         'system_info': collect('system', get_system_info, {}),
         'services': collect('services', get_service_status, []),
+        'patch_status': collect('patch_status', get_patch_status, {}),
+        'service_health': collect('service_health', get_service_health, {}),
         'performance': collect('performance', get_performance_telemetry, {}),
         'processes': collect('processes', get_process_telemetry, {}),
         'network': collect('network', get_network_telemetry, {}),
         'storage': collect('storage', get_storage_telemetry, {}),
     }
     report['package_count'] = len(report['packages'])
+    report['host_platform'] = _platform()
+    _ps = report.get('patch_status') or {}
+    report['reboot_required'] = _ps.get('reboot_required', 'unsupported')
+    report['pending_updates'] = _ps.get('pending_updates', 'unsupported')
     report['telemetry'] = {
         'collectors': collectors,
         'duration_ms': round((time.monotonic() - started) * 1000, 1),

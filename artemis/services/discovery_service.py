@@ -181,7 +181,7 @@ def run_scope(scope, cancel_check=None, log=None):
             if not ip or not check_scan_allowed(ip):
                 continue
             seen += 1
-            created = store_asset_info(ip, dns_info={})
+            created = store_asset_info(ip, dns_info={}, source='discovery')
             if created:
                 new_hosts.append(ip)
 
