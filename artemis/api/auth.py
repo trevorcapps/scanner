@@ -11,10 +11,19 @@ from artemis.services.auth_service import (
 from artemis.extensions import db
 from artemis.models.user import User
 from artemis.models.api_key import ApiKey
+from artemis.services import audit_service
 
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _set_auth_cookie(resp, token):
+    from flask import current_app
+    resp.set_cookie(
+        'artemis_token', token, httponly=True, samesite='Lax', max_age=86400,
+        secure=bool(current_app.config.get('SESSION_COOKIE_SECURE')),
+    )
 
 
 @auth_bp.route('/auth/login', methods=['POST'])
@@ -29,25 +38,34 @@ def login():
 
     user = authenticate_user(username, password)
     if not user:
+        audit_service.record(
+            audit_service.AUTH_FAILED, outcome='failure',
+            target_type='user', actor_label=username, actor_kind='user',
+            detail={'username': username}, commit=True,
+        )
         return jsonify({'error': 'Invalid credentials'}), 401
 
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user)
+    audit_service.record(
+        audit_service.AUTH_LOGIN, target_type='user', target_id=user.id,
+        actor_user_id=user.id, actor_label=user.username, actor_kind='user',
+        commit=True,
+    )
 
     resp = make_response(jsonify({
         'access_token': access_token,
         'refresh_token': refresh_token,
         'user': user.to_dict(),
     }))
-    # Set cookie for browser UI
-    resp.set_cookie('artemis_token', access_token,
-                     httponly=True, samesite='Lax', max_age=86400)
+    _set_auth_cookie(resp, access_token)
     return resp
 
 
 @auth_bp.route('/auth/logout', methods=['POST'])
 def logout():
     """Clear auth cookie. No auth required — you're logging out."""
+    audit_service.record(audit_service.AUTH_LOGOUT, commit=True)
     resp = make_response(jsonify({'status': 'logged_out'}))
     resp.delete_cookie('artemis_token')
     return resp  # Public via /api/v1/auth/ prefix
@@ -73,8 +91,7 @@ def refresh():
         'access_token': access_token,
         'user': user.to_dict(),
     }))
-    resp.set_cookie('artemis_token', access_token,
-                     httponly=True, samesite='Lax', max_age=86400)
+    _set_auth_cookie(resp, access_token)
     return resp
 
 
@@ -106,6 +123,11 @@ def setup():
 
     user = create_user(username, password, role='admin',
                        email=data.get('email'), display_name=data.get('display_name'))
+    audit_service.record(
+        audit_service.USER_CREATE, target_type='user', target_id=user.id,
+        actor_user_id=user.id, actor_label=user.username, actor_kind='user',
+        detail={'role': 'admin', 'initial_setup': True}, commit=True,
+    )
 
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user)
@@ -116,8 +138,7 @@ def setup():
         'refresh_token': refresh_token,
         'user': user.to_dict(),
     }))
-    resp.set_cookie('artemis_token', access_token,
-                     httponly=True, samesite='Lax', max_age=86400)
+    _set_auth_cookie(resp, access_token)
     return resp
 
 
@@ -148,6 +169,10 @@ def create_user_endpoint():
     try:
         user = create_user(username, password, role=role,
                            email=data.get('email'), display_name=data.get('display_name'))
+        audit_service.record(
+            audit_service.USER_CREATE, target_type='user', target_id=user.id,
+            detail={'username': username, 'role': role}, commit=True,
+        )
         return jsonify(user.to_dict()), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 409
@@ -161,7 +186,17 @@ def update_user(uid):
     data = request.get_json(force=True)
 
     if 'role' in data and data['role'] in ('admin', 'analyst', 'readonly'):
+        if data['role'] != user.role:
+            audit_service.record(
+                audit_service.ROLE_CHANGE, target_type='user', target_id=user.id,
+                detail={'from': user.role, 'to': data['role'], 'username': user.username},
+            )
         user.role = data['role']
+    if 'password' in data and len(data['password']) >= 8:
+        audit_service.record(
+            audit_service.SECRET_WRITE, target_type='user', target_id=user.id,
+            detail={'field': 'password', 'username': user.username},
+        )
     if 'display_name' in data:
         user.display_name = data['display_name']
     if 'email' in data:
@@ -185,6 +220,10 @@ def delete_user(uid):
         return jsonify({'error': 'Cannot delete yourself'}), 400
     ApiKey.query.filter_by(user_id=uid).delete()
     db.session.delete(user)
+    audit_service.record(
+        audit_service.ROLE_CHANGE, target_type='user', target_id=uid,
+        detail={'deleted': True, 'username': user.username},
+    )
     db.session.commit()
     return jsonify({'status': 'deleted', 'id': uid})
 
@@ -217,6 +256,10 @@ def create_api_key():
     name = data.get('name', 'default')
 
     raw_key = generate_api_key(user.id, name=name)
+    audit_service.record(
+        audit_service.SECRET_WRITE, target_type='api_key', target_id=name,
+        detail={'name': name, 'issued': True}, commit=True,
+    )
     return jsonify({'key': raw_key, 'name': name, 'warning': 'Save this key — it cannot be retrieved again.'}), 201
 
 

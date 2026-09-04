@@ -121,6 +121,12 @@ def create_scan():
                                   requested_by=user.id if user else None)
     except QueueDispatchError as e:
         return {'error': str(e), 'job': e.job.to_dict()}, 503
+
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SCAN_START, target_type='scan_job', target_id=job.id,
+        detail={'scan_type': scan_type, 'target': target}, commit=True,
+    )
     return jsonify(job.to_dict()), 202
 
 
@@ -154,4 +160,8 @@ def cancel_scan_job(job_id):
             'terminal': job.status in TERMINAL_STATES,
             'job': job.to_dict(),
         }), 409
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SCAN_CANCEL, target_type='scan_job', target_id=job.id, commit=True,
+    )
     return jsonify(job.to_dict()), 202

@@ -144,11 +144,11 @@
 
 - [x] `pyproject.toml` as the dependency source + hashed `requirements*.lock` files
 - [ ] Environment config (`.env` file, not hardcoded paths)
-- [ ] Rate limiting on the web UI
-- [ ] HTTPS by default (not just via reverse proxy)
+- [x] Rate limiting (Redis-backed, per-category, `429` + `Retry-After`)
+- [x] HTTPS deployment overlay (Caddy: ACME or BYO cert, HSTS, secure cookies)
 - [ ] Scan cancellation (currently no clean abort mechanism)
 - [ ] Input validation hardening (CIDR ranges, hostnames)
-- [ ] Logging to file with rotation
+- [x] Structured JSON logs with correlation IDs; optional rotating file handler
 - [ ] Docker Compose for one-command deployment
 - [ ] License file + contribution guidelines
 

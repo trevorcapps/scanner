@@ -1,0 +1,43 @@
+# Artemis TLS front end. Used by docker-compose.tls.yml.
+#
+# Default: public ACME certificate for {$ARTEMIS_DOMAIN}.
+# Bring-your-own cert: place cert.pem + key.pem in ./deploy/certs and uncomment
+# the `tls` line below.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$ARTEMIS_DOMAIN} {
+	# tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+
+	encode gzip
+
+	# WebSocket + Socket.IO upgrades and long-lived agent streams.
+	@ws {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @ws web:5005
+
+	reverse_proxy web:5005 {
+		header_up X-Forwarded-Proto https
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	request_body {
+		max_size 25MB
+	}
+}
+
+# Plain HTTP always redirects to HTTPS (Caddy does this automatically for the
+# site above; this block covers requests by IP / unknown host).
+:80 {
+	redir https://{$ARTEMIS_DOMAIN}{uri} permanent
+}

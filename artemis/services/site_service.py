@@ -275,7 +275,11 @@ def _run_vuln_scan(target, profile_id, scan_options):
 def _run_auth_scan(target, cred_ids):
     """Run auth scan on a single target. Returns CVE count."""
     from artemis.scanners.ssh_scanner import run_authenticated_scan
-    from artemis.services.auth_scan_service import store_auth_scan_results, get_credential
+    from artemis.services.auth_scan_service import (
+        get_credential,
+        resolve_credential_secrets,
+        store_auth_scan_results,
+    )
     from artemis.services.scan_service import get_open_ports_for_ip
 
     store_ip = target
@@ -296,10 +300,11 @@ def _run_auth_scan(target, cred_ids):
     for cred in creds:
         for port in ssh_ports:
             try:
+                secrets = resolve_credential_secrets(cred['id'], reason='site_auth_scan')
                 result = run_authenticated_scan(
                     host=store_ip, port=port, username=cred['username'],
-                    password=cred.get('password') if cred['cred_type'] == 'ssh_password' else None,
-                    key_path=cred.get('key_path') if cred['cred_type'] == 'ssh_key' else None,
+                    password=secrets.get('password') if cred['cred_type'] == 'ssh_password' else None,
+                    key_data=secrets.get('key_data') if cred['cred_type'] == 'ssh_key' else None,
                 )
                 store_auth_scan_results(store_ip, result['os_info'], result['packages'], result['cves'])
                 return len(result['cves'])

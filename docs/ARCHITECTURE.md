@@ -112,12 +112,42 @@ the systemd unit's existing `NoNewPrivileges`, `ProtectSystem=full`,
 
 ## Activity logging
 
-Operational logs continue to go through Python logging (stdout/journal in
-normal deployments). `log_service` also keeps the newest 500 in-process
-records. `GET /api/v1/logs` seeds the activity panel, while `scan_log`
-Socket.IO events append live scan output. The memory history is intentionally
-bounded and process-local; durable retention belongs in the container/service
-logging platform.
+Operational logs go through Python logging. `logging_setup.configure_logging`
+installs a single stdout handler that emits **line-delimited JSON** by default
+(plain text on a TTY; override with `ARTEMIS_LOG_FORMAT`). Every record carries
+`request_id`, and `job_id` / `org_id` when set on `flask.g`, so a request can be
+traced across web and worker. Container deployments rely on the runtime log
+driver for rotation; `ARTEMIS_LOG_FILE` adds a size-based `RotatingFileHandler`
+for non-container use. `log_service` still keeps the newest 500 records in
+process for `GET /api/v1/logs`, and `scan_log` Socket.IO events carry live scan
+output.
+
+## Security baseline (P0.4)
+
+- **Secret encryption.** `crypto_service` seals every stored secret with
+  per-secret AES-GCM data keys wrapped by a deployment KEK
+  (`ARTEMIS_ENCRYPTION_KEY`, or `ARTEMIS_ENCRYPTION_KEYS` for rotation).
+  `Credential` holds only `secret_enc` / `private_key_enc` envelopes; the
+  plaintext columns and filesystem `key_path` auth were removed. Scanners call
+  `resolve_credential_secrets()` at the point of use, which writes a
+  `secret.read` audit event.
+- **Production guard.** `security.validate_production_config` refuses to serve
+  `production` without `SECRET_KEY`, an encryption key, and an HTTPS assertion,
+  unless `ARTEMIS_ALLOW_INSECURE=1`.
+- **Transport.** `security.init_security` adds request-ID correlation, `ProxyFix`
+  (when `ARTEMIS_BEHIND_TLS_PROXY`), secure/SameSite cookies, HSTS/CSP/nosniff
+  headers, and a `MAX_CONTENT_LENGTH` cap. `docker-compose.tls.yml` puts Caddy
+  in front for ACME or bring-your-own-certificate TLS.
+- **Rate limiting.** `rate_limit_service` applies Redis-backed fixed-window
+  policies (`login`, `write`, `expensive`, `agent_report`, `shell_poll`) with a
+  deterministic in-memory backend for tests; over-budget callers get `429` with
+  `Retry-After`.
+- **Audit trail.** `audit_service` writes immutable `AuditEvent` rows for auth,
+  secret access, role changes, scan start/cancel, shell lifecycle, settings
+  changes, agent-key issue, and exports. `GET /api/v1/audit-events` is
+  admin-only.
+- **Permission matrix.** Credential, agent-key, settings, and shell
+  administration are `role_required('admin')`.
 
 ## Compatibility and cleanup boundaries
 

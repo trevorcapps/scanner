@@ -58,6 +58,7 @@ publishes the image with CycloneDX SBOMs. It never deploys.
 | `test_dashboard_api.py` | aggregation, sorting, filtering, pagination, topology integrity |
 | `test_feed_caches.py` | NVD feed metadata schema and native ExploitDB CSV caching/lookups |
 | `test_reports.py` | report scopes, rendering, and report records |
+| `test_security_baseline.py` | envelope encryption, production config guard, audit trail, rate limiting, transport headers |
 | `test_webhooks.py` | delivery signing, retries, filters, and CRUD |
 
 ## Test design conventions

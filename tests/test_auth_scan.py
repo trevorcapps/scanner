@@ -197,7 +197,8 @@ class AuthScanApiTests(unittest.TestCase):
     def test_auth_scan_accepts_explicit_ids(self):
         with self.ctx():
             c = Credential(name='k', cred_type='ssh_password', username='root',
-                           password='x', created_at='2026-01-01', updated_at='2026-01-01')
+                           created_at='2026-01-01', updated_at='2026-01-01')
+            c.set_secret('x')
             db.session.add(c)
             db.session.commit()
             cid = c.id

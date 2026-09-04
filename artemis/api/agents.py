@@ -157,6 +157,11 @@ def create_agent_shell_session(aid):
         )
     except (ShellSessionError, TypeError, ValueError) as exc:
         return jsonify({'error': str(exc)}), 409
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SHELL_OPEN, target_type='shell_session', target_id=session.id,
+        detail={'agent_id': agent.id, 'agent': agent.hostname}, commit=True,
+    )
     return jsonify({'session': session.to_dict()}), 201
 
 
@@ -221,7 +226,13 @@ def close_agent_shell_session(session_id):
     session = _owned_shell_session(session_id)
     if not session:
         return jsonify({'error': 'Shell session not found'}), 404
-    return jsonify({'session': request_close(session).to_dict()}), 202
+    closed = request_close(session)
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.SHELL_CLOSE, target_type='shell_session', target_id=session_id,
+        detail={'agent_id': session.agent_id}, commit=True,
+    )
+    return jsonify({'session': closed.to_dict()}), 202
 
 
 @agents_bp.route('/agents', methods=['GET'])
@@ -260,6 +271,7 @@ def get_agent(aid):
 
 
 @agents_bp.route('/agents/<int:aid>', methods=['DELETE'])
+@role_required('admin')
 def delete_agent(aid):
     """Deregister an agent from the console.
 
@@ -272,11 +284,17 @@ def delete_agent(aid):
 
 
 @agents_bp.route('/agents/<int:aid>/generate-key', methods=['POST'])
+@role_required('admin')
 def regenerate_key(aid):
-    """Regenerate agent API key."""
+    """Regenerate agent API key. Admin only — this is agent-key administration."""
     agent = Agent.query.get_or_404(aid)
     agent.agent_key = generate_agent_key()
     db.session.commit()
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.AGENT_KEY_ISSUE, target_type='agent', target_id=aid,
+        detail={'agent': agent.hostname, 'rotated': True}, commit=True,
+    )
     return jsonify({'agent_id': aid, 'agent_key': agent.agent_key})
 
 

@@ -9,7 +9,9 @@ from flask import Flask, render_template, send_from_directory, abort
 from artemis.config import config_map
 from artemis.extensions import db, migrate, socketio, init_celery
 from artemis.api import register_blueprints
+from artemis.logging_setup import configure_logging
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Ensure scanner root is on sys.path for legacy imports (device_type, nvd_feeds, etc.)
@@ -35,11 +37,15 @@ def create_app(config_name=None, start_background_services=True):
     from artemis.services.log_service import install_recent_log_handler
     install_recent_log_handler()
 
+    from artemis.security import init_security, validate_production_config
+    init_security(app)
+
     if config_name == 'production':
         if app.config['CELERY_BROKER_URL'] == 'memory://' or app.config['CELERY_TASK_ALWAYS_EAGER']:
             raise RuntimeError(
                 'Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode'
             )
+        validate_production_config(app)
 
     # Initialize extensions
     db.init_app(app)
@@ -154,6 +160,29 @@ def _setup_auth_middleware(app):
         '/api/auth/change-password',
     }
     READONLY_SELF_SERVICE_PREFIXES = ('/api/v1/api-keys', '/api/api-keys')
+
+    @app.before_request
+    def rate_limit():
+        from flask import request
+        from artemis.services.rate_limit_service import enforce
+
+        path = request.path
+        if not path.startswith(('/api/', '/agent/')):
+            return None
+
+        if path.endswith('/agents/shell/poll') or path.endswith('/agents/shell/output'):
+            category = 'shell_poll'
+        elif path.endswith('/agents/report'):
+            category = 'agent_report'
+        elif '/auth/login' in path or '/auth/setup' in path or path.endswith('/setup'):
+            category = 'login'
+        elif request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return None
+        elif any(seg in path for seg in ('/scans', '/reports', '/exports', '/sync', '/scan-jobs')):
+            category = 'expensive'
+        else:
+            category = 'write'
+        return enforce(category)
 
     @app.before_request
     def check_auth():

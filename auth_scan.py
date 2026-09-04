@@ -19,9 +19,28 @@ NVD_CVE_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_RATE_LIMIT_DELAY = 6.5  # 5 req/30s without key => ~6s between requests
 
 
-def ssh_connect(host, port=22, username='root', password=None, key_path=None, timeout=15):
+def _load_private_key(source, password, from_file):
+    """Try each key type in turn. ``source`` is a path or a PEM string."""
+    import io
+
+    loaders = (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey)
+    last_error = None
+    for loader in loaders:
+        try:
+            if from_file:
+                return loader.from_private_key_file(source, password=password or None)
+            return loader.from_private_key(io.StringIO(source), password=password or None)
+        except Exception as exc:  # noqa: BLE001 - try the next key type
+            last_error = exc
+    raise last_error or ValueError('unrecognised private key')
+
+
+def ssh_connect(host, port=22, username='root', password=None, key_path=None,
+                key_data=None, timeout=15):
     """Create an SSH connection using paramiko.
 
+    ``key_data`` is a private-key PEM string (preferred, from the encrypted
+    credential store); ``key_path`` is the legacy filesystem form.
     Returns a paramiko.SSHClient or raises an exception.
     """
     client = paramiko.SSHClient()
@@ -29,15 +48,10 @@ def ssh_connect(host, port=22, username='root', password=None, key_path=None, ti
 
     kwargs = dict(hostname=host, port=port, username=username, timeout=timeout)
 
-    if key_path:
-        try:
-            pkey = paramiko.RSAKey.from_private_key_file(key_path, password=password)
-        except Exception:
-            try:
-                pkey = paramiko.Ed25519Key.from_private_key_file(key_path, password=password)
-            except Exception:
-                pkey = paramiko.ECDSAKey.from_private_key_file(key_path, password=password)
-        kwargs['pkey'] = pkey
+    if key_data:
+        kwargs['pkey'] = _load_private_key(key_data, password, from_file=False)
+    elif key_path:
+        kwargs['pkey'] = _load_private_key(key_path, password, from_file=True)
     elif password:
         kwargs['password'] = password
     else:
@@ -472,7 +486,7 @@ def query_nvd_cves_for_cpe(cpe_string, nvd_api_key=None):
 
 
 def run_authenticated_scan(host, port=22, username='root', password=None, key_path=None,
-                           nvd_api_key=None, log_callback=None, max_cve_lookups=400):
+                           key_data=None, nvd_api_key=None, log_callback=None, max_cve_lookups=400):
     """Run a full authenticated scan on a host.
 
     Returns dict with os_info, packages (list), cves (list).
@@ -485,7 +499,7 @@ def run_authenticated_scan(host, port=22, username='root', password=None, key_pa
     log(f'Connecting to {host}:{port} via SSH as {username}...')
 
     client = ssh_connect(host, port=port, username=username,
-                         password=password, key_path=key_path)
+                         password=password, key_path=key_path, key_data=key_data)
     try:
         log(f'SSH connection established to {host}')
 

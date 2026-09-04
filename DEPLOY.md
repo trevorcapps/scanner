@@ -14,18 +14,40 @@ includes the external scanners the app shells out to (`nmap`, `nuclei`).
 ```bash
 cp .env.example .env
 
-# Fill in the two required secrets:
+# Fill in the required secrets:
 python -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
+python -c "from artemis.services.crypto_service import generate_key; \
+          print('ARTEMIS_ENCRYPTION_KEY=' + generate_key())" >> .env
 $EDITOR .env        # set POSTGRES_PASSWORD (and optionally NVD_API_KEY)
 
 docker compose up -d --build
 ```
+
+`SECRET_KEY` signs sessions; `ARTEMIS_ENCRYPTION_KEY` (32-byte base64) wraps every
+stored credential secret at rest. In `production` the app **refuses to start**
+without both, and without TLS in front of it — either use the HTTPS overlay
+below or set `ARTEMIS_ALLOW_INSECURE=1` for local evaluation only.
 
 Then open <http://localhost:5005>. On the first visit, with no users in the
 database, Artemis runs in setup mode — create the admin account through the UI.
 
 `WEB_PORT` in `.env` changes the published host port (container always listens
 on 5005).
+
+### HTTPS
+
+```bash
+echo "ARTEMIS_DOMAIN=artemis.example.com" >> .env
+echo "ACME_EMAIL=ops@example.com" >> .env          # for a public ACME certificate
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+```
+
+Caddy terminates TLS on 443, redirects 80 → 443, and proxies to the internal
+HTTP-only gunicorn (no longer published on the host). To use your own
+certificate instead of ACME, drop `cert.pem` / `key.pem` in `deploy/certs/` and
+uncomment the `tls` line in `deploy/Caddyfile`. The overlay sets
+`ARTEMIS_BEHIND_TLS_PROXY=1`, which turns on secure cookies and HSTS and trusts
+exactly one proxy hop for `X-Forwarded-*`.
 
 ## Services
 

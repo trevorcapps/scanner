@@ -217,6 +217,11 @@ def download_report(report_id):
         return {'error': 'Report file not available'}, 404
     mimetype = 'application/pdf' if rec.fmt == 'pdf' else 'text/html'
     dl = f"{re.sub(r'[^A-Za-z0-9._-]+', '-', rec.title)}.{rec.fmt}"
+    from artemis.services import audit_service
+    audit_service.record(
+        audit_service.EXPORT, target_type='report', target_id=report_id,
+        detail={'format': rec.fmt, 'title': rec.title}, commit=True,
+    )
     return send_file(rec.file_path, mimetype=mimetype, as_attachment=True, download_name=dl)
 
 

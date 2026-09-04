@@ -258,7 +258,11 @@ def _run_scan(app, sched):
     if scan_type == 'auth':
         from artemis.scanners.ssh_scanner import run_authenticated_scan
         from artemis.services.auth_scan_service import (
-            store_auth_scan_results, get_credential, get_all_credentials, get_setting,
+            get_all_credentials,
+            get_credential,
+            get_setting,
+            resolve_credential_secrets,
+            store_auth_scan_results,
         )
         from artemis.services.scan_service import get_open_ports_for_ip
 
@@ -298,10 +302,11 @@ def _run_scan(app, sched):
                     continue
                 for port in ssh_ports:
                     try:
+                        secrets = resolve_credential_secrets(cred['id'], reason='scheduled_auth_scan')
                         auth_result = run_authenticated_scan(
                             host=ip, port=port, username=cred['username'],
-                            password=cred.get('password') if cred['cred_type'] == 'ssh_password' else None,
-                            key_path=cred.get('key_path') if cred['cred_type'] == 'ssh_key' else None,
+                            password=secrets.get('password') if cred['cred_type'] == 'ssh_password' else None,
+                            key_data=secrets.get('key_data') if cred['cred_type'] == 'ssh_key' else None,
                             nvd_api_key=nvd_api_key,
                             log_callback=lambda m, lvl='info': logs.append(m),
                         )

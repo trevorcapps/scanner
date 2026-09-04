@@ -29,7 +29,12 @@ from artemis.services.fingerprint_service import (
     store_fingerprints, store_fpx_results, store_raw_fingerprints, get_fingerprint_engine,
 )
 from artemis.services.vuln_service import store_vulnerabilities, get_vulnerabilities
-from artemis.services.auth_scan_service import store_auth_scan_results, get_all_credentials, get_credential
+from artemis.services.auth_scan_service import (
+    get_all_credentials,
+    get_credential,
+    resolve_credential_secrets,
+    store_auth_scan_results,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -845,10 +850,11 @@ def handle_start_auth_scan(data):
                                 def log_cb(msg, level='info'):
                                     emit_log(sid, msg, level)
 
+                                secrets = resolve_credential_secrets(cred['id'], reason='socket_auth_scan')
                                 result = run_authenticated_scan(
                                     host=ip, port=ssh_port, username=cred['username'],
-                                    password=cred['password'] if cred_type == 'ssh_password' else None,
-                                    key_path=cred['key_path'] if cred_type == 'ssh_key' else None,
+                                    password=secrets.get('password') if cred_type == 'ssh_password' else None,
+                                    key_data=secrets.get('key_data') if cred_type == 'ssh_key' else None,
                                     nvd_api_key=nvd_api_key, log_callback=log_cb
                                 )
 

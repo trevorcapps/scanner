@@ -5,11 +5,29 @@
 without the real binaries and without network access.
 """
 
+import base64
 import os
 import stat
 import textwrap
 
 import pytest
+
+# A deterministic key so credential-encryption paths run under test. Must be set
+# before artemis.services.crypto_service first reads the environment.
+os.environ.setdefault(
+    "ARTEMIS_ENCRYPTION_KEY",
+    base64.b64encode(b"artemis-test-key-000000000000000").decode(),
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_security_singletons():
+    from artemis.services import crypto_service, rate_limit_service
+
+    crypto_service.reset_cache()
+    rate_limit_service.reset_state()
+    yield
+    rate_limit_service.reset_state()
 
 
 @pytest.fixture
