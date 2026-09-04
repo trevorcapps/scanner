@@ -331,7 +331,7 @@ def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
             _check_cancel()
             _log(f'port scan {ip} ({idx + 1}/{len(ips)})')
             try:
-                scan_result = nmap_scan(ip, options=scan_options)
+                scan_result = nmap_scan(ip, options=scan_options, cancel_check=cancel_predicate)
                 scan_data = parse_scan(scan_result)
                 if scan_data:
                     store_scan(ip, scan_data)
@@ -360,7 +360,7 @@ def _run_scan(app, sched, cancel_predicate=None, log_callback=None):
                 nuclei_results = nuclei_scan(ip, options={
                     **scan_options,
                     'templates': sched.profile_id or scan_options.get('templates', ''),
-                })
+                }, cancel_check=cancel_predicate)
                 vulns = parse_vuln_scan(nuclei_results)
                 if vulns:
                     store_vulnerabilities(ip, vulns)

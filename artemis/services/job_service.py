@@ -6,6 +6,7 @@ these events — losing a browser never affects a job.
 """
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 from flask import current_app
@@ -13,6 +14,8 @@ from flask import current_app
 from artemis.extensions import db
 from artemis.models.job_event import JobEvent
 from artemis.models.scan_job import ScanJob
+
+logger = logging.getLogger(__name__)
 
 TERMINAL_STATES = {'success', 'failed', 'cancelled', 'dispatch_failed'}
 
@@ -155,7 +158,16 @@ def mark_running(job, attempt=1, lease_seconds=1800):
     emit_event(job, 'started', message='job started', current=0)
 
 
+def _already_terminal(job):
+    if job.status in TERMINAL_STATES:
+        logger.info('job %s already %s; ignoring transition', job.id, job.status)
+        return True
+    return False
+
+
 def mark_result(job, result):
+    if _already_terminal(job):
+        return job
     if job.status == 'cancel_requested':
         return mark_cancelled(job)
     job.status = 'success'
@@ -168,6 +180,8 @@ def mark_result(job, result):
 
 
 def mark_failed(job, message):
+    if _already_terminal(job):
+        return job
     job.status = 'failed'
     job.error_message = str(message)[:2000]
     job.completed_at = _now_iso()
@@ -178,6 +192,8 @@ def mark_failed(job, message):
 
 
 def mark_cancelled(job):
+    if job.status in ('success', 'failed', 'dispatch_failed'):
+        return job
     job.status = 'cancelled'
     job.completed_at = job.completed_at or _now_iso()
     job.lease_expires_at = None
