@@ -156,6 +156,21 @@ def run_discovery_job(self, job_id):
         raise
 
 
+@shared_task(name='artemis.sync_intel')
+def sync_intel():
+    """Daily: refresh EPSS + CISA KEV + exploit maturity and re-score findings."""
+    from artemis.services.intel_service import sync_all
+    from artemis.services.tenant import SKIP_TENANT_FILTER  # noqa: F401
+
+    try:
+        result = sync_all()
+        logger.info('intel sync: %s', result)
+        return result
+    except Exception:
+        logger.exception('intel sync failed')
+        raise
+
+
 @shared_task(name='artemis.dispatch_due_work')
 def dispatch_due_work():
     """Celery Beat singleton: turn due schedules and expired leases into jobs.

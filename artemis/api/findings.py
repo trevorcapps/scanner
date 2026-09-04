@@ -65,6 +65,46 @@ def set_finding_status(occ_id):
     return jsonify({'finding': occ.to_dict()})
 
 
+@findings_bp.route('/findings/<int:occ_id>/priority', methods=['GET'])
+def finding_priority(occ_id):
+    """The priority score with every contributing factor exposed."""
+    from artemis.models.finding import FindingOccurrence
+    from artemis.services.intel_service import compute_priority
+    occ = scoped_get(FindingOccurrence, occ_id)
+    if not occ:
+        return jsonify({'error': 'Not found'}), 404
+    score, factors = compute_priority(occ)
+    return jsonify({'occurrence_id': occ_id, 'score': score, 'factors': factors})
+
+
+@findings_bp.route('/intel/sync', methods=['POST'])
+@role_required('admin')
+def sync_intel():
+    """Trigger an EPSS + KEV + exploit-maturity refresh (async)."""
+    from artemis.tasks.scan_tasks import sync_intel as task
+    try:
+        task.delay()
+        return jsonify({'status': 'queued'}), 202
+    except Exception:  # noqa: BLE001
+        from artemis.services.intel_service import sync_all
+        return jsonify({'result': sync_all(), 'mode': 'inline'})
+
+
+@findings_bp.route('/intel/status', methods=['GET'])
+def intel_status():
+    from artemis.extensions import db
+    from artemis.models.finding import VulnerabilityDefinition
+    epss = db.session.query(db.func.count(), db.func.max(VulnerabilityDefinition.epss_model_date)).filter(
+        VulnerabilityDefinition.epss_score.isnot(None)).one()
+    kev = db.session.query(db.func.count()).filter(VulnerabilityDefinition.kev == 1).scalar()
+    total = db.session.query(db.func.count()).select_from(VulnerabilityDefinition).scalar()
+    return jsonify({
+        'definitions': total,
+        'epss': {'scored': epss[0], 'model_date': epss[1]},
+        'kev_listed': kev,
+    })
+
+
 @findings_bp.route('/vulnerability-definitions/<path:def_id>', methods=['GET'])
 def get_definition(def_id):
     from artemis.extensions import db

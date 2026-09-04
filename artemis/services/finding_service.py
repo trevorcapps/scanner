@@ -85,6 +85,11 @@ def ingest_finding(*, definition_id, kind, ip, source, port=None, protocol=None,
         present=1, severity=severity, matched_at=matched_at,
         evidence_json=json.dumps(evidence) if evidence is not None else None,
     ))
+    try:
+        from artemis.services.intel_service import rescore_occurrence
+        rescore_occurrence(occ)
+    except Exception:  # noqa: BLE001
+        pass
     db.session.commit()
     return occ
 

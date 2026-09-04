@@ -42,6 +42,11 @@ def init_celery(app):
                 'schedule': float(app.config.get('DISPATCH_INTERVAL_SECONDS', 60)),
                 'options': {'expires': 55},
             },
+            'sync-vuln-intel': {
+                'task': 'artemis.sync_intel',
+                'schedule': float(app.config.get('INTEL_SYNC_SECONDS', 86400)),
+                'options': {'expires': 3600},
+            },
         },
     )
     celery.set_default()
