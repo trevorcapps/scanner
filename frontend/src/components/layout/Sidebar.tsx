@@ -18,6 +18,7 @@ const NAV: Item[] = [
   { to: '/agents', label: 'Agents', meta: 'EDR' },
   { to: '/reports', label: 'Reports', meta: 'DOC' },
   { to: '/settings', label: 'Control', meta: 'CFG' },
+  { to: '/automation', label: 'Automation', meta: 'ANSIBLE' },
   { to: '/data-query', label: 'Data query', meta: 'SQL' },
 ];
 

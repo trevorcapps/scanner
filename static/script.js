@@ -293,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
             assets: ['ASSETS', 'DISCOVERED INVENTORY'], vulns: ['FINDINGS', 'CORRELATED EXPOSURE'],
             sites: ['SITES', 'SCAN BOUNDARIES'], schedules: ['SCHEDULES', 'AUTOMATED TRACES'],
             agents: ['AGENTS', 'ENDPOINT TELEMETRY'], settings: ['CONTROL', 'ENGINE POLICY'],
-            sql: ['DATA QUERY', 'DIRECT EVIDENCE ACCESS']
+            automation: ['AUTOMATION', 'CONTROLLED EXECUTION'], sql: ['DATA QUERY', 'DIRECT EVIDENCE ACCESS']
         };
         var workspace = labels[pageName] || [pageName.toUpperCase(), ''];
         var title = document.getElementById('workspace-title');
@@ -312,6 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (pageName === 'sites') loadSites();
         else if (pageName === 'schedules') loadSchedules();
         else if (pageName === 'agents') loadAgents();
+        else if (pageName === 'automation') loadAutomation();
         else if (pageName === 'sql') setTimeout(initSqlTab, 50);
     }
 
@@ -1976,6 +1977,261 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('btn-create-schedule').addEventListener('click', function() { showScheduleForm(null); });
+
+    // ==================== Automation Page ====================
+
+    var automationState = { assets: [], agents: [], content: [], starters: [], jobs: [] };
+    var automationControlsBound = false;
+
+    function selectedAutomationTargets() {
+        return Array.prototype.slice.call(document.querySelectorAll('#automation-target-list input:checked'))
+            .map(function(input) { return parseInt(input.value, 10); })
+            .filter(function(id) { return isFinite(id); });
+    }
+
+    function updateAutomationTargetCount() {
+        var count = selectedAutomationTargets().length;
+        var target = document.getElementById('automation-target-count');
+        if (target) target.textContent = count + ' SELECTED';
+    }
+
+    function renderAutomationTargets() {
+        var container = document.getElementById('automation-target-list');
+        if (!container) return;
+        if (!automationState.assets.length) {
+            container.innerHTML = '<div class="empty-state">No assets available. Run a trace or deploy an agent first.</div>';
+            updateAutomationTargetCount();
+            return;
+        }
+
+        var agentsByIp = {};
+        automationState.agents.forEach(function(agent) { agentsByIp[agent.ip] = agent; });
+        var html = '';
+        automationState.assets.forEach(function(asset) {
+            var agent = agentsByIp[asset.ip];
+            var local = agent && (agent.capabilities || []).indexOf('ansible_local') !== -1;
+            var status = agent ? (agent.status || 'unknown') : 'controller';
+            var label = asset.hostname ? asset.hostname + ' (' + asset.ip + ')' : asset.ip;
+            html += '<label class="automation-target-row">';
+            html += '<input type="checkbox" value="' + escapeHtml(String(asset.id || '')) + '">';
+            html += '<span class="automation-target-name">' + escapeHtml(label) + '</span>';
+            html += '<span class="automation-target-meta">' + escapeHtml(status.toUpperCase());
+            if (local) html += ' · AGENT LOCAL';
+            html += '</span></label>';
+        });
+        container.innerHTML = html;
+        container.querySelectorAll('input').forEach(function(input) {
+            input.addEventListener('change', updateAutomationTargetCount);
+        });
+        updateAutomationTargetCount();
+    }
+
+    function renderAutomationContent() {
+        var select = document.getElementById('automation-content-select');
+        if (!select) return;
+        var current = select.value;
+        select.innerHTML = '<option value="">New playbook</option>';
+        automationState.content.forEach(function(content) {
+            var label = content.filename || content.kind || 'playbook';
+            label += ' · ' + String(content.digest || '').slice(0, 12);
+            var option = document.createElement('option');
+            option.value = content.id;
+            option.textContent = label;
+            select.appendChild(option);
+        });
+        if (current && automationState.content.some(function(content) { return String(content.id) === current; })) {
+            select.value = current;
+        }
+    }
+
+    function renderAutomationStarters() {
+        var select = document.getElementById('automation-starter-select');
+        if (!select) return;
+        select.innerHTML = '<option value="">Choose a starter</option>';
+        automationState.starters.forEach(function(starter) {
+            var option = document.createElement('option');
+            option.value = starter.id;
+            option.textContent = starter.name || starter.id;
+            select.appendChild(option);
+        });
+    }
+
+    function renderAutomationCredentials() {
+        var select = document.getElementById('automation-credentials');
+        if (!select) return;
+        select.innerHTML = '';
+        credentialsList.forEach(function(credential) {
+            var option = document.createElement('option');
+            option.value = credential.id;
+            option.textContent = credential.name + ' (' + credential.cred_type + ' / ' + credential.username + ')';
+            select.appendChild(option);
+        });
+    }
+
+    function renderAutomationRuns() {
+        var container = document.getElementById('automation-runs-list');
+        if (!container) return;
+        if (!automationState.jobs.length) {
+            container.innerHTML = '<div class="empty-state">No Ansible runs yet.</div>';
+            return;
+        }
+        var html = '<div class="software-table-wrapper"><table class="automation-runs-table"><thead><tr><th>Created</th><th>Target</th><th>Status</th><th>Job</th><th>Actions</th></tr></thead><tbody>';
+        automationState.jobs.forEach(function(job) {
+            var terminal = ['success', 'failed', 'cancelled', 'expired'].indexOf(job.status) !== -1;
+            var statusClass = job.status === 'success' ? 'completed' : job.status;
+            html += '<tr><td>' + escapeHtml(formatDate(job.created_at)) + '</td>';
+            html += '<td>' + escapeHtml(job.target || '—') + '</td>';
+            html += '<td><span class="status-dot ' + escapeHtml(statusClass || 'stale') + '"></span>' + escapeHtml((job.status || 'unknown').toUpperCase()) + '</td>';
+            html += '<td><code>' + escapeHtml(String(job.id).slice(0, 12)) + '</code></td><td class="actions-cell">';
+            html += '<button class="btn-small btn-secondary automation-view-job" data-id="' + escapeHtml(String(job.id)) + '">Events</button>';
+            if (!terminal) html += ' <button class="btn-small btn-stop automation-cancel-job" data-id="' + escapeHtml(String(job.id)) + '">Cancel</button>';
+            html += '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        container.querySelectorAll('.automation-view-job').forEach(function(button) {
+            button.addEventListener('click', function() { viewAutomationJob(this.getAttribute('data-id')); });
+        });
+        container.querySelectorAll('.automation-cancel-job').forEach(function(button) {
+            button.addEventListener('click', function() { cancelAutomationJob(this.getAttribute('data-id')); });
+        });
+    }
+
+    function loadAutomation() {
+        var targetList = document.getElementById('automation-target-list');
+        if (targetList && !automationState.assets.length) targetList.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+        Promise.all([
+            apiFetch('/api/v1/assets'),
+            apiFetch('/api/v1/agents'),
+            apiFetch('/api/v1/automation/content?limit=100'),
+            apiFetch('/api/v1/automation/starters'),
+            apiFetch('/api/v1/jobs?type=ansible_run&limit=25'),
+            apiFetch('/api/v1/credentials')
+        ]).then(function(results) {
+            automationState.assets = results[0].assets || [];
+            automationState.agents = Array.isArray(results[1]) ? results[1] : (results[1].agents || []);
+            automationState.content = results[2].content || [];
+            automationState.starters = results[3].starters || [];
+            automationState.jobs = results[4].jobs || [];
+            credentialsList = results[5].credentials || [];
+            renderAutomationTargets();
+            renderAutomationContent();
+            renderAutomationStarters();
+            renderAutomationCredentials();
+            renderAutomationRuns();
+            bindAutomationControls();
+        }).catch(function(error) {
+            if (targetList) targetList.innerHTML = '<p class="error">Failed to load automation data: ' + escapeHtml(error.message) + '</p>';
+        });
+    }
+
+    function bindAutomationControls() {
+        if (automationControlsBound) return;
+        automationControlsBound = true;
+        document.getElementById('automation-refresh').addEventListener('click', loadAutomation);
+        document.getElementById('automation-select-all').addEventListener('click', function() {
+            document.querySelectorAll('#automation-target-list input').forEach(function(input) { input.checked = true; });
+            updateAutomationTargetCount();
+        });
+        document.getElementById('automation-clear-all').addEventListener('click', function() {
+            document.querySelectorAll('#automation-target-list input').forEach(function(input) { input.checked = false; });
+            updateAutomationTargetCount();
+        });
+        document.getElementById('automation-starter-select').addEventListener('change', function() {
+            var starter = automationState.starters.find(function(item) { return item.id === this.value; }.bind(this));
+            if (!starter) return;
+            document.getElementById('automation-content-select').value = '';
+            document.getElementById('automation-playbook').disabled = false;
+            document.getElementById('automation-filename').disabled = false;
+            document.getElementById('automation-status').textContent = 'Loading starter...';
+            apiFetch('/api/v1/automation/starters/' + encodeURIComponent(starter.id)).then(function(data) {
+                document.getElementById('automation-playbook').value = (data.starter || {}).body || '';
+                document.getElementById('automation-status').textContent = 'Starter loaded';
+            }).catch(function(error) { document.getElementById('automation-status').textContent = error.message; });
+        });
+        document.getElementById('automation-content-select').addEventListener('change', function() {
+            var saved = !!this.value;
+            document.getElementById('automation-starter-select').value = '';
+            document.getElementById('automation-playbook').disabled = saved;
+            document.getElementById('automation-filename').disabled = saved;
+            document.getElementById('automation-status').textContent = saved ? 'Saved content selected' : '';
+        });
+        document.getElementById('automation-file').addEventListener('change', function() {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function() {
+                document.getElementById('automation-content-select').value = '';
+                document.getElementById('automation-starter-select').value = '';
+                document.getElementById('automation-playbook').disabled = false;
+                document.getElementById('automation-filename').disabled = false;
+                document.getElementById('automation-playbook').value = reader.result;
+                document.getElementById('automation-filename').value = file.name;
+                document.getElementById('automation-status').textContent = 'File loaded';
+            };
+            reader.onerror = function() { document.getElementById('automation-status').textContent = 'Could not read file'; };
+            reader.readAsText(file);
+        });
+        document.getElementById('automation-check-btn').addEventListener('click', function() { launchAutomation(true); });
+        document.getElementById('automation-run-btn').addEventListener('click', function() { launchAutomation(false); });
+    }
+
+    function launchAutomation(checkMode) {
+        var status = document.getElementById('automation-status');
+        var contentId = document.getElementById('automation-content-select').value;
+        var content = document.getElementById('automation-playbook').value.trim();
+        var targets = selectedAutomationTargets();
+        if (!targets.length) { status.textContent = 'Select at least one target'; return; }
+        if (!contentId && !content) { status.textContent = 'Provide a playbook or select saved content'; return; }
+
+        var variables = {};
+        var variablesText = document.getElementById('automation-variables').value.trim();
+        if (variablesText) {
+            try {
+                variables = JSON.parse(variablesText);
+                if (!variables || Array.isArray(variables) || typeof variables !== 'object') throw new Error('must be a JSON object');
+            } catch (error) { status.textContent = 'Variables JSON error: ' + error.message; return; }
+        }
+        var credentialRefs = Array.prototype.slice.call(document.getElementById('automation-credentials').selectedOptions)
+            .map(function(option) { return parseInt(option.value, 10); });
+        var body = { targets: { asset_ids: targets }, variables: variables,
+            credential_refs: credentialRefs, check_mode: checkMode };
+        if (contentId) body.content_id = parseInt(contentId, 10);
+        else { body.content = content; body.filename = document.getElementById('automation-filename').value.trim() || null; }
+
+        status.textContent = checkMode ? 'Submitting check run...' : 'Submitting playbook...';
+        document.getElementById('automation-check-btn').disabled = true;
+        document.getElementById('automation-run-btn').disabled = true;
+        apiFetch('/api/v1/automation/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function(result) {
+                status.textContent = 'Accepted: ' + String(result.job.id).slice(0, 12);
+                showToast(checkMode ? 'Check run queued' : 'Playbook queued', 'success');
+                loadAutomation();
+            })
+            .catch(function(error) { status.textContent = error.message; showToast(error.message, 'error'); })
+            .finally(function() {
+                document.getElementById('automation-check-btn').disabled = false;
+                document.getElementById('automation-run-btn').disabled = false;
+            });
+    }
+
+    function viewAutomationJob(jobId) {
+        apiFetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/events').then(function(data) {
+            var events = data.events || [];
+            var html = '<h2>JOB EVENTS</h2><p class="text-muted">' + escapeHtml(jobId) + '</p><div class="automation-event-log">';
+            if (!events.length) html += '<p class="empty-state">No events recorded yet.</p>';
+            events.forEach(function(event) { html += '<div><span>' + escapeHtml(formatDate(event.created_at)) + '</span> ' + escapeHtml(event.message || event.kind || '') + '</div>'; });
+            html += '</div>';
+            showGenericModal(html);
+        }).catch(function(error) { showToast(error.message, 'error'); });
+    }
+
+    function cancelAutomationJob(jobId) {
+        if (!confirm('Cancel this Ansible job?')) return;
+        apiFetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
+            .then(function() { showToast('Automation job cancellation requested', 'success'); loadAutomation(); })
+            .catch(function(error) { showToast(error.message, 'error'); });
+    }
 
     // ==================== Agents Page ====================
 

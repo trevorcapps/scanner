@@ -38,6 +38,7 @@ def _asset_summary(asset_row, ip, last_scan):
     fp_by_port = fp_summary.get('by_port', {})
 
     return {
+        'id': asset_row.id if asset_row else None,
         'ip': ip,
         'hostname': asset_row.hostname if asset_row else None,
         'reverse_dns': asset_row.reverse_dns if asset_row else None,

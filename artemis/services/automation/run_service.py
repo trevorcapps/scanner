@@ -122,7 +122,20 @@ def launch_run(*, content_raw=None, content_id=None, content_kind='playbook',
     # must not require ansible-runner to be installed on the controller.
     executor = _executor_for(run, hosts)
     if not executor.available():
-        job_service.mark_failed(job, 'no automation executor available')
+        message = 'no automation executor available'
+        if len(hosts) == 1:
+            from artemis.models.agent import Agent
+            from artemis.services.automation.agent_local import agent_supports_local
+            target_agent = scoped(Agent).filter(
+                Agent.ip == hosts[0]['address'], Agent.enabled == 1,
+            ).first()
+            if target_agent and not agent_supports_local(target_agent):
+                message = (
+                    f'target agent {target_agent.hostname or target_agent.ip} does not '
+                    'advertise ansible_local; install ansible-core on the endpoint and '
+                    'restart the agent'
+                )
+        job_service.mark_failed(job, message)
         return run, job
 
     from artemis.tasks.scan_tasks import run_automation_job

@@ -23,6 +23,7 @@ export interface VulnCounts {
 }
 
 export interface AssetSummary {
+  id?: number | null;
   ip: string;
   hostname: string | null;
   reverse_dns: string | null;

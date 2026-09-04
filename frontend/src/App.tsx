@@ -15,6 +15,7 @@ const Agents = lazy(() => import('@/pages/Agents'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const DataQuery = lazy(() => import('@/pages/DataQuery'));
+const Automation = lazy(() => import('@/pages/Automation'));
 
 function Loading() {
   return (
@@ -48,6 +49,7 @@ export function App() {
           <Route path="/reports" element={page(Reports)} />
           <Route path="/settings" element={page(Settings)} />
           <Route path="/data-query" element={page(DataQuery)} />
+          <Route path="/automation" element={page(Automation)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

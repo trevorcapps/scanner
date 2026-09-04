@@ -56,7 +56,8 @@
                 <li class="nav-item" data-page="schedules"><span class="nav-icon">06</span><span class="nav-label">Schedules</span><span class="nav-meta">AUTO</span></li>
                 <li class="nav-item" data-page="agents"><span class="nav-icon">07</span><span class="nav-label">Agents</span><span class="nav-meta">EDR</span></li>
                 <li class="nav-item" data-page="settings"><span class="nav-icon">08</span><span class="nav-label">Control</span><span class="nav-meta">CFG</span></li>
-                <li class="nav-item" data-page="sql"><span class="nav-icon">09</span><span class="nav-label">Data query</span><span class="nav-meta">SQL</span></li>
+                <li class="nav-item" data-page="automation"><span class="nav-icon">09</span><span class="nav-label">Automation</span><span class="nav-meta">ANSIBLE</span></li>
+                <li class="nav-item" data-page="sql"><span class="nav-icon">10</span><span class="nav-label">Data query</span><span class="nav-meta">SQL</span></li>
             </ul>
             <div class="sidebar-footer">
                 <div class="sidebar-user" id="sidebar-user">
@@ -272,6 +273,77 @@
                         document.getElementById('agent-uninstall-cmd').textContent = 'curl -fsSL ' + window.location.origin + '/agent/uninstall.sh | bash';
                     </script>
                 </div>
+            </div>
+
+            <!-- Automation Page -->
+            <div class="page" id="page-automation">
+                <div class="page-header-row">
+                    <div><span class="eyebrow">CONTROLLED EXECUTION</span><h2>Ansible automation</h2></div>
+                    <button class="btn-secondary" id="automation-refresh">Refresh</button>
+                </div>
+                <div class="automation-layout">
+                    <section class="automation-editor panel-frame">
+                        <h3>PLAYBOOK EDITOR <span>VALIDATE / LAUNCH</span></h3>
+                        <div class="automation-editor-body">
+                            <div class="settings-grid">
+                                <div class="setting-item">
+                                    <label for="automation-starter-select">Starter playbook</label>
+                                    <select id="automation-starter-select"><option value="">Choose a starter</option></select>
+                                    <span class="setting-hint">Loads a built-in, reviewed playbook into the editor.</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="automation-content-select">Saved content</label>
+                                    <select id="automation-content-select"><option value="">New playbook</option></select>
+                                    <span class="setting-hint">Saved content is immutable and content-addressed.</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="automation-filename">Filename (optional)</label>
+                                    <input id="automation-filename" type="text" placeholder="site.yml">
+                                    <span class="setting-hint">Used when saving a new playbook.</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="automation-file">Load YAML file</label>
+                                    <input id="automation-file" type="file" accept=".yml,.yaml,.json,text/yaml,application/x-yaml">
+                                    <span class="setting-hint">Loaded locally into the editor before submission.</span>
+                                </div>
+                            </div>
+                            <div class="setting-item automation-field">
+                                <label for="automation-playbook">Playbook YAML</label>
+                                <textarea id="automation-playbook" class="automation-code" spellcheck="false" placeholder="- hosts: targets\n  gather_facts: false\n  tasks:\n    - name: Example\n      ansible.builtin.command: /usr/bin/true"></textarea>
+                                <span class="setting-hint">Agent-local runs execute against the selected agent's localhost. Use <code>hosts: targets</code>.</span>
+                            </div>
+                            <div class="setting-item automation-field">
+                                <label for="automation-variables">Extra variables (JSON)</label>
+                                <textarea id="automation-variables" class="automation-vars" spellcheck="false" placeholder='{"key": "value"}'></textarea>
+                            </div>
+                            <div class="settings-actions automation-actions">
+                                <button class="btn-secondary" id="automation-check-btn">CHECK MODE</button>
+                                <button class="btn-primary" id="automation-run-btn">RUN PLAYBOOK</button>
+                                <span id="automation-status" class="settings-status"></span>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="automation-targets panel-frame">
+                        <h3>TARGET FLEET <span id="automation-target-count">0 SELECTED</span></h3>
+                        <div class="automation-target-body">
+                            <p class="setting-hint automation-warning">Selecting multiple assets uses the controller executor unless fleet agent fan-out is enabled. A single asset with an <code>ansible_local</code> agent runs outbound-only.</p>
+                            <div class="automation-target-actions">
+                                <button class="btn-small btn-secondary" id="automation-select-all">SELECT ALL</button>
+                                <button class="btn-small btn-secondary" id="automation-clear-all">CLEAR</button>
+                            </div>
+                            <div id="automation-target-list" class="automation-target-list"><p class="empty-state">Loading assets...</p></div>
+                            <div class="setting-item automation-field">
+                                <label for="automation-credentials">SSH credential references</label>
+                                <select id="automation-credentials" class="credential-multi-select" multiple></select>
+                                <span class="setting-hint">Secrets are resolved just-in-time and are never stored in the playbook.</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <section class="automation-runs panel-frame">
+                    <h3>RECENT RUNS <span>JOB HISTORY</span></h3>
+                    <div id="automation-runs-list"><p class="empty-state">Select Automation to load runs.</p></div>
+                </section>
             </div>
 
             <!-- Settings Page -->

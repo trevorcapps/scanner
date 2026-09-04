@@ -102,7 +102,7 @@ a:hover { text-decoration: underline; }
 .sidebar-title { font-size: 15px; font-weight: 800; letter-spacing: .08em; }
 .sidebar-title::after { content: " // SECURITY CONSOLE"; color: var(--muted); font-size: 8px; font-weight: 500; }
 .sidebar-kicker { padding: 12px 14px 7px; color: var(--text-soft); font-size: 10px; font-weight: 800; }
-.sidebar-kicker::after { content: "  09 DOMAINS"; float: right; color: var(--muted); font-weight: 500; }
+.sidebar-kicker::after { content: "  10 DOMAINS"; float: right; color: var(--muted); font-weight: 500; }
 .sidebar-close { display: none; margin-left: auto; }
 
 .sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0 8px; }
@@ -346,6 +346,27 @@ tbody tr:hover { background: var(--surface-hover); }
 .desc-cell { max-width: 420px; color: var(--text-soft); }
 .asset-ports-table, .software-table-wrapper { overflow: auto; }
 
+.automation-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 5px; margin-bottom: 5px; }
+.automation-editor, .automation-targets, .automation-runs { min-width: 0; }
+.automation-editor-body, .automation-target-body { padding: 12px; }
+.automation-field { margin-top: 12px; }
+.automation-code { min-height: 330px; resize: vertical; font-family: var(--mono); font-size: 11px; line-height: 1.5; tab-size: 2; }
+.automation-vars { min-height: 75px; resize: vertical; font-family: var(--mono); font-size: 11px; }
+.automation-actions { align-items: center; margin-top: 12px; }
+.automation-target-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.automation-target-list { max-height: 385px; overflow: auto; border: 1px solid var(--line); }
+.automation-target-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 40px; margin: 0; padding: 7px 8px; border-bottom: 1px solid var(--line-soft); cursor: pointer; text-transform: none; }
+.automation-target-row:last-child { border-bottom: 0; }
+.automation-target-row:hover { background: var(--surface-hover); }
+.automation-target-name { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.automation-target-meta { color: var(--muted); font-size: 9px; text-align: right; white-space: nowrap; }
+.automation-warning { margin: 0 0 10px; padding: 8px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); color: var(--amber); }
+.automation-runs h3 { padding-left: 10px; }
+.automation-runs-table code { color: var(--cyan); font-size: 10px; }
+.automation-event-log { max-height: 420px; overflow: auto; padding: 8px; background: var(--surface-raised); border: 1px solid var(--line); font-family: var(--mono); font-size: 10px; }
+.automation-event-log div { padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+.automation-event-log span { margin-right: 8px; color: var(--muted); }
+
 .status-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--faint); }
 .status-dot.active, .status-dot.completed, .status-dot.success { background: var(--lime); box-shadow: 0 0 7px color-mix(in srgb, var(--lime) 60%, transparent); }
 .status-dot.stale, .status-dot.running { background: var(--amber); }
@@ -505,7 +526,7 @@ tbody tr:hover { background: var(--surface-hover); }
     .dash-card:nth-child(even), .summary-card:nth-child(even), .agent-metrics > div:nth-child(even) { border-right: 0; }
     .dashboard-grid, .agent-workspace, .sql-layout { grid-template-columns: 1fr; }
     .agent-catalog #agents-list { max-height: 260px; }
-    .agent-evidence-grid, .settings-grid, .asset-modal-grid, .modal-sources-grid, .modal-cvss-details, .modal-dates { grid-template-columns: 1fr; }
+    .agent-evidence-grid, .settings-grid, .asset-modal-grid, .modal-sources-grid, .modal-cvss-details, .modal-dates, .automation-layout { grid-template-columns: 1fr; }
     .evidence-block.wide { grid-column: 1; }
     #scan-form { display: block; }
     #assets-toolbar, #vulns-toolbar { align-items: stretch; flex-direction: column; }

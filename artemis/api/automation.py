@@ -30,6 +30,7 @@ def create_run():
     from artemis.services.automation.content_service import ContentError
     from artemis.services.automation.run_service import launch_run
 
+    content_id = None
     if request.content_type and 'multipart/form-data' in request.content_type:
         upload = request.files.get('content')
         if not upload:
@@ -45,8 +46,14 @@ def create_run():
     else:
         data = request.get_json(silent=True) or {}
         raw = data.get('content')
-        if not raw:
-            return jsonify({'error': '"content" (pasted playbook) is required'}), 400
+        content_id = data.get('content_id')
+        if not raw and not content_id:
+            return jsonify({'error': '"content" or "content_id" is required'}), 400
+        if content_id:
+            try:
+                content_id = int(content_id)
+            except (TypeError, ValueError):
+                return jsonify({'error': '"content_id" must be an integer'}), 400
         kind = data.get('kind', 'playbook')
         targets = data.get('targets') or {}
         variables = data.get('variables') or {}
@@ -56,7 +63,8 @@ def create_run():
 
     try:
         run, job = launch_run(
-            content_raw=raw, content_kind=kind, filename=filename, targets=targets,
+            content_raw=raw, content_id=content_id, content_kind=kind,
+            filename=filename, targets=targets,
             variables=variables, credential_refs=credential_refs,
             execution_environment_id=(request.form.get('execution_environment_id')
                                       if request.form else None),
@@ -74,6 +82,38 @@ def create_run():
     resp.status_code = 202
     resp.headers['Location'] = f'/api/v1/jobs/{job.id}'
     return resp
+
+
+@automation_bp.route('/automation/content', methods=['GET'])
+def list_content():
+    """List immutable playbook/bundle metadata for the active organization."""
+    from artemis.models.automation import AutomationContent
+    from artemis.services.tenant import scoped
+
+    limit = min(max(request.args.get('limit', 100, type=int), 1), 200)
+    rows = scoped(AutomationContent).order_by(
+        AutomationContent.created_at.desc()).limit(limit).all()
+    return jsonify({'content': [row.to_dict() for row in rows]})
+
+
+@automation_bp.route('/automation/content', methods=['POST'])
+@role_required('analyst')
+def create_content():
+    """Validate and save a playbook without starting an execution job."""
+    from artemis.services.automation.content_service import ContentError, accept_content
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get('content')
+    if not isinstance(raw, str) or not raw.strip():
+        return jsonify({'error': '"content" (playbook text) is required'}), 400
+    try:
+        content = accept_content(
+            raw, kind=data.get('kind', 'playbook'), filename=data.get('filename'),
+            created_by=_uid(),
+        )
+    except (ContentError, ValueError) as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'content': content.to_dict()}), 201
 
 
 @automation_bp.route('/automation/runs', methods=['GET'])
@@ -108,6 +148,18 @@ def get_content(content_id):
 def list_starters():
     from artemis.services.automation.starters import list_starters as _list
     return jsonify({'starters': _list()})
+
+
+@automation_bp.route('/automation/starters/<starter_id>', methods=['GET'])
+def get_starter(starter_id):
+    from artemis.services.automation.starters import (
+        STARTERS, get_starter_body, list_starters as _list,
+    )
+    if starter_id not in STARTERS:
+        return jsonify({'error': 'starter not found'}), 404
+    meta = next(item for item in _list() if item['id'] == starter_id)
+    meta['body'] = get_starter_body(starter_id)
+    return jsonify({'starter': meta})
 
 
 @automation_bp.route('/automation/campaigns', methods=['GET'])

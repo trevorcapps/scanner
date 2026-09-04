@@ -105,6 +105,28 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(run.target_snapshot_json, json.dumps([self.asset_id]))
         self.assertEqual(run.to_dict()["variables"], {"pkg": "nginx"})   # non-secret, stored
 
+    def test_saved_content_can_be_listed_and_launched(self):
+        content = content_service.accept_content(PLAYBOOK, created_by=self.u.id)
+        listed = self.client.get("/api/v1/automation/content", headers=self._h())
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.get_json()["content"][0]["id"], content.id)
+
+        launched = self.client.post("/api/v1/automation/runs", headers=self._h(), json={
+            "content_id": content.id,
+            "targets": {"asset_ids": [self.asset_id]},
+        })
+        self.assertEqual(launched.status_code, 202)
+        self.assertEqual(db.session.get(ScanJob, launched.get_json()["job"]["id"]).status, "success")
+
+    def test_content_can_be_saved_without_launching(self):
+        response = self.client.post("/api/v1/automation/content", headers=self._h(), json={
+            "content": PLAYBOOK,
+            "filename": "saved.yml",
+        })
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["content"]["filename"], "saved.yml")
+        self.assertEqual(AutomationContent.query.count(), 1)
+
     def test_audit_records_digest_and_nonsecret_inputs(self):
         self.client.post("/api/v1/automation/runs", headers=self._h(), json={
             "content": PLAYBOOK, "targets": {"asset_ids": [self.asset_id]},
