@@ -65,6 +65,16 @@ def set_finding_status(occ_id):
     return jsonify({'finding': occ.to_dict()})
 
 
+@findings_bp.route('/findings/<int:occ_id>/remediation', methods=['GET'])
+def finding_remediation(occ_id):
+    """Informational remediation guidance (no credentials, no runnable payload)."""
+    from artemis.services.remediation_service import build_guidance
+    guidance = build_guidance(occ_id)
+    if guidance is None:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'remediation': guidance})
+
+
 @findings_bp.route('/findings/<int:occ_id>/priority', methods=['GET'])
 def finding_priority(occ_id):
     """The priority score with every contributing factor exposed."""
