@@ -35,6 +35,8 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Redis / Celery. Local development uses eager execution unless a broker is set.
+    AGENT_CHANNEL_ENABLED = _env_bool('AGENT_CHANNEL_ENABLED', True)
+    AGENT_TRANSPORT_REDIS_URL = os.environ.get('AGENT_TRANSPORT_REDIS_URL', '')
     REDIS_URL = os.environ.get('REDIS_URL', '')
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or REDIS_URL or 'memory://'
     CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or REDIS_URL or 'cache+memory://'

@@ -31,4 +31,15 @@ uv pip compile "${COMMON[@]}" \
     -o requirements-dev.lock \
     pyproject.toml
 
-echo "Wrote requirements.lock and requirements-dev.lock"
+# The lightweight agent installs only its transport client, never scanner dependencies.
+AGENT_DEPS="$(mktemp)"
+trap 'rm -f "$AGENT_DEPS"' EXIT
+python3 - "$AGENT_DEPS" <<'PYTHON'
+import sys, tomllib
+with open('pyproject.toml', 'rb') as f:
+    deps = tomllib.load(f)['project']['optional-dependencies']['agent-client']
+with open(sys.argv[1], 'w') as f:
+    f.write('\n'.join(deps) + '\n')
+PYTHON
+UV_CUSTOM_COMPILE_COMMAND='scripts/lock-deps.sh (agent-client extra)' uv pip compile "${COMMON[@]}" -o agent/requirements.lock "$AGENT_DEPS"
+echo "Wrote backend and agent dependency locks"

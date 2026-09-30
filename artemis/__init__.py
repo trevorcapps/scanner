@@ -46,6 +46,8 @@ def create_app(config_name=None, start_background_services=True):
                 'Production requires Redis-backed Celery; configure CELERY_BROKER_URL and disable eager mode'
             )
         validate_production_config(app)
+        if not app.config.get('AGENT_TRANSPORT_REDIS_URL'):
+            raise RuntimeError('Production requires AGENT_TRANSPORT_REDIS_URL for volatile agent traffic')
 
     # Initialize extensions
     db.init_app(app)
@@ -73,6 +75,8 @@ def create_app(config_name=None, start_background_services=True):
     # Register SocketIO event handlers
     from artemis import socketio_handlers
     socketio_handlers.register_socketio_handlers()
+    from artemis.services.agent_channel_service import register_agent_channel
+    register_agent_channel()
 
     # ---- Frontend serving ----
     _ui_dir = os.path.join(_scanner_dir, 'static', 'ui')
@@ -154,6 +158,7 @@ def _setup_auth_middleware(app):
         '/api/v1/agents/register',
         '/api/v1/agents/report',
         '/api/v1/agents/deregister',
+        '/api/v1/agents/channel-token',
         '/api/v1/agents/shell/poll',
         '/api/v1/agents/shell/output',
         '/api/v1/agents/work/poll',
@@ -165,6 +170,7 @@ def _setup_auth_middleware(app):
         '/api/agents/shell/output',
         '/agent/install.sh',
         '/agent/artemis_agent.py',
+        '/agent/requirements.lock',
         '/agent/uninstall.sh',
         '/api/v1/openapi.json',
         '/api/v1/docs',
@@ -185,7 +191,8 @@ def _setup_auth_middleware(app):
         if not path.startswith(('/api/', '/agent/')):
             return None
 
-        if path.endswith('/agents/shell/poll') or path.endswith('/agents/shell/output'):
+        if (path.endswith('/agents/shell/poll') or path.endswith('/agents/shell/output')
+                or path.endswith('/agents/channel-token')):
             category = 'shell_poll'
         elif path.endswith('/agents/report'):
             category = 'agent_report'
@@ -197,6 +204,10 @@ def _setup_auth_middleware(app):
             category = 'expensive'
         else:
             category = 'write'
+        key = request.headers.get('X-Agent-Key')
+        if key and category in ('agent_report', 'shell_poll'):
+            import hashlib
+            return enforce(category, identifier='agent:' + hashlib.sha256(key.encode()).hexdigest())
         return enforce(category)
 
     @app.before_request

@@ -56,7 +56,10 @@ class ApiCoverageTests(unittest.TestCase):
                 self.assertIn('summary', op, f'{method.upper()} {path} missing summary')
 
     def test_docs_and_health_are_public(self):
-        self.assertEqual(self.client.get('/api/v1/docs').status_code, 200)
+        docs = self.client.get('/api/v1/docs')
+        self.assertEqual(docs.status_code, 200)
+        self.assertIn('SwaggerUIBundle', docs.get_data(as_text=True))
+        self.assertIn('https://cdnjs.cloudflare.com', docs.headers['Content-Security-Policy'])
         health = self.client.get('/api/v1/health')
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.get_json()['checks']['database'], 'ok')

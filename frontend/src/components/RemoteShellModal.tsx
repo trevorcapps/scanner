@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
 import { api } from '@/lib/api';
+import { getSocket, connectSocket } from '@/lib/socket';
 import type { AgentShellSession } from '@/types';
 
 
@@ -47,6 +48,32 @@ export function RemoteShellModal({
     let inputBuffer = '';
     let after = 0;
     let finalState = '';
+    const socket = getSocket();
+    let streaming = false;
+    const buffered = new Map<number, string>();
+    const writeChunk = (chunk: { id: number; data: string }) => {
+      if (chunk.id <= after) return;
+      buffered.set(chunk.id, chunk.data);
+      while (buffered.has(after + 1)) {
+        const value = buffered.get(++after)!;
+        buffered.delete(after);
+        terminal.write(decodeBytes(value));
+      }
+    };
+    const receiveOutput = (chunk: { session_id: string; id: number; data: string }) => {
+      if (!cancelled && chunk.session_id === session.id) writeChunk(chunk);
+    };
+    const subscribe = () => {
+      socket.emit('subscribe_shell', { session_id: session.id }, (result: { error?: string }) => {
+        streaming = !result.error;
+      });
+    };
+    const disconnected = () => { streaming = false; };
+    socket.on('shell_output', receiveOutput);
+    socket.on('connect', subscribe);
+    socket.on('disconnect', disconnected);
+    connectSocket();
+    if (socket.connected) subscribe();
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -72,6 +99,11 @@ export function RemoteShellModal({
       if (!inputBuffer || cancelled || finalState) return;
       const data = inputBuffer;
       inputBuffer = '';
+      if (streaming && socket.connected) {
+        socket.emit('shell_input', { session_id: session.id, data: encodeText(data) },
+          (result: { error?: string }) => { if (result.error && !cancelled) setStatus(result.error); });
+        return;
+      }
       void api.post(`/api/v1/agent-shell-sessions/${session.id}/input`, { data: encodeText(data) })
         .catch((error: unknown) => {
           if (!cancelled) setStatus(error instanceof Error ? error.message : 'input transport error');
@@ -80,12 +112,17 @@ export function RemoteShellModal({
     const inputDisposable = terminal.onData((data) => {
       inputBuffer += data;
       window.clearTimeout(inputTimer);
-      inputTimer = window.setTimeout(flushInput, 25);
+      inputTimer = window.setTimeout(flushInput, 15);
     });
 
     let resizeTimer: number | undefined;
     const sendResize = () => {
       if (cancelled) return;
+      if (streaming && socket.connected) {
+        socket.emit('shell_resize', { session_id: session.id, cols: terminal.cols, rows: terminal.rows },
+          (result: { error?: string }) => { if (result.error && !cancelled) setStatus(result.error); });
+        return;
+      }
       void api.post(`/api/v1/agent-shell-sessions/${session.id}/resize`, {
         cols: terminal.cols,
         rows: terminal.rows,
@@ -112,8 +149,7 @@ export function RemoteShellModal({
         }>(`/api/v1/agent-shell-sessions/${session.id}/output?after=${after}`);
         if (cancelled) return;
         for (const chunk of data.output) {
-          terminal.write(decodeBytes(chunk.data));
-          after = Math.max(after, chunk.id);
+          writeChunk(chunk);
         }
         setStatus(data.session.status);
         if (['closed', 'failed', 'expired'].includes(data.session.status)) {
@@ -130,7 +166,7 @@ export function RemoteShellModal({
       } catch (error) {
         if (!cancelled) setStatus(error instanceof Error ? error.message : 'connection error');
       }
-      if (!cancelled) pollTimer = window.setTimeout(poll, 250);
+      if (!cancelled) pollTimer = window.setTimeout(poll, streaming ? 2000 : 500);
     };
     void poll();
 
@@ -141,6 +177,10 @@ export function RemoteShellModal({
 
     return () => {
       cancelled = true;
+      socket.emit('unsubscribe_shell', { session_id: session.id });
+      socket.off('shell_output', receiveOutput);
+      socket.off('connect', subscribe);
+      socket.off('disconnect', disconnected);
       window.clearTimeout(pollTimer);
       window.clearTimeout(inputTimer);
       window.clearTimeout(resizeTimer);
@@ -169,7 +209,7 @@ export function RemoteShellModal({
           <div>
             <div className="font-mono text-xs text-text">Remote shell · {targetLabel}</div>
             <div className="font-mono text-2xs text-muted">
-              agent {session.agent_id} · {status} · expires {new Date(session.expires_at).toLocaleTimeString()}
+              Runs with agent privileges, including root · agent {session.agent_id} · {status} · expires {new Date(session.expires_at).toLocaleTimeString()}
             </div>
           </div>
           <button className="btn-danger" onClick={() => void close()}>Close session</button>

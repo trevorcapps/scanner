@@ -84,6 +84,8 @@ class Agent(TenantMixin, db.Model):
             'upgrade_status': self.upgrade_status,
             'capability_health': self._decode(self.capability_health_json),
         }
+        from artemis.services.agent_channel_service import presence
+        result['connection'] = presence(self)
         if include_key:
             result['agent_key'] = self.agent_key
         return result

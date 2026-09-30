@@ -24,6 +24,8 @@ done
 [[ -n "$PYTHON" ]] || { echo "python3 not found (install the Command Line Tools)"; exit 1; }
 [[ "$UPGRADE" == true || -n "$SERVER" ]] || { echo "--server is required"; exit 1; }
 
+"$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ is required")'
+
 TMP_AGENT="${TMP_AGENT:-/tmp/artemis_agent.py}"
 [[ -f "$TMP_AGENT" ]] || { echo "agent source not found at $TMP_AGENT"; exit 1; }
 
@@ -31,6 +33,14 @@ mkdir -p "$AGENT_DIR" "$CONFIG_DIR"
 # Atomic install: write beside, then rename.
 install -m 0755 "$TMP_AGENT" "$AGENT_DIR/artemis_agent.py.new"
 mv -f "$AGENT_DIR/artemis_agent.py.new" "$AGENT_DIR/artemis_agent.py"
+
+"$PYTHON" -m venv "$AGENT_DIR/venv"
+if [[ -z "$SERVER" ]]; then
+    SERVER="$("$PYTHON" -c 'import json; print(json.load(open("/etc/artemis/agent.conf"))["server"])')"
+fi
+curl -fsSL "${SERVER%/}/agent/requirements.lock" -o "$AGENT_DIR/requirements.lock"
+"$AGENT_DIR/venv/bin/python" -m pip install --require-hashes -r "$AGENT_DIR/requirements.lock"
+PYTHON="$AGENT_DIR/venv/bin/python"
 
 if [[ "$UPGRADE" == true ]]; then
     [[ -f "$CONFIG_DIR/agent.conf" ]] || { echo "cannot upgrade: no $CONFIG_DIR/agent.conf"; exit 1; }

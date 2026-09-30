@@ -19,7 +19,8 @@ DEFAULT_POLICIES = {
     "write": (120, 60),            # ordinary user/API mutations
     "expensive": (12, 60),         # scans, reports, exports, feed syncs
     "agent_report": (30, 60),      # per-agent inventory posts
-    "shell_poll": (150, 60),       # high-frequency remote-shell polling
+    "agent_channel": (6000, 60),
+    "shell_poll": (600, 60),       # high-frequency remote-shell polling
 }
 
 

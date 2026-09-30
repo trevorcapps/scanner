@@ -127,3 +127,5 @@ Signatures are stored in `fingerprint/signatures.json` and can be extended easil
 ## License
 
 [MIT](LICENSE) © Trevor Capps
+
+Agent 1.5 transport setup, upgrade and rollback: [Persistent agent channel](docs/AGENT_CHANNEL.md).

@@ -140,7 +140,7 @@ def process_report(agent, data):
 
 
 MIN_SUPPORTED_AGENT = '1.2.0'
-CURRENT_AGENT_VERSION = '1.4.0'
+CURRENT_AGENT_VERSION = '1.5.0'
 
 
 def _version_tuple(value):

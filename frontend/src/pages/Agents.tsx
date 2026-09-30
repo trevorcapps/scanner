@@ -185,6 +185,10 @@ function AgentInspector({ id }: { id: number | null }) {
             <KV k="OS" v={a.os} />
             <KV k="Kernel" v={a.os_info?.kernel} />
             <KV k="Agent" v={a.version} />
+            <KV k="Transport" v={a.connection?.transport ?? 'https'} />
+            <KV k="Round trip" v={a.connection?.latency_ms != null ? `${a.connection.latency_ms} ms` : '—'} />
+            <KV k="Reconnects" v={a.connection?.reconnect_count ?? 0} />
+            <KV k="Queue depth" v={a.connection?.queue_depth ?? 0} />
             <KV k="Capabilities" v={(a.capabilities ?? []).join(', ') || 'none reported'} />
             <KV k="Last check-in" v={relativeTime(a.last_checkin)} />
           </Block>

@@ -282,4 +282,18 @@ def swagger_ui():
       responses:
         200: {description: HTML page}
     """
-    return _SWAGGER_HTML
+    # Swagger UI is intentionally loaded from the pinned cdnjs release above.
+    # The application-wide CSP is self-only, so without a route-specific
+    # policy the browser renders a blank page after blocking the CDN assets
+    # (and the inline bootstrap script). Keep the broader application policy
+    # unchanged and grant only this documentation page the required sources.
+    response = current_app.make_response(_SWAGGER_HTML)
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "connect-src 'self' ws: wss:; "
+        "img-src 'self' data:; "
+        "frame-ancestors 'none'; base-uri 'self'"
+    )
+    return response

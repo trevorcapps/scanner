@@ -47,9 +47,15 @@ def agent_install_script():
 
 @agents_bp.route('/artemis_agent.py', methods=['GET'])
 def agent_python_script():
-    """Serve the dependency-free agent used by the installer."""
+    """Serve the lightweight agent used by the installer."""
     return send_file(os.path.join(_AGENT_DIR, 'artemis_agent.py'),
                      mimetype='text/x-python', download_name='artemis_agent.py')
+
+
+@agents_bp.route('/requirements.lock', methods=['GET'])
+def agent_requirements():
+    """Pinned and hashed optional agent transport dependencies."""
+    return send_file(os.path.join(_AGENT_DIR, 'requirements.lock'), mimetype='text/plain')
 
 
 @agents_bp.route('/uninstall.sh', methods=['GET'])
@@ -106,13 +112,64 @@ def agent_report():
     })
 
 
+@agents_bp.route('/agents/channel-token', methods=['POST'])
+def agent_channel_token():
+    """Exchange an enrollment identity for a five-minute channel credential.
+    ---
+    post:
+      summary: Issue a short-lived agent channel credential
+      security: [{agentKeyAuth: []}]
+      responses:
+        200:
+          description: Five-minute credential; Cache-Control is no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, agent_id, v, expires_in]
+                properties:
+                  token: {type: string}
+                  agent_id: {type: integer}
+                  v: {type: integer, enum: [1]}
+                  expires_in: {type: integer, enum: [300]}
+        401: {description: Invalid or missing enrollment identity}
+        503: {description: Persistent channel disabled}
+    """
+    agent = _get_agent_by_key()
+    if not agent:
+        return jsonify({'error': 'Invalid or missing agent key'}), 401
+    from flask import current_app
+    if not current_app.config.get('AGENT_CHANNEL_ENABLED', True):
+        return jsonify({'error': 'Persistent channel disabled'}), 503
+    from artemis.services.agent_channel_service import issue_token
+    response = jsonify({'token': issue_token(agent), 'agent_id': agent.id, 'v': 1, 'expires_in': 300})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @agents_bp.route('/agents/shell/poll', methods=['GET'])
 def agent_shell_poll():
     """Agent-authenticated outbound poll for a pending PTY session."""
     agent = _get_agent_by_key()
     if not agent:
         return jsonify({'error': 'Invalid or missing agent key'}), 401
-    return jsonify({'session': poll_agent(agent)})
+    import time
+    from artemis.services.tenant import use_organization
+    from flask import g
+    g.organization_id = agent.organization_id
+    from artemis.services.tenant import bind_rls_org
+    bind_rls_org(agent.organization_id)
+    wait = max(0, min(request.args.get('wait', 0, type=float), 20))
+    deadline = time.monotonic() + wait
+    with use_organization(agent.organization_id):
+        while True:
+            payload = poll_agent(agent, after=request.args.get('after', type=int),
+                                 input_session=request.args.get('input_session'))
+            if payload or time.monotonic() >= deadline:
+                return jsonify({'session': payload})
+            db.session.remove()
+            from artemis.extensions import socketio
+            socketio.sleep(0.1)
 
 
 @agents_bp.route('/agents/shell/output', methods=['POST'])
@@ -121,6 +178,9 @@ def agent_shell_output():
     agent = _get_agent_by_key()
     if not agent:
         return jsonify({'error': 'Invalid or missing agent key'}), 401
+    g.organization_id = agent.organization_id
+    from artemis.services.tenant import bind_rls_org
+    bind_rls_org(agent.organization_id)
     data = request.get_json(silent=True) or {}
     try:
         session = record_agent_event(
@@ -130,6 +190,8 @@ def agent_shell_output():
             data_b64=data.get('data'),
             exit_code=data.get('exit_code'),
             error=data.get('error'),
+            event_id=data.get('event_id'),
+            input_ack=data.get('input_ack'),
         )
     except ShellSessionError as exc:
         return jsonify({'error': str(exc)}), 400
@@ -138,7 +200,7 @@ def agent_shell_output():
 
 def _owned_shell_session(session_id):
     user = getattr(g, 'current_user', None)
-    return get_session(session_id, user_id=user.id if user else None)
+    return get_session(session_id, user_id=user.id) if user else None
 
 
 @agents_bp.route('/agents/<int:aid>/shell-sessions', methods=['POST'])
@@ -148,6 +210,8 @@ def create_agent_shell_session(aid):
     agent = db.get_or_404(Agent, aid)
     data = request.get_json(silent=True) or {}
     user = getattr(g, 'current_user', None)
+    if user is None:
+        return jsonify({'error': 'An authenticated administrator is required'}), 403
     try:
         session = create_session(
             agent,

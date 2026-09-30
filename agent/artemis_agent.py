@@ -9,7 +9,7 @@ Usage:
 
 Config file: /etc/artemis/agent.conf or ~/.artemis/agent.conf (JSON)
 
-Zero external dependencies — stdlib only. Python 3.8+.
+Python 3.10+. Optional pinned Socket.IO client enables the persistent channel.
 """
 
 import argparse
@@ -33,11 +33,18 @@ import termios
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 
-__version__ = '1.4.0'
+__version__ = '1.5.0'
 TELEMETRY_SCHEMA_VERSION = 3
 AGENT_CAPABILITIES = ['remote_shell', 'patch_status']
+try:
+    import socketio as socketio_client
+    AGENT_CAPABILITIES.append('persistent_channel')
+except ImportError:
+    socketio_client = None
 if shutil.which('ansible-playbook'):
     AGENT_CAPABILITIES.append('ansible_local')
 
@@ -779,8 +786,141 @@ class RemotePty:
         return self.exit_code
 
 
+class AgentChannel:
+    """One acknowledged frame in flight; retry the same sequence after reconnect.
+
+    Terminal output remains bounded in the PTY pump, never on disk. Credential
+    rotation reconnects the namespace; enrollment keys never enter socket URLs.
+    """
+    def __init__(self, server, key):
+        self.server, self.key = server, key
+        self.lock = threading.Lock()
+        self.wake = threading.Event()
+        self.client = None
+        self.agent_id = None
+        self.jti = None
+        self.sequence = 0
+        self.renew_at = 0
+        self.retry_at = 0
+        self.reconnect_count = 0
+        self.latency_ms = 0
+        self.input_ack = 0
+        self.input_session = None
+        self.command = None
+        self.command_sequence = {}
+        self.queue_depth = 0
+
+    @property
+    def connected(self):
+        return self.client is not None and self.client.connected
+
+    def _connect(self):
+        if self.connected and time.monotonic() < self.renew_at:
+            return True
+        if time.monotonic() < self.retry_at or socketio_client is None:
+            return False
+        self.retry_at = time.monotonic() + 10 + __import__('random').uniform(0, 10)
+        credentials = api_request(self.server, '/agents/channel-token', key=self.key, quiet=True)
+        if not credentials:
+            return False
+        if self.client:
+            self.client.disconnect()
+        try:
+            client = socketio_client.Client(reconnection=False, logger=False, engineio_logger=False)
+            client.on('wake', lambda _: self.wake.set(), namespace='/agent')
+            client.on('shell_command', self._command, namespace='/agent')
+            self.agent_id = credentials['agent_id']
+            client.connect(self.server, auth={'token': credentials['token']},
+                           namespaces=['/agent'], transports=['websocket'], wait_timeout=5)
+            self.client = client
+            self.agent_id = credentials['agent_id']
+            # This parses our own issued token to construct idempotency keys;
+            # authorization is verified by the server, never by this decoding.
+            part = credentials['token'].split('.')[1]
+            self.jti = json.loads(base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))['jti']
+            self.sequence = 0
+            self.renew_at = time.monotonic() + 240
+            self.reconnect_count += 1
+            return True
+        except Exception:
+            self.client = None
+            return False
+
+    def call(self, kind, payload=None, session_id=None, job_id=None):
+        with self.lock:
+            if not self._connect():
+                return None
+            self.sequence += 1
+            frame = {'v': 1, 'agent_id': self.agent_id, 'seq': self.sequence,
+                     'expires': time.time() + 30,
+                     'idempotency_key': f'{self.jti}:{self.sequence}',
+                     'kind': kind, 'session_id': session_id, 'job_id': job_id,
+                     'payload': payload or {}}
+            started = time.monotonic()
+            # A lost acknowledgement retries the identical envelope. The server
+            # returns its cached response without repeating a terminal write.
+            for _ in range(2):
+                try:
+                    result = self.client.call('frame', frame, namespace='/agent', timeout=3)
+                    if result.get('ack') == self.sequence:
+                        self.latency_ms = round((time.monotonic() - started) * 1000, 1)
+                        return result
+                    break
+                except Exception:
+                    continue
+            self.client.disconnect()
+            self.client = None
+            return None
+
+    def _command(self, data):
+        if (isinstance(data, dict) and data.get('v') == 1
+                and data.get('agent_id') == self.agent_id
+                and isinstance(data.get('expires'), (int, float))
+                and time.time() < data['expires'] <= time.time() + 60
+                and isinstance(data.get('seq'), int)
+                and data['seq'] > self.command_sequence.get(data.get('session_id'), 0)
+                and len(json.dumps(data).encode()) <= 128 * 1024):
+            # The latest bounded snapshot includes every unacknowledged input;
+            # replacing an older snapshot cannot lose an accepted keystroke.
+            self.command_sequence[data.get('session_id')] = data['seq']
+            if len(self.command_sequence) > 128:
+                self.command_sequence = {data.get('session_id'): data['seq']}
+            self.command = data.get('session')
+            self.wake.set()
+
+    def poll_shell(self):
+        result = self.call('presence', {'input_ack': self.input_ack, 'input_session': self.input_session,
+                                      'latency_ms': self.latency_ms,
+                                      'reconnect_count': self.reconnect_count, 'queue_depth': self.queue_depth})
+        if result:
+            remote = result.get('session')
+            if remote and remote['id'] != self.input_session:
+                self.input_session = remote['id']
+                self.input_ack = 0
+                # Re-fetch the new session from zero before writing any bytes.
+                return self.call('presence', {'input_ack': 0, 'input_session': self.input_session})
+        return result
+
+
+_active_channel = None
+_pending_shell_event = None
+
+
 def _send_shell_event(server, key, session_id, event, **fields):
-    return api_request(
+    global _pending_shell_event
+    identity = (session_id, event, json.dumps(fields, sort_keys=True))
+    if _pending_shell_event is None or _pending_shell_event[0] != identity:
+        _pending_shell_event = (identity, str(uuid.uuid4()))
+    fields['event_id'] = _pending_shell_event[1]
+    if _active_channel and _active_channel.input_session == session_id:
+        fields['input_ack'] = _active_channel.input_ack
+    if _active_channel and _active_channel.connected:
+        result = _active_channel.call('shell', {'event': event, **fields}, session_id=session_id)
+        # Preserve pending output until a definite acknowledgement.
+        if result is not None:
+            _pending_shell_event = None
+        return result
+    result = api_request(
         server,
         '/agents/shell/output',
         {'session_id': session_id, 'event': event, **fields},
@@ -788,6 +928,9 @@ def _send_shell_event(server, key, session_id, event, **fields):
         method='POST',
         quiet=True,
     )
+    if result is not None:
+        _pending_shell_event = None
+    return result
 
 
 def remote_shell_loop(server, key, stop_event=None):
@@ -796,11 +939,36 @@ def remote_shell_loop(server, key, stop_event=None):
     shell = None
     pending_output = bytearray()
     finished = None
+    remote = None
+    next_poll = 0
     while not stop_event.is_set():
-        response = api_request(
-            server, '/agents/shell/poll', key=key, method='GET', quiet=True,
-        )
-        remote = response.get('session') if response else None
+        response = None
+        channel = _active_channel
+        if channel:
+            channel.queue_depth = int(bool(pending_output)) + int(bool(channel.command))
+        if channel and channel.connected:
+            if time.monotonic() >= next_poll or channel.wake.is_set():
+                channel.wake.clear()
+                command = channel.command
+                channel.command = None
+                response = {'session': command} if command else channel.poll_shell()
+                next_poll = time.monotonic() + 15
+        else:
+            response = channel.poll_shell() if channel else None
+            if response is None:
+                response = api_request(
+                    server, '/agents/shell/poll?' + urllib.parse.urlencode({
+                        'wait': 20 if shell is None else 0,
+                        **({'after': channel.input_ack, 'input_session': channel.input_session or ''}
+                           if channel else {})}),
+                    key=key, method='GET', quiet=True)
+        if response is not None:
+            remote = response.get('session')
+            if remote and remote.get('status') in ('expired', 'closed', 'failed'):
+                remote = None
+            if remote and channel and channel.input_session != remote['id']:
+                channel.input_session = remote['id']
+                channel.input_ack = 0
 
         if finished is not None:
             same_session = remote and remote.get('id') == finished['session_id']
@@ -841,7 +1009,8 @@ def remote_shell_loop(server, key, stop_event=None):
                 pending_output.clear()
             try:
                 shell = RemotePty(remote['id'], remote.get('cols', 120), remote.get('rows', 32))
-                _send_shell_event(server, key, remote['id'], 'started')
+                if _send_shell_event(server, key, remote['id'], 'started') is not None:
+                    remote['status'] = 'running'
             except Exception as exc:
                 finished = {
                     'session_id': remote['id'], 'event': 'error',
@@ -850,6 +1019,8 @@ def remote_shell_loop(server, key, stop_event=None):
                 shell = None
 
         if remote and shell is not None:
+            if remote.get('expires_at') and remote['expires_at'] <= time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()):
+                remote['status'] = 'closing'
             if remote.get('status') == 'closing':
                 pending_output.extend(shell.read())
                 exit_code = shell.close()
@@ -861,10 +1032,18 @@ def remote_shell_loop(server, key, stop_event=None):
             else:
                 try:
                     if remote.get('status') == 'requested':
-                        _send_shell_event(server, key, remote['id'], 'started')
+                        if _send_shell_event(server, key, remote['id'], 'started') is not None:
+                            remote['status'] = 'running'
                     shell.resize(remote.get('cols', 120), remote.get('rows', 32))
                     for item in remote.get('inputs', []):
-                        shell.write(base64.b64decode(item.get('data', ''), validate=True))
+                        if not channel or item['id'] > channel.input_ack:
+                            shell.write(base64.b64decode(item.get('data', ''), validate=True))
+                            if channel:
+                                if channel.input_session != remote['id']:
+                                    channel.input_session = remote['id']
+                                    channel.input_ack = 0
+                                channel.input_ack = item['id']
+                    remote['inputs'] = []
                     if len(pending_output) < 64 * 1024:
                         pending_output.extend(shell.read(64 * 1024 - len(pending_output)))
                     if pending_output:
@@ -892,7 +1071,10 @@ def remote_shell_loop(server, key, stop_event=None):
                     }
                     shell = None
 
-        stop_event.wait(0.35 if shell is not None else 2.0)
+        if channel and channel.connected:
+            channel.wake.wait(0.01 if shell is not None else 0.5)
+        else:
+            stop_event.wait(0.25 if shell is not None else 0.5)
 
     if shell is not None:
         shell.close()
@@ -998,11 +1180,20 @@ def _run_ansible_local(body_bytes, variables, cancel_check=None, check_mode=Fals
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def _work_cancelled(server, key, work_id):
+    result = _active_channel.call('work_state', job_id=work_id) if _active_channel else None
+    if result is None:
+        result = api_request(server, f'/agents/work/{work_id}/state', key=key, method='GET', quiet=True)
+    return (result or {}).get('status') == 'cancelled'
+
+
 def agent_work_loop(server, key, stop_event=None):
     """Poll for signed typed work items and execute them locally."""
     stop_event = stop_event or threading.Event()
     while not stop_event.is_set():
-        resp = api_request(server, '/agents/work/poll', key=key, method='GET', quiet=True)
+        resp = _active_channel.call('work_lease') if _active_channel else None
+        if resp is None:
+            resp = api_request(server, '/agents/work/poll', key=key, method='GET', quiet=True)
         manifest = resp.get('work') if resp else None
         if not manifest:
             stop_event.wait(15)
@@ -1023,16 +1214,21 @@ def agent_work_loop(server, key, stop_event=None):
                 variables.update(_decrypt_work_secrets(manifest, key))
                 result = _run_ansible_local(
                     body, variables,
-                    cancel_check=lambda: bool((api_request(
-                        server, f"/agents/work/{manifest['id']}/state",
-                        key=key, method='GET', quiet=True) or {}).get('status') == 'cancelled'),
+                    cancel_check=lambda: _work_cancelled(server, key, manifest['id']),
                     check_mode=bool(payload.get('check_mode')))
             else:
                 result = {'status': 'failed', 'reason': f"unsupported kind {manifest['kind']}"}
         except Exception as exc:
             result = {'status': 'failed', 'reason': str(exc)[:300]}
         result['work_id'] = manifest['id']
-        api_request(server, '/agents/work/result', result, key=key, method='POST', quiet=True)
+        while not stop_event.is_set():
+            response = (_active_channel.call('work_result', result, job_id=manifest['id'])
+                        if _active_channel else None)
+            if response is None:
+                response = api_request(server, '/agents/work/result', result, key=key, method='POST', quiet=True)
+            if response is not None:
+                break
+            stop_event.wait(5)
 
 
 def do_register(server, name=None):
@@ -1142,6 +1338,9 @@ def main():
 
     # Continuous mode
     print(f"Artemis Agent v{__version__} starting (interval: {interval}s)")
+    global _active_channel
+    if socketio_client is not None and cfg.get('persistent_channel_enabled', True):
+        _active_channel = AgentChannel(server, key)
     shell_enabled = not args.disable_remote_shell and cfg.get('remote_shell_enabled', True)
     if shell_enabled:
         threading.Thread(target=remote_shell_loop, args=(server, key), daemon=True).start()

@@ -26,6 +26,8 @@ x-app-env: &app-env
   # scheduler thread in the web container.
   ARTEMIS_USE_BEAT: "1"
   DATABASE_URL: postgresql+psycopg://artemis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@${DB_HOST:-postgres}:5432/artemis
+  AGENT_CHANNEL_ENABLED: ${AGENT_CHANNEL_ENABLED:-true}
+  AGENT_TRANSPORT_REDIS_URL: redis://transport-redis:6379/0
   REDIS_URL: redis://${REDIS_HOST:-redis}:6379/0
   CELERY_BROKER_URL: redis://${REDIS_HOST:-redis}:6379/0
   CELERY_RESULT_BACKEND: redis://${REDIS_HOST:-redis}:6379/1
@@ -80,6 +82,17 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Terminal content must never enter the durable broker's AOF or RDB backups.
+  transport-redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web:
     <<: *app-build
     command: ["web"]
@@ -100,6 +113,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      transport-redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5005/"]
@@ -128,6 +143,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      transport-redis:
+        condition: service_healthy
       web:
         condition: service_healthy
     restart: unless-stopped
@@ -142,6 +159,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      transport-redis:
         condition: service_healthy
       web:
         condition: service_healthy

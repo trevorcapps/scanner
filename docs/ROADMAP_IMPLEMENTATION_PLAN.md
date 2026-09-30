@@ -4,6 +4,17 @@ Prepared September 3, 2026. This document is intended as a handoff to an
 implementation agent. It reconciles `ROADMAP.md` with the repository as it
 exists now; unchecked roadmap boxes are not assumed to be wholly unimplemented.
 
+## Delivery update — September 30, 2026
+
+Git history records P0–P4 and P5-B/C/D/E as implemented. P5-A, previously
+skipped, now supplies the persistent agent channel, presence metrics, streamed
+terminal, volatile queues, and HTTPS fallback. Its protocol tests, PostgreSQL
+migration/rollback checks, 100 real agent connections/reconnect, and 148 ms
+terminal echo p95 are documented in [`AGENT_CHANNEL.md`](AGENT_CHANNEL.md).
+The next packet is **P5-F: Git projects, immutable revisions, and reusable job
+templates**. The reconciled status below records the original September 3
+baseline and should be read alongside this delivery update.
+
 ## Handoff preflight
 
 1. Preserve the current dirty worktree. It contains the agent remote-shell,

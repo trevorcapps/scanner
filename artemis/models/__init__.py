@@ -22,7 +22,7 @@ from artemis.models.api_key import ApiKey
 from artemis.models.webhook import Webhook, WebhookDelivery
 from artemis.models.report import Report, ReportSchedule
 from artemis.models.risk_snapshot import RiskSnapshot
-from artemis.models.agent_shell import AgentShellInput, AgentShellOutput, AgentShellSession
+from artemis.models.agent_shell import AgentShellSession
 from artemis.models.audit_event import AuditEvent
 from artemis.models.job_event import JobEvent
 from artemis.models.scan_profile import ScanExecutionProfile

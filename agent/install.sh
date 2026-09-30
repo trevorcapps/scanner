@@ -47,6 +47,8 @@ for candidate in python3 python; do
 done
 [[ -n "$PYTHON" ]] || { echo "Python 3 is required"; exit 1; }
 
+"$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ is required")'
+
 TMP_AGENT="$(mktemp)"
 SERVICE_FILE=""
 trap 'rm -f "$TMP_AGENT" "$SERVICE_FILE"' EXIT
@@ -66,6 +68,16 @@ fi
 
 "${ROOT[@]}" install -d -m 0755 "$AGENT_DIR" "$CONFIG_DIR"
 "${ROOT[@]}" install -m 0755 "$TMP_AGENT" "$AGENT_DIR/artemis_agent.py"
+
+# Isolate pinned transport dependencies from system Python on both fresh install and upgrade.
+"${ROOT[@]}" "$PYTHON" -m venv "$AGENT_DIR/venv"
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${SERVER%/}/agent/requirements.lock" -o "$TMP_AGENT"
+else
+    wget -q "${SERVER%/}/agent/requirements.lock" -O "$TMP_AGENT"
+fi
+"${ROOT[@]}" "$AGENT_DIR/venv/bin/python" -m pip install --require-hashes -r "$TMP_AGENT"
+PYTHON="$AGENT_DIR/venv/bin/python"
 
 if [[ "$UPGRADE" == true ]]; then
     [[ -f "$CONFIG_DIR/agent.conf" ]] || {

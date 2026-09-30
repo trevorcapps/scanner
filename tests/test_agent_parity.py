@@ -34,7 +34,7 @@ class AgentParityTests(unittest.TestCase):
 
     def _report(self, **over):
         base = {
-            "hostname": "h", "ip": "10.0.0.9", "agent_version": "1.4.0",
+            "hostname": "h", "ip": "10.0.0.9", "agent_version": "1.5.0",
             "telemetry_schema_version": 3, "host_platform": "linux",
             "os_info": {"pretty_name": "Debian 12"},
             "system_info": {"uptime_seconds": 4242},
@@ -77,12 +77,12 @@ class AgentParityTests(unittest.TestCase):
         self.assertEqual(a.host_platform, "linux")
         self.assertEqual(a.uptime_seconds, 4242)
         self.assertEqual(json.loads(a.capability_health_json)["ports"], "error")
-        self.assertEqual(a.upgrade_status, "up_to_date")   # 1.4.0 == current
+        self.assertEqual(a.upgrade_status, "up_to_date")   # 1.5.0 == current
 
     def test_upgrade_status_reflects_target_version(self):
         from artemis.services.auth_scan_service import set_setting
-        set_setting("agent_target_version", "1.5.0")
-        process_report(self.agent, self._report(agent_version="1.4.0"))
+        set_setting("agent_target_version", "1.6.0")
+        process_report(self.agent, self._report(agent_version="1.5.0"))
         self.assertEqual(db.session.get(Agent, self.agent.id).upgrade_status, "pending")
 
     def test_fleet_view_and_rollout_ring(self):

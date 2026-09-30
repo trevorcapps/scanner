@@ -29,6 +29,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+agent-client = [
+    "python-socketio[client]==5.16.4",
+    "python-engineio==4.14.0",
+    # Keep signed agent-local credential decryption available in the isolated venv.
+    "cryptography==50.0.1",
+]
 postgres = [
     "psycopg[binary]>=3.2",
 ]

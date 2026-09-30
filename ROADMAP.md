@@ -14,6 +14,21 @@
 - [x] Versioned scan-job REST endpoints and initial CI test/build pipeline
 - [ ] Complete `/api/v1` resource coverage, generated OpenAPI documentation, and webhooks
 
+### Current delivery — September 30, 2026
+
+The implementation history covers P0–P4 and P5-B/C/D/E from
+[`docs/ROADMAP_IMPLEMENTATION_PLAN.md`](docs/ROADMAP_IMPLEMENTATION_PLAN.md).
+The missing P5-A packet is now implemented:
+
+- [x] Persistent authenticated agent channel, presence metrics, streamed terminal
+  input/output/resize, signed work transport, and compatible HTTPS fallback
+- [x] Volatile Redis terminal queues; PostgreSQL stores session metadata only
+- [x] Protocol/authorization checks, queue limits, PostgreSQL upgrade/rollback,
+  100-agent connection/reconnect validation, and terminal echo p95 below 150 ms
+
+Deployment and limitations: [`docs/AGENT_CHANNEL.md`](docs/AGENT_CHANNEL.md).
+**Next delivery packet: P5-F — Git projects, immutable revisions, and reusable job templates.**
+
 ### 1. **Architecture Refactor**
 - Break the monolith: `app.py` (1,449 lines) and `vuln_scan.py` (2,294 lines) need to become proper modules — `api/`, `models/`, `services/`, `scanners/`
 - Introduce a task queue (Celery + Redis) to replace raw `threading` — scans should be durable, retryable, and not die with the process
