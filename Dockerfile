@@ -11,7 +11,7 @@
 # --- Frontend build (React/Vite) -------------------------------------------
 # Emits static/ui/ which Flask serves at "/". Kept in its own stage so a
 # python-only change does not reinstall node modules.
-FROM node:20.18.1-slim@sha256:b2c8e0eb8a6aeeae33b2711f8f516003e27ee45804e270468d937b3214f2f0cc AS frontend
+FROM node:26.13.1-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
