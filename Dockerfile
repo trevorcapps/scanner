@@ -19,7 +19,7 @@ COPY frontend/ ./
 RUN npm run build
 # -> /build/static/ui  (vite base '/static/ui/', outDir '../static/ui')
 
-FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
+FROM python:3.15.2-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9
 
 # --- External scanning tools --------------------------------------------------
 # nmap  : service/port discovery (python-nmap shells out to it)
